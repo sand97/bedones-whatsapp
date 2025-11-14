@@ -1,0 +1,26 @@
+node_modules
+/.pnpm-store/
+/.idea/
+/packages/common/dist/
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+/apps/backend/src/generated/
+/apps/frontend/src/generated/
+/apps/whatsapp-agent/src/generated/
+/apps/whatsapp-connector/src/generated/

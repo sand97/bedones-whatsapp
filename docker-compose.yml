@@ -1,0 +1,69 @@
+services:
+
+  # Backend Service
+  backend:
+    container_name: apps-backend
+    build:
+      context: . # Build from monorepo root
+      dockerfile: apps/backend/Dockerfile
+      target: development # Use development stage
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    env_file:
+      - ./apps/backend/.env
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - .:/app # Bind-mount monorepo into container
+      - /app/node_modules # Anonymous volume for root node_modules
+      - /app/apps/backend/node_modules # Anonymous volume for backend node_modules
+      - /app/packages/common/node_modules # Anonymous volume for common node_modules
+    networks:
+      - webnet
+
+  database:
+    container_name: apps-postgres
+    image: postgres:12
+    ports:
+      - 5432:5432
+    env_file:
+      - ./apps/backend/.env
+    networks:
+      - webnet
+    environment:
+      PG_DATA: /var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d app_db -U app_user" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    #    ports:
+    #      - ${POSTGRES_PORT}:${POSTGRES_PORT}
+    volumes:
+      - database_data:/var/lib/postgresql/data
+
+  redis:
+    container_name: apps-redis
+    image: redis:5
+    env_file:
+      - ./apps/backend/.env
+    command: [ "redis-server", "--bind", "redis", "--port", "6379" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -h redis ping | grep 'PONG' || exit 1" ]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - redis_data:/var/lib/redis
+    networks:
+      - webnet
+
+
+networks:
+  webnet:
+
+volumes:
+  database_data:
+  redis_data:
