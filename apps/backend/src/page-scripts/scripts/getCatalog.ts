@@ -23,6 +23,33 @@
 
   console.log('🔍 Démarrage de la récupération du catalogue...');
 
+  /**
+   * Normalise une URL WhatsApp en extrayant la partie stable (avant les query params)
+   * Exemple: https://media.whatsapp.net/v/t45.5328-4/image.jpg?stp=... -> https://media.whatsapp.net/v/t45.5328-4/image.jpg
+   */
+  function normalizeWhatsAppUrl(url) {
+    if (!url) return null;
+    // Extraire la partie avant le '?' (enlever les query params dynamiques)
+    const baseUrl = url.split('?')[0];
+    return baseUrl;
+  }
+
+  /**
+   * Génère un ID unique intemporel pour les noms de fichiers
+   * Basé uniquement sur l'URL normalisée pour être déterministe
+   */
+  function generateUniqueId(normalizedUrl) {
+    if (!normalizedUrl) return 'unknown';
+    // Simple hash function basé uniquement sur l'URL normalisée
+    let hash = 0;
+    for (let i = 0; i < normalizedUrl.length; i++) {
+      const char = normalizedUrl.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
   // Parser la liste des images existantes
   let initialOriginalsUrls = [];
   try {
@@ -76,10 +103,15 @@
       // Traiter chaque produit de la collection
       for (const product of collection.products || []) {
         try {
-          const imageUrls: Array<{ url: string; type: string; index: number }> =
-            [];
+          const imageUrls: Array<{
+            url: string;
+            normalizedUrl: string;
+            type: string;
+            index: number;
+          }> = [];
 
-          // 1. Image principale
+          // 1. Image principale (image de couverture) - TOUJOURS en premier (index 0)
+          // Cette image se trouve dans image_cdn_urls et doit être la première de la liste
           if (product.image_cdn_urls && Array.isArray(product.image_cdn_urls)) {
             const fullImage = product.image_cdn_urls.find(
               (img) => img.key === 'full',
@@ -87,13 +119,14 @@
             if (fullImage?.value) {
               imageUrls.push({
                 url: fullImage.value,
+                normalizedUrl: normalizeWhatsAppUrl(fullImage.value),
                 type: 'main',
                 index: 0,
               });
             }
           }
 
-          // 2. Images additionnelles
+          // 2. Images additionnelles - Commencent à l'index 1
           if (
             product.additional_image_cdn_urls &&
             Array.isArray(product.additional_image_cdn_urls)
@@ -105,6 +138,7 @@
                   if (fullImage?.value) {
                     imageUrls.push({
                       url: fullImage.value,
+                      normalizedUrl: normalizeWhatsAppUrl(fullImage.value),
                       type: 'additional',
                       index: index + 1,
                     });
@@ -119,12 +153,12 @@
 
           for (const imageInfo of imageUrls) {
             try {
-              // Ajouter l'URL au catalogue actuel
-              currentCatalogUrls.add(imageInfo.url);
+              // Ajouter l'URL normalisée au catalogue actuel (pour la détection des images obsolètes)
+              currentCatalogUrls.add(imageInfo.normalizedUrl);
 
-              // Vérifier si l'image existe déjà
+              // Vérifier si l'image existe déjà en comparant les URLs normalisées
               const existingImage = initialOriginalsUrls.find(
-                (img) => img.original_url === imageInfo.url,
+                (img) => img.normalized_url === imageInfo.normalizedUrl,
               );
 
               if (existingImage) {
@@ -134,6 +168,7 @@
                   type: imageInfo.type,
                   url: existingImage.url, // URL Minio existante
                   originalUrl: imageInfo.url,
+                  normalizedUrl: imageInfo.normalizedUrl,
                 });
                 skippedImages++;
                 console.log(
@@ -177,6 +212,9 @@
               });
               const base64Data = await base64Promise;
 
+              // Générer un ID unique intemporel basé sur l'URL normalisée
+              const uniqueId = generateUniqueId(imageInfo.normalizedUrl);
+
               // Envoyer l'image au backend via nodeFetch (contourne la CSP)
               // Note: clientId n'est PAS envoyé pour des raisons de sécurité
               // Il est extrait du token JWT par le backend
@@ -190,12 +228,13 @@
                   },
                   body: JSON.stringify({
                     image: base64Data,
-                    filename: `${product.id}-${imageInfo.index}.jpg`,
+                    filename: `${product.id}-${imageInfo.index}-${uniqueId}.jpg`,
                     productId: product.id,
                     collectionId: collection.id,
                     imageIndex: imageInfo.index.toString(),
                     imageType: imageInfo.type,
                     originalUrl: imageInfo.url,
+                    normalizedUrl: imageInfo.normalizedUrl,
                   }),
                 },
               );
@@ -207,6 +246,7 @@
                   type: imageInfo.type,
                   url: uploadResult.data?.url || uploadResult.url, // URL Minio retournée par le backend
                   originalUrl: imageInfo.url,
+                  normalizedUrl: imageInfo.normalizedUrl,
                 });
                 totalImages++;
                 console.log(
@@ -251,10 +291,12 @@
 
     // Déterminer les images à supprimer (présentes dans initialOriginalsUrls mais pas dans currentCatalogUrls)
     // IMPORTANT: Ne supprimer que si initialOriginalsUrls n'est pas vide (sinon c'est l'initialisation)
+    // Note: currentCatalogUrls contient maintenant les URLs normalisées
     const imagesToDelete = [];
     if (initialOriginalsUrls.length > 0) {
       for (const existingImage of initialOriginalsUrls) {
-        if (!currentCatalogUrls.has(existingImage.original_url)) {
+        // Comparer avec normalized_url (qui est maintenant dans currentCatalogUrls)
+        if (!currentCatalogUrls.has(existingImage.normalized_url)) {
           imagesToDelete.push(existingImage.id);
         }
       }

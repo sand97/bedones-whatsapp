@@ -136,6 +136,7 @@ export class UserSyncService {
       let initialOriginalsUrls: Array<{
         id: string;
         original_url: string;
+        normalized_url: string;
         url: string;
       }> = [];
 
@@ -149,16 +150,21 @@ export class UserSyncService {
           select: {
             id: true,
             original_url: true,
+            normalized_url: true,
             url: true,
           },
         });
 
-        // Filtrer pour ne garder que les images avec original_url
+        // Filtrer pour ne garder que les images avec normalized_url (ou original_url pour rétrocompatibilité)
         initialOriginalsUrls = existingImages
-          .filter((img) => img.original_url)
+          .filter((img) => img.normalized_url || img.original_url)
           .map((img) => ({
             id: img.id,
-            original_url: img.original_url!,
+            original_url: img.original_url || '',
+            // Si normalized_url n'existe pas, on le génère à partir de original_url
+            normalized_url:
+              img.normalized_url ||
+              (img.original_url ? img.original_url.split('?')[0] : ''),
             url: img.url,
           }));
 

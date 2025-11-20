@@ -289,16 +289,18 @@ model ProductImage {
   product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   // Informations de l'image
-  url          String // URL dans MinIO
-  original_url String? // URL originale WhatsApp
-  image_type   String  @default("main") // "main" ou "additional"
-  image_index  Int     @default(0) // Index de l'image
+  url            String  // URL dans MinIO
+  original_url   String? // URL originale WhatsApp complète (avec query params)
+  normalized_url String? // URL normalisée (partie stable sans query params) pour comparaison
+  image_type     String  @default("main") // "main" ou "additional"
+  image_index    Int     @default(0) // Index de l'image
 
   // Dates
   created_at DateTime @default(now())
 
   @@index([product_id])
   @@index([image_type])
+  @@index([normalized_url])
 }
 
 model ProductMetadata {

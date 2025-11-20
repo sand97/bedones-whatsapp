@@ -18,7 +18,8 @@ export interface UploadedImage {
   index: number;
   type: 'main' | 'additional';
   url: string; // URL MinIO
-  originalUrl?: string; // URL WhatsApp originale
+  originalUrl?: string; // URL WhatsApp originale complète
+  normalizedUrl?: string; // URL normalisée (sans query params) pour comparaison
 }
 
 export interface CatalogProduct {

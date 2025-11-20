@@ -574,6 +574,7 @@ export class CatalogService {
                 },
                 url: imageData.url,
                 original_url: imageData.originalUrl || null,
+                normalized_url: imageData.normalizedUrl || null,
                 image_type: imageData.type || 'main',
                 image_index: imageData.index || 0,
               },

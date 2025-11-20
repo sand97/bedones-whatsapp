@@ -26,7 +26,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -41,7 +43,9 @@
                       "example": {},
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -60,7 +64,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -94,7 +100,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -114,7 +122,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -137,7 +147,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -178,7 +190,9 @@
             "description": "Méthode invalide ou paramètres incorrects"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     },
     "/whatsapp/execute-script": {
@@ -218,7 +232,9 @@
             "description": "Client non prêt ou erreur d'exécution"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     },
     "/whatsapp/status": {
@@ -232,7 +248,9 @@
             "description": "Statut récupéré avec succès"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     },
     "/whatsapp/qr": {
@@ -249,7 +267,9 @@
             "description": "Aucun QR code disponible"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     },
     "/whatsapp/webhooks": {
@@ -262,7 +282,9 @@
             "description": "Liste des webhooks"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       },
       "post": {
         "operationId": "WhatsAppController_setWebhooks",
@@ -284,7 +306,9 @@
             "description": "Webhooks configurés avec succès"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     },
     "/whatsapp/request-pairing-code": {
@@ -321,7 +345,9 @@
             "description": "Failed to generate pairing code"
           }
         },
-        "tags": ["WhatsApp"]
+        "tags": [
+          "WhatsApp"
+        ]
       }
     }
   },
@@ -345,14 +371,19 @@
           },
           "parameters": {
             "description": "Paramètres à passer à la méthode (dans l'ordre)",
-            "example": ["123456789@c.us", "Hello World!"],
+            "example": [
+              "123456789@c.us",
+              "Hello World!"
+            ],
             "type": "array",
             "items": {
               "type": "array"
             }
           }
         },
-        "required": ["method"]
+        "required": [
+          "method"
+        ]
       },
       "ExecutePageScriptDto": {
         "type": "object",
@@ -363,21 +394,27 @@
             "example": "\n      const collections = await window.WPP.catalog.getCollections(\n        window.WPP.conn?.getMyUserId()?._serialized || '',\n        50,\n        100\n      );\n      return collections;\n    "
           }
         },
-        "required": ["script"]
+        "required": [
+          "script"
+        ]
       },
       "SetWebhooksDto": {
         "type": "object",
         "properties": {
           "urls": {
             "description": "Liste des URLs de webhooks à configurer",
-            "example": ["http://whatsapp-agent:3002/webhook/message"],
+            "example": [
+              "http://whatsapp-agent:3002/webhook/message"
+            ],
             "type": "array",
             "items": {
               "type": "array"
             }
           }
         },
-        "required": ["urls"]
+        "required": [
+          "urls"
+        ]
       },
       "RequestPairingCodeDto": {
         "type": "object",
@@ -388,7 +425,9 @@
             "example": "1234567890"
           }
         },
-        "required": ["phoneNumber"]
+        "required": [
+          "phoneNumber"
+        ]
       }
     }
   }

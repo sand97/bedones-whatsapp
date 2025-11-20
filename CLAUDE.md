@@ -1,0 +1,1 @@
+- Pour les import quand le ts config le permet utilise @app plutot que des chemin relatif
