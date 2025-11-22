@@ -492,6 +492,9 @@ export class AuthService {
   async validateUser(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: {
+        businessInfo: true,
+      },
     });
 
     if (!user) {
@@ -503,6 +506,7 @@ export class AuthService {
       phoneNumber: user.phoneNumber,
       status: user.status,
       whatsappProfile: user.whatsappProfile,
+      businessInfo: user.businessInfo,
     };
   }
 

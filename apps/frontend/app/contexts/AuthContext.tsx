@@ -7,7 +7,12 @@ interface User {
   phoneNumber?: string
   contextScore?: number
   whatsappProfile?: {
-    pushName?: string
+    pushname?: string
+    [key: string]: any
+  }
+  businessInfo?: {
+    avatar_url?: string
+    profile_name?: string
     [key: string]: any
   }
   [key: string]: any

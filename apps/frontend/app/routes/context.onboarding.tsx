@@ -4,6 +4,7 @@ import {
   PaperClipOutlined,
   CustomerServiceOutlined,
   ShopOutlined,
+  ArrowUpOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '@app/hooks/useAuth'
 import { App, Button, Input } from 'antd'
@@ -160,7 +161,7 @@ export default function ContextOnboardingPage() {
           </div>
         </div>
         <p className='text-base text-[#111b21] tracking-[-0.1px] leading-7 m-0'>
-          Cette conversation sera utilisée pour améliorer les compétences de
+          Cette conversation est utilisée pour améliorer les compétences de
           l&apos;IA et ses réponses à vos contacts
         </p>
       </div>
@@ -213,7 +214,7 @@ export default function ContextOnboardingPage() {
               type='primary'
               shape='circle'
               size='large'
-              icon={<SendOutlined className='rotate-[-45deg]' />}
+              icon={<ArrowUpOutlined />}
               onClick={handleSubmit}
               loading={isSubmitting}
               disabled={!inputValue.trim()}
