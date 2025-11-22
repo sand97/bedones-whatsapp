@@ -8,9 +8,11 @@ import {
   CustomerServiceOutlined,
   QuestionCircleOutlined,
   UserOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '@app/hooks/useAuth'
-import { Avatar } from 'antd'
+import { Avatar, Spin } from 'antd'
+import { useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router'
 
 interface MenuItem {
@@ -74,9 +76,15 @@ const helpMenuItems: MenuItem[] = [
 ]
 
 export default function DashboardLayout() {
-  const { user } = useAuth()
+  const { user, isLoading, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate('/auth/login')
+    }
+  }, [isLoading, isAuthenticated, navigate])
 
   const isActive = (path: string) => {
     return (
@@ -104,6 +112,18 @@ export default function DashboardLayout() {
       </span>
     </button>
   )
+
+  if (isLoading) {
+    return (
+      <div className='min-h-screen flex items-center justify-center bg-[#fdfdfd]'>
+        <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null // Will redirect via useEffect
+  }
 
   return (
     <div className='min-h-screen bg-[#fdfdfd] flex'>
