@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ConfirmPairingDto {
   @ApiProperty({
@@ -9,4 +9,13 @@ export class ConfirmPairingDto {
   @IsString()
   @IsNotEmpty()
   pairingToken: string;
+
+  @ApiPropertyOptional({
+    description:
+      'OTP code if this is an OTP login scenario (required when scenario is "otp")',
+    example: '123456',
+  })
+  @IsString()
+  @IsOptional()
+  otpCode?: string;
 }

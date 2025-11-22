@@ -90,13 +90,13 @@ export class AuthController {
 
   @Post('confirm-pairing')
   @ApiOperation({
-    summary: 'Confirm pairing completion',
+    summary: 'Confirm pairing completion or verify OTP',
     description:
-      'Called by frontend when user confirms they have completed the pairing process on their phone',
+      'Called by frontend to confirm pairing (new device) or verify OTP code (existing connection). The endpoint automatically detects which scenario to handle based on the presence of an OTP in cache.',
   })
   @ApiResponse({
     status: 201,
-    description: 'Pairing confirmed successfully',
+    description: 'Pairing/OTP confirmed successfully',
     schema: {
       type: 'object',
       properties: {
@@ -115,41 +115,15 @@ export class AuthController {
   })
   @ApiResponse({
     status: 401,
-    description: 'Invalid or expired pairing token',
+    description: 'Invalid or expired pairing token / Invalid OTP code',
   })
   @ApiResponse({
     status: 400,
-    description: 'WhatsApp connection not yet confirmed',
+    description:
+      'WhatsApp connection not yet confirmed / OTP code required but not provided',
   })
   async confirmPairing(@Body() dto: ConfirmPairingDto) {
-    return this.authService.confirmPairing(dto.pairingToken);
-  }
-
-  @Post('login')
-  @ApiOperation({
-    summary: 'Login with phone number',
-    description: 'Send OTP code to user WhatsApp for login',
-  })
-  @ApiResponse({
-    status: 201,
-    description: 'OTP sent successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        message: { type: 'string', example: 'OTP envoyé avec succès' },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'User not found',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'User must complete pairing before logging in',
-  })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.sendOTPToSelf(dto.phoneNumber);
+    return this.authService.confirmPairing(dto.pairingToken, dto.otpCode);
   }
 
   @Post('verify-otp')

@@ -8,6 +8,8 @@ export interface ScriptVariables {
   BACKEND_URL?: string;
   TOKEN?: string;
   INITIAL_ORIGINALS_URLS?: string; // JSON stringifié des images existantes [{id, original_url, url}]
+  PHONE_NUMBER?: string; // Numéro de téléphone au format [number]@c.us
+  MESSAGE?: string; // Message texte à envoyer
   // Note: CLIENT_ID n'est plus une variable car il est encodé dans le TOKEN
   [key: string]: string | undefined;
 }
@@ -127,21 +129,41 @@ export class PageScriptService {
   }
 
   /**
+   * Génère le script de vérification d'authentification
+   */
+  getIsAuthenticatedScript(): string {
+    return this.loadScript('isAuthenticated');
+  }
+
+  /**
+   * Génère le script d'envoi de message texte
+   * Intègre la vérification du contact (queryExists) et l'envoi du message
+   */
+  getSendTextMessageScript(variables: ScriptVariables): string {
+    const scriptContent = this.loadScript('sendTextMessage');
+    return this.replacePlaceholders(scriptContent, variables);
+  }
+
+  /**
    * Liste tous les scripts disponibles
    */
   getAvailableScripts(): string[] {
-    return ['getCatalog', 'getClientInfo'];
+    return ['getCatalog', 'getClientInfo', 'isAuthenticated', 'sendTextMessage'];
   }
 
   /**
    * Obtient un script par son nom
    */
-  getScript(scriptName: string, variables: ScriptVariables): string {
+  getScript(scriptName: string, variables: ScriptVariables = {}): string {
     switch (scriptName) {
       case 'getCatalog':
         return this.getGetCatalogScript(variables);
       case 'getClientInfo':
         return this.getClientInfoScript(variables);
+      case 'isAuthenticated':
+        return this.getIsAuthenticatedScript();
+      case 'sendTextMessage':
+        return this.getSendTextMessageScript(variables);
       default:
         throw new Error(`Script "${scriptName}" not found`);
     }

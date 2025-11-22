@@ -2,10 +2,51 @@
 
 @import 'tailwindcss';
 
+:root {
+  --color-primary: #24D366;
+}
+
+@theme {
+  --color-primary: var(--primary-color);
+
+  /* Custom colors */
+  --color-bg-subtle: #fdfdfd;
+  --color-text-dark: #111b21;
+  --color-text-muted: #494949;
+  --color-primary-green: #24d366;
+  --color-primary-hover: #1fb855;
+
+  /* Custom border radius */
+  --radius-card-outer: 28px;
+  --radius-card-inner: 24px;
+
+  /* Custom shadows */
+  --shadow-card-subtle: 0px 0px 1px 0px rgba(0,0,0,0.3);
+  --shadow-card: 0px 0px 1px 0px rgba(0,0,0,0.4);
+
+  /* Custom max widths */
+  --width-card: 719px;
+  --width-features: 1200px;
+
+  /* Custom spacing */
+  --spacing-features-gap: 54px;
+
+  /* Custom heights */
+  --height-button: 46px;
+}
+
 @theme {
   --font-sans:
-    'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    'Inter', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+}
+
+/* Ensure font is applied globally */
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .ant-form-item-margin-offset {
@@ -18,4 +59,31 @@
 
 .ant-form-item-additional {
   margin-top: 4px;
+}
+.ant-btn {
+  @apply py-[22px] px-8 rounded-full font-medium;
+}
+
+.ant-btn-primary.ant-btn-variant-solid {
+  @apply text-black border border-black;
+  &:hover {
+    @apply !text-black;
+    & .anticon {
+      @apply text-white;
+    }
+  }
+}
+
+.ant-btn-variant-outlined {
+  @apply border-none bg-white shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)];
+  &:hover {
+    @apply !text-black shadow-[0px_0px_1px_0px_var(--color-primary)];
+    & .anticon {
+      @apply text-primary;
+    }
+  }
+}
+
+.ant-input-group-wrapper-outlined .ant-input-group-addon {
+  padding: 0 32px;
 }

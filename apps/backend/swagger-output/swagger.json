@@ -532,8 +532,8 @@
     "/auth/confirm-pairing": {
       "post": {
         "operationId": "AuthController_confirmPairing",
-        "summary": "Confirm pairing completion",
-        "description": "Called by frontend when user confirms they have completed the pairing process on their phone",
+        "summary": "Confirm pairing completion or verify OTP",
+        "description": "Called by frontend to confirm pairing (new device) or verify OTP code (existing connection). The endpoint automatically detects which scenario to handle based on the presence of an OTP in cache.",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -547,7 +547,7 @@
         },
         "responses": {
           "201": {
-            "description": "Pairing confirmed successfully",
+            "description": "Pairing/OTP confirmed successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -579,55 +579,10 @@
             }
           },
           "400": {
-            "description": "WhatsApp connection not yet confirmed"
+            "description": "WhatsApp connection not yet confirmed / OTP code required but not provided"
           },
           "401": {
-            "description": "Invalid or expired pairing token"
-          }
-        },
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/auth/login": {
-      "post": {
-        "operationId": "AuthController_login",
-        "summary": "Login with phone number",
-        "description": "Send OTP code to user WhatsApp for login",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "OTP sent successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string",
-                      "example": "OTP envoyé avec succès"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "User must complete pairing before logging in"
-          },
-          "404": {
-            "description": "User not found"
+            "description": "Invalid or expired pairing token / Invalid OTP code"
           }
         },
         "tags": [
@@ -2139,23 +2094,15 @@
             "type": "string",
             "description": "The pairing token received when requesting the pairing code",
             "example": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
+          },
+          "otpCode": {
+            "type": "string",
+            "description": "OTP code if this is an OTP login scenario (required when scenario is \"otp\")",
+            "example": "123456"
           }
         },
         "required": [
           "pairingToken"
-        ]
-      },
-      "LoginDto": {
-        "type": "object",
-        "properties": {
-          "phoneNumber": {
-            "type": "string",
-            "description": "Phone number in E.164 format",
-            "example": "+15551234567"
-          }
-        },
-        "required": [
-          "phoneNumber"
         ]
       },
       "VerifyOtpDto": {

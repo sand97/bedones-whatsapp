@@ -1,38 +1,21 @@
-import { theme } from '@app/core/theme'
-import apiClient from '@app/lib/api/client'
 import {
-  App,
-  Button,
-  Card,
-  ConfigProvider,
-  Typography,
-  // Form
-} from 'antd'
+  ArrowRightOutlined,
+  CustomerServiceOutlined,
+  QuestionCircleOutlined,
+} from '@ant-design/icons'
+import { featuresConfig } from '@app/data/features'
+import apiClient from '@app/lib/api/client'
+import { App, Button, Modal } from 'antd'
 import Form from 'antd/es/form'
 import FormItem from 'antd/es/form/FormItem'
-import PhoneInput, { locale } from 'antd-phone-input'
-import { useCallback, useEffect, useState } from 'react'
+import PhoneInput, { type PhoneNumber } from 'antd-phone-input'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-
-const { Title, Text } = Typography
 
 const LAST_PHONE_KEY = 'whatsapp-agent-last-phone'
 
-interface RequestPairingResponse {
-  code: string
-  pairingToken: string
-  message: string
-}
-
-interface PhoneValue {
-  countryCode?: number
-  areaCode?: string
-  phoneNumber?: string
-  isoCode?: string
-}
-
 interface FormValues {
-  phone: PhoneValue
+  phone: PhoneNumber
 }
 
 export function meta() {
@@ -40,7 +23,7 @@ export function meta() {
     { title: 'Connexion - WhatsApp Agent' },
     {
       name: 'description',
-      content: 'Connectez-vous avec votre numéro WhatsApp',
+      content: 'Connectez-vous avec votre numéro WhatsApp Business',
     },
   ]
 }
@@ -50,17 +33,22 @@ export default function LoginPage() {
   const { notification } = App.useApp()
   const [form] = Form.useForm<FormValues>()
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedFeatureKey, setSelectedFeatureKey] = useState<string | null>(
+    null
+  )
 
-  const getFullPhoneNumber = (value?: PhoneValue): string => {
-    if (!value?.countryCode || !value?.phoneNumber) return ''
-    const areaCode = value.areaCode || ''
-    return `+${value.countryCode}${areaCode}${value.phoneNumber}`
-  }
+  // Récupérer la feature sélectionnée depuis la config
+  const selectedFeature = selectedFeatureKey
+    ? Object.values(featuresConfig)
+        .flatMap(category => category.features)
+        .find(f => `${f.title}` === selectedFeatureKey)
+    : null
 
   const handleSubmit = async (values: FormValues) => {
-    const fullPhoneNumber = getFullPhoneNumber(values.phone)
+    const { phone } = values
+    const fullPhoneNumber = `+${phone.countryCode}${phone.areaCode}${phone.phoneNumber}`
 
-    if (!fullPhoneNumber || !values.phone?.phoneNumber) {
+    if (!phone.phoneNumber) {
       notification.error({
         message: 'Erreur',
         description: 'Veuillez entrer un numéro de téléphone valide',
@@ -76,108 +64,187 @@ export default function LoginPage() {
       })
 
       if (response.status === 201 || response.status === 200) {
-        // Sauvegarder le numéro de téléphone dans localStorage
-        localStorage.setItem(LAST_PHONE_KEY, JSON.stringify(values.phone))
+        // Save phone for later
+        localStorage.setItem(LAST_PHONE_KEY, JSON.stringify(phone))
 
-        // Navigate to pairing code page with the code, phone number, and pairing token
-        console.log('response', response.data)
-        navigate('/auth/pairing-code', {
+        // Navigate to OTP verification
+        navigate('/auth/verify-otp', {
           state: {
             phoneNumber: fullPhoneNumber,
             code: response.data.code,
             pairingToken: response.data.pairingToken,
+            scenario: response.data.scenario, // 'pairing' | 'otp'
           },
         })
       } else {
         throw new Error()
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
       notification.error({
         message: 'Erreur',
         description:
-          error.response?.data?.message ||
-          'Une erreur est survenue lors de la demande du code de pairing',
+          err.response?.data?.message ||
+          'Une erreur est survenue lors de la demande du code',
       })
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Restaurer le dernier numéro de téléphone utilisé
+  // Restore last phone number
   useEffect(() => {
     const savedPhone = localStorage.getItem(LAST_PHONE_KEY)
     if (savedPhone) {
       try {
-        const phoneValue = JSON.parse(savedPhone) as PhoneValue
+        const phoneValue = JSON.parse(savedPhone) as PhoneNumber
         form.setFieldsValue({ phone: phoneValue })
-      } catch (error) {
-        console.error('Error parsing saved phone number:', error)
+      } catch {
+        // Ignore parsing errors for saved phone
       }
     }
   }, [form])
 
-  const validator = useCallback((_: any, options: any) => {
-    console.log('valid', _, options)
-    if (options.valid(true)) return Promise.resolve()
-    return Promise.reject('Veuillez saisir un numéro valide')
-  }, [])
-
   return (
-    <div className='min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4'>
-      <Card className='max-w-md w-full shadow-xl'>
-        <div className='text-center mb-8'>
-          <Title level={2}>Connexion WhatsApp</Title>
-          <Text type='secondary'>
-            Entrez votre numéro de téléphone pour commencer
-          </Text>
+    <div className='min-h-screen flex flex-col items-center bg-bg-subtle px-2 py-8'>
+      {/* Main Card */}
+      <div className='w-card max-w-full my-[15vh] flex flex-col items-center'>
+        <div className='bg-white rounded-card-outer shadow-card-subtle p-1'>
+          <div className='bg-white rounded-card-inner shadow-card p-12'>
+            {/* Header */}
+            <div className='text-center mb-8'>
+              <h1 className='text-xl font-medium text-text-dark leading-9 mb-2'>
+                Votre business <span className='text-black'>piloté</span> par{' '}
+                <span className='text-primary-green'>L&apos;IA</span>
+              </h1>
+              <p className='text-base text-text-muted'>
+                Saisissez votre numéro{' '}
+                <span className='text-text-dark'>Whatsapp Business</span> pour
+                commencer
+              </p>
+            </div>
+
+            {/* Form */}
+            <Form
+              form={form}
+              onFinish={handleSubmit}
+              className='flex flex-col items-center gap-3'
+            >
+              {/* Phone Input */}
+              <FormItem
+                name='phone'
+                // className='!mb-0 w-[320px]'
+                rules={[
+                  { required: true, message: 'Veuillez entrer votre numéro' },
+                ]}
+              >
+                <PhoneInput
+                  // size='large'
+                  enableSearch
+                  enableArrow
+                  disableParentheses
+                />
+              </FormItem>
+
+              {/* Submit Button */}
+              <FormItem className='mb-0 mt-4'>
+                <Button
+                  type='primary'
+                  htmlType='submit'
+                  size='large'
+                  loading={isLoading}
+                  className='h-button px-8 bg-primary-green border-black border hover:bg-primary-hover flex items-center gap-2'
+                >
+                  Continuer
+                  <ArrowRightOutlined />
+                </Button>
+              </FormItem>
+            </Form>
+          </div>
         </div>
 
-        <Form form={form} layout='vertical' onFinish={handleSubmit}>
-          <ConfigProvider theme={theme} locale={locale('frFR')}>
-            <FormItem
-              rules={[{ validator }]}
-              name='phone'
-              label='Numéro de téléphone'
-              validateTrigger='onBlur'
-              required
-              help='Sélectionnez votre pays et entrez votre numéro'
-            >
-              <PhoneInput
-                useSVG
-                disableParentheses
-                enableArrow
-                enableSearch
-                size='large'
-              />
-            </FormItem>
-          </ConfigProvider>
-
-          <Form.Item>
-            <Button
-              type='primary'
-              htmlType='submit'
-              size='large'
-              loading={isLoading}
-              className='w-full'
-            >
-              Demander le code de pairing
-            </Button>
-          </Form.Item>
-        </Form>
-
-        <div className='text-center mt-6 pt-6 border-t border-gray-200'>
-          <Text type='secondary' className='block mb-2'>
-            Vous avez déjà un compte?
-          </Text>
+        {/* Secondary Buttons */}
+        <div className='flex justify-center gap-4 lg:mt-4 mt-2'>
           <Button
-            type='link'
-            onClick={() => navigate('/auth/verify-otp')}
-            className='font-medium'
+            variant={'outlined'}
+            size='large'
+            onClick={() => {
+              const featuresSection = document.getElementById('features')
+              if (featuresSection) {
+                featuresSection.scrollIntoView({ behavior: 'smooth' })
+              }
+            }}
+            icon={<QuestionCircleOutlined />}
+            iconPosition={'end'}
           >
-            Se connecter avec un code OTP
+            Fonctionnalités
+          </Button>
+          <Button
+            variant={'outlined'}
+            size='large'
+            icon={<CustomerServiceOutlined />}
+            iconPosition={'end'}
+          >
+            Aide
           </Button>
         </div>
-      </Card>
+      </div>
+
+      {/* Features Section */}
+      <div
+        className='flex flex-wrap items-start justify-center gap-8'
+        id='features'
+      >
+        {Object.entries(featuresConfig).map(([key, category]) => (
+          <div key={key} className='text-center'>
+            <h3 className='text-base text-text-muted mb-4'>{category.title}</h3>
+            <div className='flex flex-col gap-2 items-center'>
+              {category.features.map((feature, index) => (
+                <Button
+                  key={index}
+                  variant='outlined'
+                  size='small'
+                  icon={feature.icon}
+                  iconPosition='start'
+                  onClick={() => setSelectedFeatureKey(feature.title)}
+                >
+                  {feature.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Feature Details Modal */}
+      <Modal
+        open={selectedFeature !== null}
+        onCancel={() => setSelectedFeatureKey(null)}
+        closeIcon={null}
+        footer={[
+          <Button
+            key='close'
+            type='primary'
+            onClick={() => setSelectedFeatureKey(null)}
+          >
+            Fermer
+          </Button>,
+        ]}
+        title={
+          selectedFeature && (
+            <div className='flex items-center gap-2 mb-2'>
+              <span className={'text-2xl'}>{selectedFeature.icon}</span>
+              <span>{selectedFeature.title}</span>
+            </div>
+          )
+        }
+      >
+        {selectedFeature && (
+          <p className='text-base text-text-muted mb-6'>
+            {selectedFeature.description}
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

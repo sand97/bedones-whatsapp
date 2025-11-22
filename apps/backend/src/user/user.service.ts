@@ -6,8 +6,8 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 
-import { UserSyncService } from '../common/services/user-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserSyncService } from '../whatsapp-agent/user-sync.service';
 
 import { ImportWhatsAppDataResponseDto } from './dto/import-whatsapp-data-response.dto';
 import { UpdateUserDto } from './dto/update-user.dto';

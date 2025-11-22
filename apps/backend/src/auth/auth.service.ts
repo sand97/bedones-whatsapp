@@ -1,8 +1,8 @@
 import { CryptoService } from '@app/common/crypto.service';
-import { UserSyncService } from '@app/common/services/user-sync.service';
 import { ConnectorClientService } from '@app/connector-client';
 import { UserStatus, ConnectionStatus } from '@app/generated/client';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { UserSyncService } from '@app/whatsapp-agent/user-sync.service';
 import { WhatsAppAgentService } from '@app/whatsapp-agent/whatsapp-agent.service';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import {
@@ -34,17 +34,64 @@ export class AuthService {
 
   /**
    * Request a pairing code for WhatsApp authentication
+   * Handles both scenarios: new pairing and existing connection (OTP)
    */
   async requestPairingCode(phoneNumber: string): Promise<{
-    code: string;
+    code?: string;
     pairingToken: string;
     message: string;
+    scenario: 'pairing' | 'otp';
   }> {
     try {
       // Check if user exists
       let user = await this.prisma.user.findUnique({
         where: { phoneNumber },
       });
+
+      // Provision WhatsApp agent if user exists
+      let agent = user
+        ? await this.whatsappAgentService.getAgentForUser(user.id)
+        : null;
+
+      // Check if agent is already authenticated
+      let isAuthenticated = false;
+      if (agent) {
+        const connectorUrl =
+          await this.whatsappAgentService.getConnectorUrl(agent);
+
+        try {
+          const authResult =
+            await this.connectorClientService.isAuthenticated(connectorUrl);
+          // authResult = { success: true, result: { success: true, isAuthenticated: true } }
+          isAuthenticated = !!(
+            authResult.success &&
+            authResult.result?.success &&
+            authResult.result?.isAuthenticated
+          );
+          this.logger.log(
+            `Agent authentication status for ${phoneNumber}: ${isAuthenticated}`,
+            authResult,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to check authentication status for ${phoneNumber}`,
+            error,
+          );
+        }
+      }
+
+      // Scenario 1: User exists AND agent is authenticated -> Send OTP
+      if (user && isAuthenticated) {
+        this.logger.log(
+          `User ${phoneNumber} is already authenticated, sending OTP`,
+        );
+        return await this.sendOTPScenario(user);
+      }
+
+      // Scenario 2: New user OR not authenticated -> Pairing
+      this.logger.log(
+        `User ${phoneNumber} needs pairing (new user or not authenticated)`,
+      );
 
       // Create user if doesn't exist
       if (!user) {
@@ -55,22 +102,17 @@ export class AuthService {
           },
         });
         this.logger.log(`Created new user with phone number: ${phoneNumber}`);
-      } else if (user.status === UserStatus.ACTIVE) {
-        throw new BadRequestException(
-          'User is already paired and active. Please use login endpoint.',
-        );
       }
 
       // Provision WhatsApp agent if not exists
-      let agent = await this.whatsappAgentService.getAgentForUser(user.id);
       if (!agent) {
         agent = await this.whatsappAgentService.provisionAgent(user.id);
         this.logger.log(`Provisioned WhatsApp agent for user: ${user.id}`);
       }
 
-      // Generate unique pairing token (valid for 2 minutes)
-      const pairingToken = this.cryptoService.generateRandomToken(32); // 32 bytes = 64 hex chars
-      const pairingTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 2 minutes
+      // Generate unique pairing token (valid for 5 minutes)
+      const pairingToken = this.cryptoService.generateRandomToken(32);
+      const pairingTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
       // Update user with pairing token and change status to PAIRING
       user = await this.prisma.user.update({
@@ -82,7 +124,7 @@ export class AuthService {
         },
       });
 
-      // Get connector URL (not agent URL)
+      // Get connector URL
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
 
@@ -102,6 +144,7 @@ export class AuthService {
         code: result.code,
         pairingToken,
         message: result.message || 'Pairing code sent successfully',
+        scenario: 'pairing',
       };
     } catch (error) {
       this.logger.error(
@@ -110,6 +153,73 @@ export class AuthService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Private method to handle OTP scenario when user is already authenticated
+   */
+  private async sendOTPScenario(user: any): Promise<{
+    pairingToken: string;
+    message: string;
+    scenario: 'otp';
+  }> {
+    // Generate 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Generate pairing token for this session (valid for 5 minutes)
+    const pairingToken = this.cryptoService.generateRandomToken(32);
+    const pairingTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    // Store OTP in Redis with 5 minutes TTL
+    const cacheKey = `otp:${user.phoneNumber}`;
+    await this.cacheManager.set(cacheKey, otpCode, 300000); // 5 minutes
+
+    // Update user with pairing token
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        pairingToken,
+        pairingTokenExpiresAt,
+      },
+    });
+
+    this.logger.log(`OTP generated for ${user.phoneNumber}: ${otpCode}`);
+
+    // Get agent and connector URL
+    const agent = await this.whatsappAgentService.getAgentForUser(user.id);
+    if (!agent) {
+      throw new Error('Agent not found for user');
+    }
+
+    const connectorUrl = await this.whatsappAgentService.getConnectorUrl(agent);
+
+    // Format phone number for WhatsApp (remove + and add @c.us)
+    const formattedPhoneNumber = user.phoneNumber.replace('+', '') + '@c.us';
+
+    // Send OTP via WhatsApp (queryExists is now integrated in sendTextMessage)
+    const message = `Votre code de connexion est: ${otpCode}\n\nCe code expire dans 5 minutes.`;
+    const sendResult = await this.connectorClientService.sendTextMessage(
+      connectorUrl,
+      formattedPhoneNumber,
+      message,
+    );
+
+    // sendResult = { success: true, result: { success: true, messageId: "...", wid: "..." } }
+    if (!sendResult.success || !sendResult.result?.success) {
+      throw new Error(
+        `Failed to send OTP: ${sendResult.result?.error || sendResult.error || 'Unknown error'}`,
+      );
+    }
+
+    this.logger.log(
+      `OTP sent successfully to ${user.phoneNumber} (WID: ${sendResult.result.wid})`,
+    );
+
+    return {
+      pairingToken,
+      message: 'Un code de vérification a été envoyé à votre numéro WhatsApp',
+      scenario: 'otp',
+    };
   }
 
   /**
@@ -182,10 +292,13 @@ export class AuthService {
   }
 
   /**
-   * Confirm pairing completion by the user
-   * Called by frontend when user confirms they've completed pairing
+   * Confirm pairing OR OTP based on pairingToken
+   * Automatically detects the scenario and handles accordingly
    */
-  async confirmPairing(pairingToken: string): Promise<{
+  async confirmPairing(
+    pairingToken: string,
+    otpCode?: string,
+  ): Promise<{
     accessToken: string;
     user: any;
   }> {
@@ -210,11 +323,61 @@ export class AuthService {
           data: {
             pairingToken: null,
             pairingTokenExpiresAt: null,
-            status: UserStatus.PENDING_PAIRING,
           },
         });
-        throw new UnauthorizedException('Pairing token expired');
+        throw new UnauthorizedException('Token expired');
       }
+
+      // Check if this is an OTP scenario (OTP exists in cache)
+      const cacheKey = `otp:${user.phoneNumber}`;
+      const storedOtp = await this.cacheManager.get<string>(cacheKey);
+
+      // Scenario 1: OTP Login (user already authenticated)
+      if (storedOtp) {
+        this.logger.log(`OTP scenario detected for user: ${user.id}`);
+
+        if (!otpCode) {
+          throw new BadRequestException('OTP code is required');
+        }
+
+        // Verify OTP
+        if (storedOtp !== otpCode) {
+          throw new UnauthorizedException('Invalid OTP code');
+        }
+
+        // Delete OTP from cache
+        await this.cacheManager.del(cacheKey);
+
+        // Update user status to ACTIVE and clear pairing token
+        const updatedUser = await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            status: UserStatus.ACTIVE,
+            lastLoginAt: new Date(),
+            pairingToken: null,
+            pairingTokenExpiresAt: null,
+          },
+        });
+
+        // Generate JWT token
+        const accessToken = this.generateJwtToken(user.id);
+
+        this.logger.log(`User logged in successfully via OTP: ${user.id}`);
+
+        return {
+          accessToken,
+          user: {
+            id: updatedUser.id,
+            phoneNumber: updatedUser.phoneNumber,
+            status: updatedUser.status,
+            whatsappProfile: updatedUser.whatsappProfile,
+            lastLoginAt: updatedUser.lastLoginAt,
+          },
+        };
+      }
+
+      // Scenario 2: Pairing (new device)
+      this.logger.log(`Pairing scenario detected for user: ${user.id}`);
 
       // Check if user is actually paired (connector should have called webhook)
       if (user.status !== UserStatus.PAIRED) {
@@ -251,68 +414,13 @@ export class AuthService {
         },
       };
     } catch (error) {
-      this.logger.error(`Error confirming pairing with token`, error);
+      this.logger.error(`Error confirming pairing/OTP with token`, error);
       throw error;
     }
   }
 
   /**
-   * Send OTP to user's own WhatsApp number for login
-   */
-  async sendOTPToSelf(phoneNumber: string): Promise<{ message: string }> {
-    try {
-      // Find user by phone number
-      const user = await this.prisma.user.findUnique({
-        where: { phoneNumber },
-      });
-
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-
-      // Check if user is paired or active
-      if (
-        user.status !== UserStatus.PAIRED &&
-        user.status !== UserStatus.ACTIVE
-      ) {
-        throw new BadRequestException(
-          'User must complete pairing before logging in',
-        );
-      }
-
-      // Generate 6-digit OTP
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-      // Store OTP in Redis with 5 minutes TTL
-      const cacheKey = `otp:${phoneNumber}`;
-      await this.cacheManager.set(cacheKey, otpCode, 300000); // 5 minutes in milliseconds
-
-      this.logger.log(`OTP generated for ${phoneNumber}: ${otpCode}`);
-
-      // Get agent URL
-      const agentUrl = await this.whatsappAgentService.getAgentUrl(user.id);
-
-      // Send OTP via WhatsApp
-      const message = `Votre code de connexion est: ${otpCode}\n\nCe code expire dans 5 minutes.`;
-      await this.connectorClientService.sendMessage(
-        agentUrl,
-        user.id,
-        phoneNumber,
-        message,
-      );
-
-      this.logger.log(`OTP sent successfully to ${phoneNumber}`);
-
-      return {
-        message: 'OTP envoyé avec succès',
-      };
-    } catch (error) {
-      this.logger.error(`Error sending OTP to ${phoneNumber}`, error);
-      throw error;
-    }
-  }
-
-  /**
+   * @deprecated Use confirmPairing with otpCode parameter instead
    * Verify OTP and complete login
    */
   async verifyOTP(

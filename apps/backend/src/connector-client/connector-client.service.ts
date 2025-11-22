@@ -1,3 +1,4 @@
+import { PageScriptService } from '@app/page-scripts';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
@@ -7,7 +8,10 @@ export class ConnectorClientService {
   private readonly logger = new Logger(ConnectorClientService.name);
   private axiosInstances: Map<string, AxiosInstance> = new Map();
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly pageScriptService: PageScriptService,
+  ) {}
 
   private getAxiosInstance(connectorUrl: string): AxiosInstance {
     if (!this.axiosInstances.has(connectorUrl)) {
@@ -28,14 +32,12 @@ export class ConnectorClientService {
   /**
    * Execute a JavaScript script in the WhatsApp Web page context
    * Used by page scripts to interact with WhatsApp Web (WPP.js)
+   * @param connectorUrl The URL of the WhatsApp connector
    * @param script The JavaScript code to execute
    */
-  async executeScript(script: string): Promise<any> {
-    const connectorUrl = this.configService.get<string>(
-      'WHATSAPP_CONNECTOR_BASE_URL',
-    );
+  async executeScript(connectorUrl: string, script: string): Promise<any> {
     if (!connectorUrl) {
-      throw new Error('WHATSAPP_CONNECTOR_BASE_URL is not configured');
+      throw new Error('connectorUrl is required');
     }
 
     this.logger.debug(
@@ -72,36 +74,70 @@ export class ConnectorClientService {
   }
 
   /**
-   * Send a message via WhatsApp
-   * @param agentUrl The URL of the agent (not used with wa-js, kept for compatibility)
-   * @param sessionName The session name (user ID)
-   * @param to The recipient phone number
+   * Check if WhatsApp is authenticated
+   * @param connectorUrl The URL of the WhatsApp connector
+   */
+  async isAuthenticated(connectorUrl: string): Promise<{
+    success: boolean;
+    result?: {
+      success: boolean;
+      isAuthenticated: boolean;
+      error?: string;
+    };
+    error?: string;
+  }> {
+    this.logger.debug(
+      `[CONNECTOR] Checking authentication status on: ${connectorUrl}`,
+    );
+
+    const script = this.pageScriptService.getIsAuthenticatedScript();
+    const result = await this.executeScript(connectorUrl, script);
+
+    return result;
+  }
+
+  /**
+   * Send a text message via WhatsApp
+   * Intègre automatiquement la vérification du contact (queryExists) et l'envoi du message
+   * @param connectorUrl The URL of the WhatsApp connector
+   * @param phoneNumber Phone number in format: [number]@c.us (e.g., "33612345678@c.us")
    * @param message The message text
    */
-  async sendMessage(
-    agentUrl: string,
-    sessionName: string,
-    to: string,
+  async sendTextMessage(
+    connectorUrl: string,
+    phoneNumber: string,
     message: string,
-  ): Promise<any> {
-    const connectorUrl = this.configService.get<string>(
-      'WHATSAPP_CONNECTOR_BASE_URL',
-    );
-    if (!connectorUrl) {
-      throw new Error('WHATSAPP_CONNECTOR_BASE_URL is not configured');
-    }
-
+  ): Promise<{
+    success: boolean;
+    result?: {
+      success: boolean;
+      messageId?: string;
+      timestamp?: number;
+      ack?: number;
+      wid?: string;
+      contact?: any;
+      error?: string;
+      phoneNumber?: string;
+    };
+    error?: string;
+  }> {
     this.logger.debug(
-      `[CONNECTOR] Sending message to ${to} via session: ${sessionName}`,
+      `[CONNECTOR] Sending text message to ${phoneNumber} via: ${connectorUrl}`,
     );
 
-    const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/send-message', {
-      sessionName,
-      to,
-      message,
+    // Échapper le message pour éviter les problèmes d'injection
+    const escapedMessage = message
+      .replace(/\\/g, '\\\\')
+      .replace(/`/g, '\\`')
+      .replace(/\$/g, '\\$');
+
+    const script = this.pageScriptService.getSendTextMessageScript({
+      PHONE_NUMBER: phoneNumber,
+      MESSAGE: escapedMessage,
     });
 
-    return response.data;
+    const result = await this.executeScript(connectorUrl, script);
+
+    return result;
   }
 }

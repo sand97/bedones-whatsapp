@@ -3,9 +3,10 @@ import { PageScriptService } from '@app/page-scripts';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { PrismaService } from '../../prisma/prisma.service';
+import { TokenService } from '../common/services/token.service';
+import { PrismaService } from '../prisma/prisma.service';
 
-import { TokenService } from './token.service';
+import { WhatsAppAgentService } from './whatsapp-agent.service';
 
 /**
  * Service responsible for synchronizing user data after WhatsApp connection
@@ -21,6 +22,7 @@ export class UserSyncService {
     private readonly configService: ConfigService,
     private readonly tokenService: TokenService,
     private readonly prisma: PrismaService,
+    private readonly whatsappAgentService: WhatsAppAgentService,
   ) {}
 
   /**
@@ -63,6 +65,27 @@ export class UserSyncService {
     this.logger.log(`🚀 [START] Executing client info script for: ${clientId}`);
 
     try {
+      // Get user and agent to retrieve connectorUrl
+      const cleanedClientId = '+'
+        .concat(clientId.replace(/@[a-z.]+$/i, ''))
+        .replace('++', '+');
+
+      const user = await this.prisma.user.findUnique({
+        where: { phoneNumber: cleanedClientId },
+      });
+
+      if (!user) {
+        throw new Error(`User not found for phone number: ${cleanedClientId}`);
+      }
+
+      const agent = await this.whatsappAgentService.getAgentForUser(user.id);
+      if (!agent) {
+        throw new Error(`Agent not found for user: ${user.id}`);
+      }
+
+      const connectorUrl =
+        await this.whatsappAgentService.getConnectorUrl(agent);
+
       // Generate a JWT token signed with the clientId
       this.logger.debug(`[CLIENT-INFO] Generating upload token...`);
       const uploadToken =
@@ -81,7 +104,10 @@ export class UserSyncService {
 
       // Send the script to connector for execution
       this.logger.debug(`[CLIENT-INFO] Sending script to connector...`);
-      const result = await this.connectorClientService.executeScript(script);
+      const result = await this.connectorClientService.executeScript(
+        connectorUrl,
+        script,
+      );
 
       if (result.success) {
         this.logger.log(
@@ -133,6 +159,10 @@ export class UserSyncService {
         select: { id: true },
       });
 
+      if (!user) {
+        throw new Error(`User not found for phone number: ${cleanedClientId}`);
+      }
+
       let initialOriginalsUrls: Array<{
         id: string;
         original_url: string;
@@ -140,40 +170,45 @@ export class UserSyncService {
         url: string;
       }> = [];
 
-      if (user) {
-        const existingImages = await this.prisma.productImage.findMany({
-          where: {
-            product: {
-              user_id: user.id,
-            },
+      const existingImages = await this.prisma.productImage.findMany({
+        where: {
+          product: {
+            user_id: user.id,
           },
-          select: {
-            id: true,
-            original_url: true,
-            normalized_url: true,
-            url: true,
-          },
-        });
+        },
+        select: {
+          id: true,
+          original_url: true,
+          normalized_url: true,
+          url: true,
+        },
+      });
 
-        // Filtrer pour ne garder que les images avec normalized_url (ou original_url pour rétrocompatibilité)
-        initialOriginalsUrls = existingImages
-          .filter((img) => img.normalized_url || img.original_url)
-          .map((img) => ({
-            id: img.id,
-            original_url: img.original_url || '',
-            // Si normalized_url n'existe pas, on le génère à partir de original_url
-            normalized_url:
-              img.normalized_url ||
-              (img.original_url ? img.original_url.split('?')[0] : ''),
-            url: img.url,
-          }));
+      // Filtrer pour ne garder que les images avec normalized_url (ou original_url pour rétrocompatibilité)
+      initialOriginalsUrls = existingImages
+        .filter((img) => img.normalized_url || img.original_url)
+        .map((img) => ({
+          id: img.id,
+          original_url: img.original_url || '',
+          // Si normalized_url n'existe pas, on le génère à partir de original_url
+          normalized_url:
+            img.normalized_url ||
+            (img.original_url ? img.original_url.split('?')[0] : ''),
+          url: img.url,
+        }));
 
-        this.logger.debug(
-          `[CATALOG] Found ${initialOriginalsUrls.length} existing images`,
-        );
-      } else {
-        this.logger.debug(`[CATALOG] User not found, assuming first sync`);
+      this.logger.debug(
+        `[CATALOG] Found ${initialOriginalsUrls.length} existing images`,
+      );
+
+      // Get agent to retrieve connectorUrl
+      const agent = await this.whatsappAgentService.getAgentForUser(user.id);
+      if (!agent) {
+        throw new Error(`Agent not found for user: ${user.id}`);
       }
+
+      const connectorUrl =
+        await this.whatsappAgentService.getConnectorUrl(agent);
 
       // Generate the script with variables
       this.logger.debug(`[CATALOG] Generating page script...`);
@@ -188,7 +223,10 @@ export class UserSyncService {
 
       // Send the script to connector for execution
       this.logger.debug(`[CATALOG] Sending script to connector...`);
-      const result = await this.connectorClientService.executeScript(script);
+      const result = await this.connectorClientService.executeScript(
+        connectorUrl,
+        script,
+      );
 
       if (result.success) {
         this.logger.log(
