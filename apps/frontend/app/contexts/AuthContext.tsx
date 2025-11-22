@@ -72,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Verify token with backend
     try {
-      const response = await apiClient.get('/user/me')
+      const response = await apiClient.get('/auth/me')
       if (response.data) {
         setUser(response.data)
         localStorage.setItem('user', JSON.stringify(response.data))
