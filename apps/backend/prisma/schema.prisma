@@ -50,17 +50,6 @@ enum ConnectionStatus {
   PAIRING_REQUIRED // Code de pairing requis
 }
 
-enum MessageType {
-  TEXT
-  IMAGE
-  AUDIO
-  VIDEO
-  DOCUMENT
-  LOCATION
-  CONTACT
-  STICKER
-}
-
 enum OrderStatus {
   NEGOTIATION // En cours de négociation
   CONFIRMED // Commande confirmée
@@ -84,13 +73,6 @@ enum CreditType {
 enum PaymentMethodType {
   CASH
   MOBILE_MONEY
-}
-
-enum GroupType {
-  IMPROVEMENT // Groupe d'amélioration (échange avec IA)
-  ORDERS // Groupe de commandes
-  SUPPORT // Groupe de support/réclamations
-  CUSTOM // Groupe personnalisé
 }
 
 enum SyncStatus {
@@ -132,15 +114,11 @@ model User {
   onboardingThread  OnboardingThread?
   collections       Collection[]
   products          Product[]
-  tags              Tag[]
-  groups            Group[]
-  conversations     Conversation[]
   deliveryLocations DeliveryLocation[]
   paymentMethods    PaymentMethod[]
   orders            Order[]
   creditHistory     Credit[]
   subscription      Subscription?
-  messages          Message[]
 
   @@index([phoneNumber])
   @@index([status])
@@ -393,130 +371,6 @@ model ProductMetadata {
   @@index([product_id])
 }
 
-model Tag {
-  id     String  @id @unique @default(cuid())
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name     String
-  color    String  @default("#3B82F6") // Couleur hex
-  isSystem Boolean @default(false) // Tag système (non modifiable)
-
-  // Relations
-  conversations ConversationTag[]
-
-  // Dates
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, name])
-  @@index([userId])
-  @@index([isSystem])
-}
-
-model Group {
-  id     String    @id @unique @default(cuid())
-  userId String?
-  user   User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name   String
-  type   GroupType @default(CUSTOM)
-
-  isSystem Boolean @default(false) // Groupe système (non modifiable)
-
-  // Relations
-  conversations Conversation[]
-
-  // Dates
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, name])
-  @@index([userId])
-  @@index([isSystem])
-}
-
-model Conversation {
-  id     String @id @unique @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Informations WhatsApp
-  whatsappChatId String // ID du chat WhatsApp
-  contactName    String?
-  contactNumber  String
-
-  // Dernier message
-  lastMessage   String?
-  lastMessageAt DateTime?
-
-  // Flags
-  requiresManualResponse Boolean @default(false)
-
-  // Relations
-  groupId  String?
-  group    Group?            @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  tags     ConversationTag[]
-  messages Message[]
-  orders   Order[]
-
-  // Dates
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, whatsappChatId])
-  @@index([userId])
-  @@index([groupId])
-}
-
-// Table de liaison pour la relation many-to-many entre Conversation et Tag
-model ConversationTag {
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  tagId String
-  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@id([conversationId, tagId])
-  @@index([conversationId])
-  @@index([tagId])
-}
-
-model Message {
-  id             String       @id @unique @default(cuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Informations WhatsApp
-  whatsappMessageId String? // ID du message WhatsApp
-  from              String
-  to                String
-  body              String?
-  mediaUrl          String?
-  type              MessageType @default(TEXT)
-
-  // Flags
-  isFromCustomer  Boolean @default(true)
-  isGeneratedByAI Boolean @default(false)
-  tokensUsed      Int     @default(0) // Nombre de tokens utilisés pour cette réponse
-
-  // Statuts WhatsApp
-  sentAt      DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime?
-
-  // Dates
-  createdAt DateTime @default(now())
-
-  @@index([conversationId])
-  @@index([userId])
-  @@index([whatsappMessageId])
-}
-
 model DeliveryLocation {
   id     String @id @unique @default(cuid())
   userId String
@@ -563,11 +417,12 @@ model PaymentMethod {
 }
 
 model Order {
-  id             String       @id @unique @default(cuid())
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id     String @id @unique @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Référence à la conversation WhatsApp (live data, pas de FK)
+  whatsappChatId String // ID du chat WhatsApp d'où provient la commande
 
   // Informations client
   customerName  String
@@ -599,7 +454,7 @@ model Order {
   reviewRequestedAt DateTime? // Date de demande d'avis
 
   @@index([userId])
-  @@index([conversationId])
+  @@index([whatsappChatId])
   @@index([status])
 }
 

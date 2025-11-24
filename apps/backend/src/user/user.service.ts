@@ -114,14 +114,13 @@ export class UserService {
 
   /**
    * Get user statistics
+   * Note: Messages and conversations are live WhatsApp data, not stored in DB
    */
   async getStats(userId: string): Promise<{
-    messagesCount: number;
     ordersCount: number;
     creditsUsed: number;
     creditsRemaining: number;
     productsCount: number;
-    conversationsCount: number;
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -134,14 +133,6 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    // Get messages count
-    const messagesCount = await this.prisma.message.count({
-      where: {
-        userId,
-        isGeneratedByAI: true,
-      },
-    });
-
     // Get orders count
     const ordersCount = await this.prisma.order.count({
       where: { userId },
@@ -150,11 +141,6 @@ export class UserService {
     // Get products count
     const productsCount = await this.prisma.product.count({
       where: { user_id: userId },
-    });
-
-    // Get conversations count
-    const conversationsCount = await this.prisma.conversation.count({
-      where: { userId },
     });
 
     // Calculate credits used
@@ -171,12 +157,10 @@ export class UserService {
     );
 
     return {
-      messagesCount,
       ordersCount,
       creditsUsed,
       creditsRemaining: user.credits,
       productsCount,
-      conversationsCount,
     };
   }
 }

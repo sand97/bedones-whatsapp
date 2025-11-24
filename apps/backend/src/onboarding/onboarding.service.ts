@@ -1,41 +1,35 @@
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import {
-  HumanMessage,
-  ToolMessage,
-  BaseMessage,
-} from '@langchain/core/messages';
-import type { RunnableWithFallbacks } from '@langchain/core/runnables';
+import { PrismaService } from '@app/prisma/prisma.service';
+import { PromptsService } from '@app/prompts/prompts.service';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatXAI } from '@langchain/xai';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-
-import { PrismaService } from '../prisma/prisma.service';
-import { PromptsService } from '../prompts/prompts.service';
+import {
+  createAgent,
+  createMiddleware,
+  modelCallLimitMiddleware,
+  modelFallbackMiddleware,
+} from 'langchain';
 
 import { OnboardingGateway } from './onboarding.gateway';
 import { DbToolsService, WaJsToolsService } from './tools';
-
-/**
- * Type for AI model responses with tool calls
- */
-interface AIResponseWithToolCalls extends BaseMessage {
-  tool_calls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-  }>;
-}
+import {
+  AgentContext,
+  UserContext,
+  contextSchema,
+} from './types/context.types';
 
 /**
  * Service handling onboarding logic with AI conversation
- * Uses Grok (primary) with Gemini fallback via LangChain's withFallbacks
+ * Uses Grok (primary) with Gemini fallback via LangChain createAgent with middleware
+ * Agent is created once and reuses tools, with userId passed via runtime context
  */
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
-  private primaryModel: ChatOpenAI | null = null;
-  private fallbackModel: ChatGoogleGenerativeAI | null = null;
+  private readonly primaryModel: ChatXAI | null = null;
+  private readonly fallbackModel: ChatGoogleGenerativeAI | null = null;
+  private readonly agent: ReturnType<typeof createAgent> | null = null;
   private activeControllers: Map<string, AbortController> = new Map();
 
   constructor(
@@ -46,25 +40,22 @@ export class OnboardingService {
     private readonly dbToolsService: DbToolsService,
     private readonly waJsToolsService: WaJsToolsService,
   ) {
-    // Initialize models with fallback chain
-    const grokApiKey = this.configService.get<string>('ai.grok.apiKey');
-    const grokApiBase = this.configService.get<string>('ai.grok.apiBase');
-    const grokModelName = this.configService.get<string>('ai.grok.model');
+    // Initialize models
+    const xaiApiKey = this.configService.get<string>('ai.xai.apiKey');
+    const xaiModelName =
+      this.configService.get<string>('ai.xai.model') || 'grok-3';
     const geminiApiKey = this.configService.get<string>('ai.gemini.apiKey');
     const geminiModelName = this.configService.get<string>('ai.gemini.model');
 
-    // Create primary model (Grok)
-    if (grokApiKey) {
-      this.primaryModel = new ChatOpenAI({
-        apiKey: grokApiKey,
-        configuration: {
-          baseURL: grokApiBase,
-        },
-        modelName: grokModelName,
+    // Create primary model (Grok via xAI)
+    if (xaiApiKey) {
+      this.primaryModel = new ChatXAI({
+        apiKey: xaiApiKey,
+        model: xaiModelName,
         temperature: 0.7,
         maxRetries: 0, // Fail fast to trigger fallback
       });
-      this.logger.log(`✅ Grok model initialized: ${grokModelName}`);
+      this.logger.log(`✅ Grok model initialized: ${xaiModelName}`);
     }
 
     // Create fallback model (Gemini)
@@ -82,7 +73,70 @@ export class OnboardingService {
 
     if (!this.primaryModel && !this.fallbackModel) {
       this.logger.error('❌ No AI model configured');
+      return; // Don't create agent if no models configured
     }
+
+    // Create the agent once with all tools
+    // Tools will access userId via runtime context
+    const tools = [
+      ...this.dbToolsService.createTools(),
+      ...this.waJsToolsService.createTools(),
+    ];
+
+    const primaryModel = this.primaryModel || this.fallbackModel;
+    if (!primaryModel) {
+      this.logger.error('❌ No primary model available for agent creation');
+      return;
+    }
+
+    // Build middleware array
+    // contextSchema imported from types/context.types.ts
+    const middleware = [
+      // Model call limit middleware (max 6 iterations)
+      modelCallLimitMiddleware({
+        runLimit: 6,
+        exitBehavior: 'end',
+      }),
+      // Tool execution tracking middleware
+      createMiddleware({
+        name: 'ToolTracking',
+        contextSchema,
+        wrapToolCall: async (request, handler) => {
+          const userId = request.runtime.context?.userId;
+          if (userId) {
+            this.onboardingGateway.emitToolExecuting(
+              userId,
+              request.toolCall.name,
+            );
+          }
+          this.logger.log(`🛠️ Executing tool: ${request.toolCall.name}`);
+          try {
+            return await handler(request);
+          } catch (error) {
+            this.logger.error(
+              `Tool execution failed: ${request.toolCall.name}`,
+              error,
+            );
+            throw error;
+          }
+        },
+      }),
+    ];
+
+    // Add fallback middleware if we have both models
+    if (this.primaryModel && this.fallbackModel) {
+      middleware.unshift(modelFallbackMiddleware(this.fallbackModel));
+    }
+
+    // Create the agent once
+    this.agent = createAgent({
+      model: primaryModel,
+      tools,
+      middleware,
+      contextSchema,
+    }) as ReturnType<typeof createAgent>;
+
+    this.logger.log('✅ Agent created successfully with all tools');
   }
 
   /**
@@ -331,8 +385,11 @@ export class OnboardingService {
 
   /**
    * Handle user message and generate AI response
+   * @param user - Full user object from req.user (avoids DB query in tools)
+   * @param content - User message content
    */
-  async handleUserMessage(userId: string, content: string): Promise<void> {
+  async handleUserMessage(user: UserContext, content: string): Promise<void> {
+    const userId = user.id;
     this.logger.log(`💬 Handling user message for: ${userId}`);
 
     // Create and store AbortController for this request
@@ -396,6 +453,7 @@ export class OnboardingService {
           userId,
           prompt,
           controller.signal,
+          user, // Pass full user object to avoid DB queries in tools
         );
       } catch (error) {
         // Check if this was an abort
@@ -534,132 +592,69 @@ export class OnboardingService {
   }
 
   /**
-   * Execute the AI model with tools loop
-   * Uses LangChain's tool calling capability to allow the AI to use tools autonomously
+   * Execute the AI agent with userId passed via runtime context
+   * Agent is already created in constructor
+   * @param userId - User ID for context
+   * @param prompt - Prompt to send to the agent
+   * @param signal - Optional abort signal
+   * @param user - Optional full user object (avoids DB query in tools)
    */
   private async executeToolsLoop(
     userId: string,
     prompt: string,
     signal?: AbortSignal,
+    user?: UserContext,
   ): Promise<string> {
-    // Get tools for this user
-    const tools = [
-      ...this.dbToolsService.createTools(userId),
-      ...this.waJsToolsService.createTools(userId),
-    ];
-
-    // Bind tools to model
-    // Note: Using 'any' here due to LangChain type incompatibilities between versions
-    // The runtime behavior is correct and type-safe at execution
-    let modelWithTools: unknown;
-
-    if (this.primaryModel && this.fallbackModel) {
-      // Bind tools to both models and create fallback chain
-      const primaryWithTools = this.primaryModel.bindTools(tools);
-      const fallbackWithTools = this.fallbackModel.bindTools(tools);
-
-      modelWithTools = primaryWithTools.withFallbacks({
-        fallbacks: [fallbackWithTools as any],
-      });
-    } else if (this.primaryModel) {
-      modelWithTools = this.primaryModel.bindTools(tools);
-    } else if (this.fallbackModel) {
-      modelWithTools = this.fallbackModel.bindTools(tools);
-    } else {
-      throw new Error('No AI model configured');
+    if (!this.agent) {
+      throw new Error('Agent not initialized');
     }
-
-    const messages: BaseMessage[] = [new HumanMessage(prompt)];
 
     // Emit thinking status
     this.onboardingGateway.emitThinking(userId, true);
 
     // Check if already aborted
     if (signal?.aborted) {
-      throw new Error('AbortError');
+      const error = new Error('AbortError');
+      error.name = 'AbortError';
+      throw error;
     }
 
-    // Invoke model with messages
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let response = (await (modelWithTools as any).invoke(
-      messages,
-      signal ? { signal } : undefined,
-    )) as AIResponseWithToolCalls;
+    // Invoke the agent with userId (and optionally user) in runtime context
+    const result = await this.agent.invoke(
+      {
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        context: {
+          userId,
+          ...(user && { user }), // Pass full user object if available
+        },
+        ...(signal && { signal }),
+      },
+    );
 
-    // Loop while there are tool calls
-    // Limit to 6 iterations to prevent infinite loops
-    let iterations = 0;
-    const MAX_ITERATIONS = 6;
+    // Extract the final message content
+    const messages = result.messages;
+    const lastMessage = messages[messages.length - 1];
 
-    while (response.tool_calls?.length && iterations < MAX_ITERATIONS) {
-      // Check if aborted at the start of each iteration
-      if (signal?.aborted) {
-        const error = new Error('AbortError');
-        error.name = 'AbortError';
-        throw error;
-      }
-
-      this.logger.log(
-        `🛠️ Executing ${response.tool_calls.length} tool calls (Iteration ${iterations + 1})`,
-      );
-
-      // Emit tool executing for each tool
-      for (const toolCall of response.tool_calls) {
-        this.onboardingGateway.emitToolExecuting(userId, toolCall.name);
-      }
-
-      // Add the assistant's message with tool calls to history
-      messages.push(response);
-
-      // Execute all tool calls in parallel
-      const toolResults = await Promise.all(
-        response.tool_calls.map(async (toolCall) => {
-          const tool = tools.find((t) => t.name === toolCall.name);
-
-          if (!tool) {
-            this.logger.error(`Tool not found: ${toolCall.name}`);
-            return new ToolMessage({
-              tool_call_id: toolCall.id,
-              content: `Error: Tool ${toolCall.name} not found`,
-            });
-          }
-
-          try {
-            this.logger.debug(
-              `Calling tool ${toolCall.name} with args:`,
-              toolCall.args,
-            );
-            const result = await tool.invoke(toolCall.args);
-            return new ToolMessage({
-              tool_call_id: toolCall.id,
-              content: result,
-            });
-          } catch (error) {
-            this.logger.error(`Tool execution failed: ${toolCall.name}`, error);
-            return new ToolMessage({
-              tool_call_id: toolCall.id,
-              content: `Error executing tool: ${error instanceof Error ? error.message : String(error)}`,
-            });
-          }
-        }),
-      );
-
-      // Add tool results to history
-      messages.push(...toolResults);
-
-      // Call model again with updated history
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      response = (await (modelWithTools as any).invoke(
-        messages,
-        signal ? { signal } : undefined,
-      )) as AIResponseWithToolCalls;
-      iterations++;
+    if (typeof lastMessage.content === 'string') {
+      return lastMessage.content;
     }
 
-    if (iterations >= MAX_ITERATIONS) {
-      this.logger.warn(`⚠️ Max tool iterations (${MAX_ITERATIONS}) reached`);
+    // Handle content blocks (for multimodal responses)
+    if (Array.isArray(lastMessage.content)) {
+      return lastMessage.content
+        .filter(
+          (block): block is { type: 'text'; text: string } =>
+            typeof block === 'object' &&
+            block !== null &&
+            'type' in block &&
+            block.type === 'text',
+        )
+        .map((block) => block.text)
+        .join('');
     }
 
-    return response.content as string;
+    return String(lastMessage.content);
   }
 }

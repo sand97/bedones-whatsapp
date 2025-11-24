@@ -14,7 +14,6 @@ import { CatalogModule } from './catalog/catalog.module';
 import { CommonModule } from './common/common.module';
 import aiConfig from './config/ai.config';
 import { ConnectorClientModule } from './connector-client/connector-client.module';
-import { ConversationsModule } from './conversations/conversations.module';
 import { MinioModule } from './minio/minio.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrdersModule } from './orders/orders.module';
@@ -62,7 +61,6 @@ import { WhatsAppAgentModule } from './whatsapp-agent/whatsapp-agent.module';
     UserModule,
     ProductsModule,
     SettingsModule,
-    ConversationsModule,
     OrdersModule,
     WebhooksModule,
   ],

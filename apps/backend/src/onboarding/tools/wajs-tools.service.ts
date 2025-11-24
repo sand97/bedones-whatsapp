@@ -5,14 +5,23 @@ import {
 } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { WhatsAppAgentService } from '@app/whatsapp-agent/whatsapp-agent.service';
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable, Logger } from '@nestjs/common';
+import { tool } from 'langchain';
 import { z } from 'zod';
+
+import { AgentContext } from '../types/context.types';
 
 /**
  * Type for script execution results
  */
 type ScriptExecutionResult = unknown;
+
+/**
+ * Type pour le config des tools avec contexte typé
+ */
+type ToolConfig = {
+  context?: AgentContext;
+};
 
 /**
  * Service providing wa-js tools for the AI agent
@@ -59,50 +68,54 @@ export class WaJsToolsService {
   }
 
   /**
-   * Create all wa-js tools for a user
+   * Create all wa-js tools (userId accessed via runtime context)
    */
-  createTools(userId: string): DynamicStructuredTool[] {
+  createTools(): ReturnType<typeof tool>[] {
     return [
       // Labels tools
-      ...this.createLabelTools(userId),
+      ...this.createLabelTools(),
       // Chat tools
-      ...this.createChatTools(userId),
+      ...this.createChatTools(),
       // Contact tools
-      ...this.createContactTools(userId),
+      ...this.createContactTools(),
       // Group tools
-      ...this.createGroupTools(userId),
+      ...this.createGroupTools(),
       // Profile tools
-      ...this.createProfileTools(userId),
+      ...this.createProfileTools(),
       // Catalog tools
-      ...this.createCatalogTools(userId),
+      ...this.createCatalogTools(),
     ];
   }
 
   // ========== LABELS TOOLS ==========
 
-  private createLabelTools(userId: string): DynamicStructuredTool[] {
+  private createLabelTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getAllLabels',
-        description: 'Récupérer tous les labels WhatsApp',
-        schema: z.object({}),
-        func: async () => {
+      tool(
+        async (_, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'labels/getAllLabels',
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getAllLabels',
+          description: 'Récupérer tous les labels WhatsApp',
+          schema: z.object({}),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'addNewLabel',
-        description: 'Créer un nouveau label WhatsApp',
-        schema: z.object({
-          name: z.string().describe('Nom du label'),
-          color: z.string().optional().describe('Couleur hex (ex: #4CAF50)'),
-        }),
-        func: async ({ name, color }) => {
+      tool(
+        async ({ name, color }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'labels/addNewLabel',
@@ -113,17 +126,22 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'addNewLabel',
+          description: 'Créer un nouveau label WhatsApp',
+          schema: z.object({
+            name: z.string().describe('Nom du label'),
+            color: z.string().optional().describe('Couleur hex (ex: #4CAF50)'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'editLabel',
-        description: 'Modifier un label existant',
-        schema: z.object({
-          labelId: z.string().describe('ID du label'),
-          name: z.string().describe('Nouveau nom'),
-          color: z.string().optional().describe('Nouvelle couleur hex'),
-        }),
-        func: async ({ labelId, name, color }) => {
+      tool(
+        async ({ labelId, name, color }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(userId, 'labels/editLabel', {
             LABEL_ID: labelId,
             LABEL_NAME: name,
@@ -131,15 +149,23 @@ export class WaJsToolsService {
           });
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'editLabel',
+          description: 'Modifier un label existant',
+          schema: z.object({
+            labelId: z.string().describe('ID du label'),
+            name: z.string().describe('Nouveau nom'),
+            color: z.string().optional().describe('Nouvelle couleur hex'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'deleteLabel',
-        description: 'Supprimer un label',
-        schema: z.object({
-          labelId: z.string().describe('ID du label à supprimer'),
-        }),
-        func: async ({ labelId }) => {
+      tool(
+        async ({ labelId }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'labels/deleteLabel',
@@ -149,17 +175,21 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'deleteLabel',
+          description: 'Supprimer un label',
+          schema: z.object({
+            labelId: z.string().describe('ID du label à supprimer'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'addOrRemoveLabels',
-        description: "Ajouter ou retirer des labels d'une conversation",
-        schema: z.object({
-          chatId: z.string().describe('ID de la conversation'),
-          labelIds: z.array(z.string()).describe('IDs des labels'),
-          action: z.enum(['add', 'remove']).describe('Action à effectuer'),
-        }),
-        func: async ({ chatId, labelIds, action }) => {
+      tool(
+        async ({ chatId, labelIds, action }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'labels/addOrRemoveLabels',
@@ -171,57 +201,77 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'addOrRemoveLabels',
+          description: "Ajouter ou retirer des labels d'une conversation",
+          schema: z.object({
+            chatId: z.string().describe('ID de la conversation'),
+            labelIds: z.array(z.string()).describe('IDs des labels'),
+            action: z.enum(['add', 'remove']).describe('Action à effectuer'),
+          }),
+        },
+      ),
     ];
   }
 
   // ========== CHAT TOOLS ==========
 
-  private createChatTools(userId: string): DynamicStructuredTool[] {
+  private createChatTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getMessages',
-        description: "Lire les messages d'une conversation",
-        schema: z.object({
-          chatId: z.string().describe('ID de la conversation'),
-          limit: z.number().optional().describe('Nombre de messages'),
-        }),
-        func: async ({ chatId, limit }) => {
+      tool(
+        async ({ chatId, limit }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(userId, 'chat/getMessages', {
             CHAT_ID: chatId,
             LIMIT: String(limit || 20),
           });
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getMessages',
+          description: "Lire les messages d'une conversation",
+          schema: z.object({
+            chatId: z.string().describe('ID de la conversation'),
+            limit: z.number().optional().describe('Nombre de messages'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'markIsRead',
-        description: 'Marquer une conversation comme lue',
-        schema: z.object({
-          chatId: z.string().describe('ID de la conversation'),
-        }),
-        func: async ({ chatId }) => {
+      tool(
+        async ({ chatId }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(userId, 'chat/markIsRead', {
             CHAT_ID: chatId,
           });
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'markIsRead',
+          description: 'Marquer une conversation comme lue',
+          schema: z.object({
+            chatId: z.string().describe('ID de la conversation'),
+          }),
+        },
+      ),
     ];
   }
 
   // ========== CONTACT TOOLS ==========
 
-  private createContactTools(userId: string): DynamicStructuredTool[] {
+  private createContactTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getContact',
-        description: "Obtenir les informations d'un contact",
-        schema: z.object({
-          contactId: z.string().describe('ID du contact'),
-        }),
-        func: async ({ contactId }) => {
+      tool(
+        async ({ contactId }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'contact/getContact',
@@ -231,28 +281,21 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getContact',
+          description: "Obtenir les informations d'un contact",
+          schema: z.object({
+            contactId: z.string().describe('ID du contact'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'getContactList',
-        description:
-          'Obtenir la liste des contacts (max 10). Filtres disponibles: onlyMyContacts, withLabels, name (recherche par nom)',
-        schema: z.object({
-          onlyMyContacts: z
-            .boolean()
-            .optional()
-            .describe('Uniquement mes contacts (défaut: true)'),
-          withLabels: z
-            .array(z.string())
-            .optional()
-            .describe('Filtrer par labels (noms ou IDs)'),
-          name: z.string().optional().describe('Rechercher un contact par nom'),
-          limit: z
-            .number()
-            .optional()
-            .describe('Nombre max de résultats (max 10, défaut: 10)'),
-        }),
-        func: async ({ onlyMyContacts, withLabels, name, limit }) => {
+      tool(
+        async ({ onlyMyContacts, withLabels, name, limit }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'contact/getContactList',
@@ -266,15 +309,37 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getContactList',
+          description:
+            'Obtenir la liste des contacts (max 10). Filtres disponibles: onlyMyContacts, withLabels, name (recherche par nom)',
+          schema: z.object({
+            onlyMyContacts: z
+              .boolean()
+              .optional()
+              .describe('Uniquement mes contacts (défaut: true)'),
+            withLabels: z
+              .array(z.string())
+              .optional()
+              .describe('Filtrer par labels (noms ou IDs)'),
+            name: z
+              .string()
+              .optional()
+              .describe('Rechercher un contact par nom'),
+            limit: z
+              .number()
+              .optional()
+              .describe('Nombre max de résultats (max 10, défaut: 10)'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'queryContactExists',
-        description: 'Vérifier si un numéro existe sur WhatsApp',
-        schema: z.object({
-          phoneNumber: z.string().describe('Numéro de téléphone'),
-        }),
-        func: async ({ phoneNumber }) => {
+      tool(
+        async ({ phoneNumber }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'contact/queryContactExists',
@@ -282,68 +347,92 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'queryContactExists',
+          description: 'Vérifier si un numéro existe sur WhatsApp',
+          schema: z.object({
+            phoneNumber: z.string().describe('Numéro de téléphone'),
+          }),
+        },
+      ),
     ];
   }
 
   // ========== GROUP TOOLS ==========
 
-  private createGroupTools(userId: string): DynamicStructuredTool[] {
+  private createGroupTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getAllGroups',
-        description: 'Récupérer tous les groupes WhatsApp',
-        schema: z.object({}),
-        func: async () => {
+      tool(
+        async (_, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(userId, 'group/getAllGroups');
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getAllGroups',
+          description: 'Récupérer tous les groupes WhatsApp',
+          schema: z.object({}),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'createGroup',
-        description: 'Créer un nouveau groupe WhatsApp',
-        schema: z.object({
-          name: z.string().describe('Nom du groupe'),
-          participants: z
-            .array(z.string())
-            .describe('Numéros des participants'),
-        }),
-        func: async ({ name, participants }) => {
+      tool(
+        async ({ name, participants }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(userId, 'group/createGroup', {
             GROUP_NAME: name,
             PARTICIPANTS: JSON.stringify(participants),
           });
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'createGroup',
+          description: 'Créer un nouveau groupe WhatsApp',
+          schema: z.object({
+            name: z.string().describe('Nom du groupe'),
+            participants: z
+              .array(z.string())
+              .describe('Numéros des participants'),
+          }),
+        },
+      ),
     ];
   }
 
   // ========== PROFILE TOOLS ==========
 
-  private createProfileTools(userId: string): DynamicStructuredTool[] {
+  private createProfileTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getMyProfileName',
-        description: 'Obtenir le nom du profil WhatsApp',
-        schema: z.object({}),
-        func: async () => {
+      tool(
+        async (_, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'profile/getMyProfileName',
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getMyProfileName',
+          description: 'Obtenir le nom du profil WhatsApp',
+          schema: z.object({}),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'setMyProfileName',
-        description: 'Modifier le nom du profil WhatsApp',
-        schema: z.object({
-          name: z.string().describe('Nouveau nom'),
-        }),
-        func: async ({ name }) => {
+      tool(
+        async ({ name }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'profile/setMyProfileName',
@@ -351,34 +440,46 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'setMyProfileName',
+          description: 'Modifier le nom du profil WhatsApp',
+          schema: z.object({
+            name: z.string().describe('Nouveau nom'),
+          }),
+        },
+      ),
     ];
   }
 
   // ========== CATALOG TOOLS ==========
 
-  private createCatalogTools(userId: string): DynamicStructuredTool[] {
+  private createCatalogTools(): ReturnType<typeof tool>[] {
     return [
-      new DynamicStructuredTool({
-        name: 'getCollections',
-        description: 'Récupérer toutes les collections du catalogue WhatsApp',
-        schema: z.object({}),
-        func: async () => {
+      tool(
+        async (_, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'catalog/getCollections',
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getCollections',
+          description: 'Récupérer toutes les collections du catalogue WhatsApp',
+          schema: z.object({}),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'getProductsFromCollection',
-        description: "Récupérer les produits d'une collection spécifique",
-        schema: z.object({
-          collectionId: z.string().describe('ID de la collection'),
-        }),
-        func: async ({ collectionId }) => {
+      tool(
+        async ({ collectionId }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'catalog/getProductsFromCollection',
@@ -388,16 +489,21 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'getProductsFromCollection',
+          description: "Récupérer les produits d'une collection spécifique",
+          schema: z.object({
+            collectionId: z.string().describe('ID de la collection'),
+          }),
+        },
+      ),
 
-      new DynamicStructuredTool({
-        name: 'setProductVisibility',
-        description: 'Afficher ou masquer un produit',
-        schema: z.object({
-          productId: z.string().describe('ID du produit'),
-          visible: z.boolean().describe('Visible ou non'),
-        }),
-        func: async ({ productId, visible }) => {
+      tool(
+        async ({ productId, visible }, config: ToolConfig) => {
+          const userId = config?.context?.userId;
+          if (!userId) {
+            throw new Error('userId not found in runtime context');
+          }
           const result = await this.executeScript(
             userId,
             'catalog/setProductVisibility',
@@ -408,7 +514,15 @@ export class WaJsToolsService {
           );
           return JSON.stringify(result);
         },
-      }),
+        {
+          name: 'setProductVisibility',
+          description: 'Afficher ou masquer un produit',
+          schema: z.object({
+            productId: z.string().describe('ID du produit'),
+            visible: z.boolean().describe('Visible ou non'),
+          }),
+        },
+      ),
     ];
   }
 }

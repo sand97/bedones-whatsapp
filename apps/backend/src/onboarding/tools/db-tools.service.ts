@@ -1,38 +1,64 @@
 import { PrismaService } from '@app/prisma/prisma.service';
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { tool } from 'langchain';
 import { z } from 'zod';
+
+import { AgentContext } from '../types/context.types';
+
+/**
+ * Type pour le config des tools avec contexte typé
+ */
+type ToolConfig = {
+  context?: AgentContext;
+};
 
 /**
  * Service providing database tools for the AI agent
- * All tools are scoped to the user's context
+ * All tools use runtime context to access userId
  */
 @Injectable()
 export class DbToolsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Create all database tools for a user
+   * Create all database tools (userId accessed via runtime context)
+   * Only for data that belongs in our DB (user, business, products, onboarding)
+   * Tags/Groups/Conversations come from WaJs tools (live from WhatsApp)
    */
-  createTools(userId: string): DynamicStructuredTool[] {
+  createTools(): ReturnType<typeof tool>[] {
     return [
-      this.createReadUserInfoTool(userId),
-      this.createReadBusinessProfileTool(userId),
-      this.createReadProductsTool(userId),
-      this.createReadTagsTool(userId),
-      this.createReadGroupsTool(userId),
-      this.createUpdateContextTool(userId),
-      this.createUpdateNeedsTool(userId),
-      this.createGetContextScoreTool(userId),
+      this.createReadUserInfoTool(),
+      this.createReadBusinessProfileTool(),
+      this.createReadProductsTool(),
+      // Tags and Groups removed - use WaJs tools instead (getAllLabels, getAllGroups)
+      this.createUpdateContextTool(),
+      this.createUpdateNeedsTool(),
+      this.createGetContextScoreTool(),
     ];
   }
 
-  private createReadUserInfoTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'readUserInfo',
-      description: "Lire les informations de l'utilisateur connecté",
-      schema: z.object({}),
-      func: async () => {
+  private createReadUserInfoTool(): ReturnType<typeof tool> {
+    return tool(
+      async (_, config: ToolConfig) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
+
+        // Use user from context if available (avoids DB query)
+        const userFromContext = config?.context?.user;
+
+        if (userFromContext) {
+          // User already loaded from HTTP request, no need for DB query
+          return JSON.stringify({
+            id: userFromContext.id,
+            phoneNumber: userFromContext.phoneNumber,
+            status: userFromContext.status,
+            createdAt: userFromContext.createdAt,
+          });
+        }
+
+        // Fallback: Load from database (e.g., for performInitialEvaluation)
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: {
@@ -44,38 +70,41 @@ export class DbToolsService {
         });
         return JSON.stringify(user);
       },
-    });
+      {
+        name: 'readUserInfo',
+        description: "Lire les informations de l'utilisateur connecté",
+        schema: z.object({}),
+      },
+    );
   }
 
-  private createReadBusinessProfileTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'readBusinessProfile',
-      description: 'Lire le profil business WhatsApp complet',
-      schema: z.object({}),
-      func: async () => {
+  private createReadBusinessProfileTool(): ReturnType<typeof tool> {
+    return tool(
+      async (_, config: ToolConfig) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
         const businessInfo = await this.prisma.businessInfo.findUnique({
           where: { user_id: userId },
         });
         return JSON.stringify(businessInfo);
       },
-    });
+      {
+        name: 'readBusinessProfile',
+        description: 'Lire le profil business WhatsApp complet',
+        schema: z.object({}),
+      },
+    );
   }
 
-  private createReadProductsTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'readProducts',
-      description: 'Lire les produits du catalogue',
-      schema: z.object({
-        limit: z
-          .number()
-          .optional()
-          .describe('Nombre max de produits (défaut 50)'),
-        collectionId: z
-          .string()
-          .optional()
-          .describe('Filtrer par ID de collection'),
-      }),
-      func: async ({ limit, collectionId }) => {
+  private createReadProductsTool(): ReturnType<typeof tool> {
+    return tool(
+      async ({ limit, collectionId }, config) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
         const products = await this.prisma.product.findMany({
           where: {
             user_id: userId,
@@ -91,83 +120,90 @@ export class DbToolsService {
         });
         return JSON.stringify(products);
       },
-    });
-  }
-
-  private createReadTagsTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'readTags',
-      description: 'Lire les tags configurés en base de données',
-      schema: z.object({}),
-      func: async () => {
-        const tags = await this.prisma.tag.findMany({
-          where: { userId },
-        });
-        return JSON.stringify(tags);
+      {
+        name: 'readProducts',
+        description: 'Lire les produits du catalogue',
+        schema: z.object({
+          limit: z
+            .number()
+            .optional()
+            .describe('Nombre max de produits (défaut 50)'),
+          collectionId: z
+            .string()
+            .optional()
+            .describe('Filtrer par ID de collection'),
+        }),
       },
-    });
+    );
   }
 
-  private createReadGroupsTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'readGroups',
-      description: 'Lire les groupes configurés en base de données',
-      schema: z.object({}),
-      func: async () => {
-        const groups = await this.prisma.group.findMany({
-          where: { userId },
-        });
-        return JSON.stringify(groups);
-      },
-    });
-  }
+  // Tags and Groups tools removed - these should come from WaJs tools
+  // Use getAllLabels and getAllGroups which fetch live data from WhatsApp
 
-  private createUpdateContextTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'updateContext',
-      description: "Mettre à jour le contexte de l'agent (format Markdown)",
-      schema: z.object({
-        context: z.string().describe('Nouveau contexte en markdown'),
-      }),
-      func: async ({ context }) => {
+  private createUpdateContextTool(): ReturnType<typeof tool> {
+    return tool(
+      async ({ context }, config) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
         await this.prisma.onboardingThread.updateMany({
           where: { userId },
           data: { context },
         });
         return JSON.stringify({ success: true, message: 'Context updated' });
       },
-    });
+      {
+        name: 'updateContext',
+        description: "Mettre à jour le contexte de l'agent (format Markdown)",
+        schema: z.object({
+          context: z.string().describe('Nouveau contexte en markdown'),
+        }),
+      },
+    );
   }
 
-  private createUpdateNeedsTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'updateNeeds',
-      description: "Mettre à jour les besoins identifiés pour l'agent",
-      schema: z.object({
-        needs: z.array(z.string()).describe('Liste des besoins'),
-      }),
-      func: async ({ needs }) => {
+  private createUpdateNeedsTool(): ReturnType<typeof tool> {
+    return tool(
+      async ({ needs }, config) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
         await this.prisma.onboardingThread.updateMany({
           where: { userId },
           data: { needs },
         });
         return JSON.stringify({ success: true, message: 'Needs updated' });
       },
-    });
+      {
+        name: 'updateNeeds',
+        description: "Mettre à jour les besoins identifiés pour l'agent",
+        schema: z.object({
+          needs: z.array(z.string()).describe('Liste des besoins'),
+        }),
+      },
+    );
   }
 
-  private createGetContextScoreTool(userId: string): DynamicStructuredTool {
-    return new DynamicStructuredTool({
-      name: 'getContextScore',
-      description: 'Obtenir le score actuel du contexte',
-      schema: z.object({}),
-      func: async () => {
+  private createGetContextScoreTool(): ReturnType<typeof tool> {
+    return tool(
+      async (_, config: ToolConfig) => {
+        const userId = config?.context?.userId;
+        if (!userId) {
+          throw new Error('userId not found in runtime context');
+        }
         const thread = await this.prisma.onboardingThread.findFirst({
           where: { userId },
           select: { score: true },
         });
         return JSON.stringify({ score: thread?.score || 0 });
       },
-    });
+      {
+        name: 'getContextScore',
+        description: 'Obtenir le score actuel du contexte',
+        schema: z.object({}),
+      },
+    );
   }
 }

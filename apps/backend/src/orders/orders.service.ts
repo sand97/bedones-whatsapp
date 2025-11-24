@@ -30,7 +30,6 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where,
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -39,13 +38,12 @@ export class OrdersService {
   }
 
   /**
-   * Get order by ID with conversation, delivery, payment
+   * Get order by ID with delivery and payment info
    */
   async getById(orderId: string, userId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -69,8 +67,8 @@ export class OrdersService {
    */
   async create(userId: string, data: CreateOrderDto): Promise<Order> {
     // Validate required fields
-    if (!data.conversationId || data.conversationId.trim() === '') {
-      throw new BadRequestException('Conversation ID is required');
+    if (!data.whatsappChatId || data.whatsappChatId.trim() === '') {
+      throw new BadRequestException('WhatsApp Chat ID is required');
     }
 
     if (!data.customerName || data.customerName.trim() === '') {
@@ -89,20 +87,7 @@ export class OrdersService {
       throw new BadRequestException('Total amount must be greater than 0');
     }
 
-    // Verify conversation ownership
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: data.conversationId },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation not found');
-    }
-
-    if (conversation.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have permission to create an order for this conversation',
-      );
-    }
+    // No need to verify whatsappChatId - it's just a reference to live WhatsApp data
 
     // Verify delivery location if provided
     if (data.deliveryLocationId) {
@@ -141,7 +126,7 @@ export class OrdersService {
     return this.prisma.order.create({
       data: {
         userId,
-        conversationId: data.conversationId,
+        whatsappChatId: data.whatsappChatId,
         customerName: data.customerName,
         customerPhone: data.customerPhone,
         products: data.products,
@@ -151,7 +136,6 @@ export class OrdersService {
         promiseDate: data.promiseDate ? new Date(data.promiseDate) : null,
       },
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -238,7 +222,6 @@ export class OrdersService {
       where: { id: orderId },
       data: updateData,
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -272,7 +255,6 @@ export class OrdersService {
       where: { id: orderId },
       data: { status },
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -305,7 +287,6 @@ export class OrdersService {
         deliveredAt: new Date(),
       },
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },
@@ -313,28 +294,17 @@ export class OrdersService {
   }
 
   /**
-   * Get orders for a conversation
+   * Get orders for a WhatsApp chat
    */
-  async getByConversation(conversationId: string, userId: string) {
-    // Verify conversation ownership
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation not found');
-    }
-
-    if (conversation.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have permission to access this conversation',
-      );
-    }
-
+  async getByWhatsappChat(whatsappChatId: string, userId: string) {
+    // No validation needed - whatsappChatId is just a reference to live data
+    // Just filter by userId for security
     return this.prisma.order.findMany({
-      where: { conversationId },
+      where: {
+        userId,
+        whatsappChatId,
+      },
       include: {
-        conversation: true,
         deliveryLocation: true,
         paymentMethod: true,
       },

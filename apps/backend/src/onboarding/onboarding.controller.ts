@@ -51,8 +51,9 @@ export class OnboardingController {
   })
   async sendMessage(@Request() req: any, @Body() dto: SendMessageDto) {
     // Process asynchronously, response will come via WebSocket
+    // Pass full user object to avoid DB queries in tools
     this.onboardingService
-      .handleUserMessage(req.user.id, dto.content)
+      .handleUserMessage(req.user, dto.content)
       .catch((error) => {
         // Error handling is done in service with WebSocket emission
         console.error('Failed to handle user message:', error);

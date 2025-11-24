@@ -3,11 +3,11 @@ import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
 
 export class CreateOrderDto {
   @ApiProperty({
-    description: 'Conversation ID',
-    example: 'clxxx123456789',
+    description: 'WhatsApp Chat ID (from WhatsApp, not our DB)',
+    example: '237612345678@c.us',
   })
   @IsString()
-  conversationId: string;
+  whatsappChatId: string;
 
   @ApiProperty({
     description: 'Customer name',
