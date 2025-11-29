@@ -228,20 +228,40 @@ export class AgentController {
 
   @Post('log-operation')
   @ApiOperation({
-    summary: 'Log an agent operation',
-    description: 'Called by whatsapp-agent service to log conversations',
+    summary: 'Log an agent operation with full metrics',
+    description:
+      'Called by whatsapp-agent service to log conversations with tokens, tools, and duration metrics',
   })
   @ApiResponse({
     status: 201,
     description: 'Operation logged successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        operationId: { type: 'string' },
+      },
+    },
   })
   async logOperation(
     @Body() dto: LogOperationDto,
-  ): Promise<{ success: boolean }> {
-    return this.whatsappAgentService.logOperation(
-      dto.chatId,
-      dto.userMessage,
-      dto.agentResponse,
-    );
+  ): Promise<{ success: boolean; operationId?: string }> {
+    return this.whatsappAgentService.logOperation({
+      chatId: dto.chatId,
+      agentId: dto.agentId,
+      userId: dto.userId,
+      userMessage: dto.userMessage,
+      agentResponse: dto.agentResponse,
+      systemPrompt: dto.systemPrompt,
+      totalTokens: dto.totalTokens,
+      promptTokens: dto.promptTokens,
+      completionTokens: dto.completionTokens,
+      durationMs: dto.durationMs,
+      modelName: dto.modelName,
+      toolsUsed: dto.toolsUsed,
+      status: dto.status,
+      error: dto.error,
+      metadata: dto.metadata,
+    });
   }
 }

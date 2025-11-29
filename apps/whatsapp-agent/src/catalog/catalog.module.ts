@@ -1,10 +1,10 @@
 import { ConnectorModule } from '@app/connector/connector.module';
 import { PageScriptModule } from '@app/page-scripts/page-script.module';
 import { PrismaModule } from '@app/prisma/prisma.module';
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 
+import { CatalogController } from './catalog.controller';
 import { CatalogSearchService } from './catalog-search.service';
 import { CatalogSyncService } from './catalog-sync.service';
 import { EmbeddingsService } from './embeddings.service';
@@ -18,12 +18,12 @@ import { EmbeddingsService } from './embeddings.service';
 @Module({
   imports: [
     PrismaModule,
-    ConnectorModule,
+    forwardRef(() => ConnectorModule),
     ConfigModule,
-    EventEmitterModule,
     PageScriptModule,
   ],
   providers: [EmbeddingsService, CatalogSyncService, CatalogSearchService],
+  controllers: [CatalogController],
   exports: [CatalogSearchService, CatalogSyncService],
 })
 export class CatalogModule {}

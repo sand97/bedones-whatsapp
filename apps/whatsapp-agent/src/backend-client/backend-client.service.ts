@@ -10,6 +10,7 @@ import {
   CanProcessResponse,
   LogOperationRequest,
   LogOperationResponse,
+  ToolExecution,
 } from './backend-api.types';
 
 @Injectable()
@@ -135,21 +136,31 @@ export class BackendClientService {
   }
 
   /**
-   * Log an agent operation to the backend
+   * Log an agent operation to the backend with full metrics
    */
-  async logOperation(
-    chatId: string,
-    userMessage: string,
-    agentResponse: string,
-  ): Promise<LogOperationResponse> {
+  async logOperation(data: {
+    chatId: string;
+    agentId?: string;
+    userId?: string;
+    userMessage: string;
+    agentResponse: string;
+    systemPrompt: string;
+    totalTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    durationMs: number;
+    modelName?: string;
+    toolsUsed?: ToolExecution[];
+    status: 'success' | 'error' | 'rate_limited';
+    error?: string;
+    metadata?: Record<string, any>;
+  }): Promise<LogOperationResponse> {
     const url = `${this.baseUrl}/agent/log-operation`;
-    this.logger.debug(`POST ${url} for chatId: ${chatId}`);
+    this.logger.debug(`POST ${url} for chatId: ${data.chatId}`);
 
     try {
       const requestData: LogOperationRequest = {
-        chatId,
-        userMessage,
-        agentResponse,
+        ...data,
         timestamp: new Date().toISOString(),
       };
 
@@ -163,7 +174,7 @@ export class BackendClientService {
     } catch (error: any) {
       // Log operation errors are non-critical, just log them
       this.logger.warn(
-        `Failed to log operation for ${chatId}: ${error.message}`,
+        `Failed to log operation for ${data.chatId}: ${error.message}`,
       );
       return { success: false };
     }

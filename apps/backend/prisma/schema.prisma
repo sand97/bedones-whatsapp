@@ -141,8 +141,9 @@ model WhatsAppAgent {
   connectionStatus ConnectionStatus    @default(PAIRING_REQUIRED)
 
   // Synchronisation des données WhatsApp
-  syncStatus   SyncStatus @default(PENDING)
-  syncProgress Json? // { clientInfo: { status, progress, timestamp }, catalog: { status, progress, details } }
+  syncStatus          SyncStatus @default(PENDING)
+  syncProgress        Json? // { clientInfo: { status, progress, timestamp }, catalog: { status, progress, details } }
+  lastCatalogSyncedAt DateTime? // Dernière synchronisation du catalogue
 
   // Métadonnées (JSON pour flexibilité)
   metadata Json? // { containerId, vpsProvider, region, etc. }
@@ -514,4 +515,44 @@ model Group {
   @@unique([userId, whatsappGroupId]) // Un user ne peut pas avoir le même groupe deux fois
   @@index([userId])
   @@index([whatsappGroupId])
+}
+
+model AgentOperation {
+  id String @id @unique @default(cuid())
+
+  // Context
+  agentId String? // ID de l'agent WhatsApp
+  chatId  String // ID du chat WhatsApp (user ou groupe)
+  userId  String? // ID de l'utilisateur propriétaire de l'agent
+
+  // Messages
+  userMessage    String @db.Text // Message initial de l'utilisateur
+  agentResponse  String @db.Text // Réponse finale de l'agent
+  systemPrompt   String @db.Text // System prompt utilisé
+
+  // Metrics
+  totalTokens       Int? // Total tokens utilisés
+  promptTokens      Int? // Tokens du prompt
+  completionTokens  Int? // Tokens de la completion
+  durationMs        Int // Durée en millisecondes
+  modelName         String? // Nom du modèle utilisé (grok-beta, gemini, etc.)
+
+  // Tools execution
+  toolsUsed Json? // Array des tools utilisés: [{ name, args, result, durationMs }]
+
+  // Status
+  status String @default("success") // "success", "error", "rate_limited"
+  error  String? @db.Text // Message d'erreur si échec
+
+  // Metadata
+  metadata Json? // Métadonnées additionnelles
+
+  // Dates
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+  @@index([chatId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

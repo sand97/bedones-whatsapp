@@ -1,9 +1,11 @@
+import * as crypto from 'crypto';
+
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { Prisma } from '@app/generated/client';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { EmbeddingsService } from './embeddings.service';
 
@@ -21,50 +23,110 @@ interface WhatsAppProduct {
   collectionName?: string;
 }
 
+interface CatalogSignature {
+  quickHash: string; // Hash des IDs seulement
+  fullHash: string; // Hash complet avec metadata
+  productsCount: number;
+  lastSyncedAt: Date;
+}
+
 /**
  * Service for syncing WhatsApp catalog to local DB with embeddings
  * Runs in background after connector is ready
  */
 @Injectable()
-export class CatalogSyncService implements OnModuleInit {
+export class CatalogSyncService {
   private readonly logger = new Logger(CatalogSyncService.name);
   private isSyncing = false;
   private lastSyncTime: Date | null = null;
-  private syncInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly connectorClient: ConnectorClientService,
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
-    private readonly eventEmitter: EventEmitter2,
     private readonly scriptService: PageScriptService,
   ) {}
 
-  onModuleInit() {
-    // Schedule hourly sync
-    this.syncInterval = setInterval(
-      () => {
-        this.syncCatalog().catch((error) => {
-          this.logger.error(`Scheduled sync failed: ${error.message}`);
-        });
-      },
-      60 * 60 * 1000,
-    ); // 1 hour
+  /**
+   * Check if connector is authenticated
+   */
+  private async checkAuthentication(): Promise<boolean> {
+    try {
+      const script = this.scriptService.getScript('isAuthenticated', {});
+      const result = await this.connectorClient.executeScript(script);
+
+      if (result.success && result.isAuthenticated) {
+        return true;
+      }
+
+      this.logger.warn('Connector is not authenticated');
+      return false;
+    } catch (error) {
+      this.logger.error(
+        `Failed to check authentication: ${error.message}`,
+        error.stack,
+      );
+      return false;
+    }
   }
 
   /**
-   * Listen to connector ready event and trigger background sync
+   * Generate catalog signature (two-level hash for optimization)
+   * - quickHash: Hash of product IDs only (fast, detects add/remove)
+   * - fullHash: Hash of full metadata (detects price/description changes)
    */
-  @OnEvent('connector.ready')
-  async handleConnectorReady() {
-    this.logger.log(
-      'Connector is ready - starting background catalog sync with embeddings',
+  private generateCatalogSignature(
+    products: WhatsAppProduct[],
+  ): CatalogSignature {
+    // Sort products by ID for deterministic hashing
+    const sortedProducts = [...products].sort((a, b) =>
+      a.id.localeCompare(b.id),
     );
 
-    // Don't block - run in background
-    this.syncCatalog().catch((error) => {
-      this.logger.error(`Background sync failed: ${error.message}`);
-    });
+    // Quick hash: IDs only (ultra fast)
+    const sortedIds = sortedProducts.map((p) => p.id).join(',');
+    const quickHash = crypto
+      .createHash('sha256')
+      .update(sortedIds)
+      .digest('hex');
+
+    // Full hash: Complete metadata (detects all changes)
+    const catalogData = sortedProducts
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        availability: p.availability,
+        imageHashes: p.imageHashesForWhatsapp?.join(',') || '',
+        collectionId: p.collectionId,
+      }))
+      .map((p) => JSON.stringify(p))
+      .join('|');
+
+    const fullHash = crypto
+      .createHash('sha256')
+      .update(catalogData)
+      .digest('hex');
+
+    return {
+      quickHash,
+      fullHash,
+      productsCount: products.length,
+      lastSyncedAt: new Date(),
+    };
+  }
+
+  /**
+   * Scheduled catalog sync every 4 hours using cron
+   * Runs at minute 0 of every 4th hour (00:00, 04:00, 08:00, etc.)
+   */
+  @Cron(CronExpression.EVERY_4_HOURS)
+  async handleScheduledSync() {
+    try {
+      await this.syncCatalog();
+    } catch (error) {
+      this.logger.error(`Scheduled sync failed: ${error.message}`);
+    }
   }
 
   /**
@@ -105,6 +167,7 @@ export class CatalogSyncService implements OnModuleInit {
 
   /**
    * Main sync function - runs in background
+   * Optimized with authentication check and signature comparison
    */
   private async syncCatalog(): Promise<void> {
     if (this.isSyncing) {
@@ -118,7 +181,14 @@ export class CatalogSyncService implements OnModuleInit {
     try {
       this.logger.log('🔄 Starting catalog sync...');
 
-      // Step 1: Fetch all products from WhatsApp via connector
+      // Step 1: Verify authentication
+      const isAuthenticated = await this.checkAuthentication();
+      if (!isAuthenticated) {
+        this.logger.warn('⚠️ Connector not authenticated, skipping sync');
+        return;
+      }
+
+      // Step 2: Fetch all products from WhatsApp via connector
       const products = await this.fetchProductsFromWhatsApp();
       this.logger.log(`📦 Fetched ${products.length} products from WhatsApp`);
 
@@ -127,13 +197,64 @@ export class CatalogSyncService implements OnModuleInit {
         return;
       }
 
-      // Step 2: Generate embeddings (only if API key is configured)
+      // Step 3: Generate signature
+      const newSignature = this.generateCatalogSignature(products);
+      this.logger.debug(
+        `Generated signature: quickHash=${newSignature.quickHash.substring(0, 8)}..., fullHash=${newSignature.fullHash.substring(0, 8)}...`,
+      );
+
+      // Step 4: Compare with previous signature
+      const lastSync = await this.prisma.catalogSyncMetadata.findUnique({
+        where: { id: 'singleton' },
+      });
+
+      if (lastSync) {
+        // Quick check first (fast)
+        if (lastSync.quickHash === newSignature.quickHash) {
+          // IDs haven't changed, check full hash
+          if (lastSync.fullHash === newSignature.fullHash) {
+            this.logger.log(
+              '✅ Catalog unchanged (identical signature), skipping sync',
+            );
+            return;
+          } else {
+            this.logger.log(
+              '🔄 Catalog metadata changed (prices, descriptions, images)',
+            );
+          }
+        } else {
+          this.logger.log(
+            '🔄 Catalog structure changed (products added/removed)',
+          );
+        }
+      } else {
+        this.logger.log('🆕 First sync - no previous signature found');
+      }
+
+      // Step 5: Sync needed - Generate embeddings and store
       if (this.embeddings.isAvailable()) {
         await this.generateAndStoreEmbeddings(products);
       } else {
-        // Store without embeddings (fallback to text search)
         await this.storeProductsWithoutEmbeddings(products);
       }
+
+      // Step 6: Save new signature
+      await this.prisma.catalogSyncMetadata.upsert({
+        where: { id: 'singleton' },
+        create: {
+          id: 'singleton',
+          quickHash: newSignature.quickHash,
+          fullHash: newSignature.fullHash,
+          productsCount: newSignature.productsCount,
+          lastSyncedAt: newSignature.lastSyncedAt,
+        },
+        update: {
+          quickHash: newSignature.quickHash,
+          fullHash: newSignature.fullHash,
+          productsCount: newSignature.productsCount,
+          lastSyncedAt: newSignature.lastSyncedAt,
+        },
+      });
 
       this.lastSyncTime = new Date();
       const duration = Date.now() - startTime;
@@ -141,13 +262,6 @@ export class CatalogSyncService implements OnModuleInit {
       this.logger.log(
         `✅ Catalog sync completed in ${(duration / 1000).toFixed(1)}s`,
       );
-
-      // Emit event for monitoring/dashboard
-      this.eventEmitter.emit('catalog.synced', {
-        productsCount: products.length,
-        duration,
-        hasEmbeddings: this.embeddings.isAvailable(),
-      });
     } catch (error) {
       this.logger.error(
         `❌ Catalog sync failed: ${error.message}`,

@@ -40,8 +40,7 @@ export class EmbeddingsService {
    */
   async embedText(text: string): Promise<number[]> {
     try {
-      const embedding = await this.embeddings.embedQuery(text);
-      return embedding;
+      return await this.embeddings.embedQuery(text);
     } catch (error) {
       this.logger.error(`Failed to generate embedding: ${error.message}`);
       throw error;

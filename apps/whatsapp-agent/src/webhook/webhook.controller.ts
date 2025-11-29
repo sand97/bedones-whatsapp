@@ -1,4 +1,5 @@
 import { BackendClientService } from '@app/backend-client/backend-client.service';
+import { CatalogSyncService } from '@app/catalog/catalog-sync.service';
 import { WhatsAppAgentService } from '@app/langchain/whatsapp-agent.service';
 import { Body, Controller, Post, Logger, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -12,6 +13,7 @@ export class WebhookController {
   constructor(
     private readonly agentService: WhatsAppAgentService,
     private readonly backendClient: BackendClientService,
+    private readonly catalogSyncService: CatalogSyncService,
   ) {}
 
   @Post('message')
@@ -70,6 +72,19 @@ export class WebhookController {
           this.logger.log(
             `Backend notified of successful pairing for ${phoneNumber}`,
           );
+
+          // Trigger catalog sync after successful pairing (direct injection)
+          await this.catalogSyncService
+            .triggerManualSync()
+            .then(() => {
+              this.logger.log('Catalog sync triggered after pairing success');
+            })
+            .catch((error) => {
+              this.logger.error(
+                'Failed to trigger catalog sync after pairing:',
+                error.message,
+              );
+            });
         } catch (backendError: any) {
           this.logger.error(
             'Failed to notify backend of pairing:',

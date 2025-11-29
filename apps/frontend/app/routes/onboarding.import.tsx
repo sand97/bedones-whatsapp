@@ -106,7 +106,7 @@ export default function OnboardingImport() {
             {/* Steps List */}
             <div className='bg-gray-50 rounded-lg p-6'>
               <h3 className='text-sm font-semibold text-gray-900 mb-4'>
-                Étapes d'importation:
+                Étapes d&#39;importation:
               </h3>
               <ul className='space-y-2'>
                 {importSteps.map((step, index) => (

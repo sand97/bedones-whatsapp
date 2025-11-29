@@ -1,7 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import axios, { AxiosInstance } from 'axios';
+import { CatalogSyncService } from '../catalog/catalog-sync.service';
 
 @Injectable()
 export class ConnectorClientService implements OnModuleInit {
@@ -13,7 +13,8 @@ export class ConnectorClientService implements OnModuleInit {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(forwardRef(() => CatalogSyncService))
+    private readonly catalogSyncService: CatalogSyncService,
   ) {
     this.connectorUrl = this.configService.get<string>(
       'CONNECTOR_URL',
@@ -59,12 +60,20 @@ export class ConnectorClientService implements OnModuleInit {
 
       if (status?.isReady === true && !this.isReady) {
         this.isReady = true;
-        this.logger.log(
-          '✅ Connector is ready - emitting connector.ready event',
-        );
-        this.eventEmitter.emit('connector.ready', {
-          sessionName: this.sessionName,
-        });
+        this.logger.log('✅ Connector is ready - triggering catalog sync');
+
+        // Trigger catalog sync directly
+        this.catalogSyncService
+          .triggerManualSync()
+          .then(() => {
+            this.logger.log('✅ Catalog sync triggered after connector ready');
+          })
+          .catch((error) => {
+            this.logger.error(
+              'Failed to trigger catalog sync on ready:',
+              error.message,
+            );
+          });
       }
     } catch (error) {
       this.logger.debug(`Connector not ready yet: ${error.message}`);

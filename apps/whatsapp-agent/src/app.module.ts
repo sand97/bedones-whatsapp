@@ -1,7 +1,7 @@
 import { HealthModule } from '@app/health/health.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { BackendClientModule } from './backend-client/backend-client.module';
 import { CatalogModule } from './catalog/catalog.module';
@@ -19,7 +19,7 @@ import { WebhookModule } from './webhook/webhook.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     PrismaModule,
     QueueModule,
     SecurityModule,

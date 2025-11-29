@@ -99,7 +99,7 @@ export class WhatsAppAgentService {
           `Agent provisioned for user ${userId} at ${ipAddress}:${port}`,
         );
       } else {
-        // TODO: Call Contabo API to provision the agent
+        // TODO: Call Herznet API to provision the agent
         this.logger.log(`Agent provisioning initiated for user ${userId}`);
       }
 
@@ -366,7 +366,10 @@ export class WhatsAppAgentService {
    * Check if the agent can process a message from a chat
    * Returns agent configuration, context, and authorized groups
    */
-  async canProcess(chatId: string, message: string): Promise<{
+  async canProcess(
+    chatId: string,
+    message: string,
+  ): Promise<{
     allowed: boolean;
     reason?: string;
     agentContext?: string;
@@ -503,29 +506,104 @@ export class WhatsAppAgentService {
   }
 
   /**
-   * Log an agent operation (for analytics and monitoring)
+   * Log an agent operation with full metrics (tokens, tools, duration)
    */
-  async logOperation(
-    chatId: string,
-    userMessage: string,
-    agentResponse: string,
-  ): Promise<{ success: boolean }> {
-    // TODO: Implement logging to database or external service
-    // For now, just log to console
-    this.logger.log(
-      `Agent operation logged for chat ${chatId}: "${userMessage.substring(0, 50)}..." -> "${agentResponse.substring(0, 50)}..."`,
-    );
+  async logOperation(data: {
+    // Context
+    chatId: string;
+    agentId?: string;
+    userId?: string;
 
-    // You could store this in a separate table for analytics
-    // await this.prisma.agentLog.create({
-    //   data: {
-    //     chatId,
-    //     userMessage,
-    //     agentResponse,
-    //     timestamp: new Date(),
-    //   },
-    // });
+    // Messages
+    userMessage: string;
+    agentResponse: string;
+    systemPrompt: string;
 
-    return { success: true };
+    // Metrics
+    totalTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    durationMs: number;
+    modelName?: string;
+
+    // Tools
+    toolsUsed?: Array<{
+      name: string;
+      args: any;
+      result?: any;
+      error?: string;
+      durationMs?: number;
+    }>;
+
+    // Status
+    status: 'success' | 'error' | 'rate_limited';
+    error?: string;
+
+    // Metadata
+    metadata?: any;
+  }): Promise<{ success: boolean; operationId?: string }> {
+    try {
+      // Extract userId from chatId if not provided
+      let userId = data.userId;
+      if (!userId) {
+        const phoneMatch = data.chatId.match(/^(\d+)@c\.us$/);
+        if (phoneMatch) {
+          const phoneNumber = phoneMatch[1];
+          const user = await this.prisma.user.findUnique({
+            where: { phoneNumber },
+            select: { id: true },
+          });
+          userId = user?.id;
+        }
+      }
+
+      // Create operation log in database
+      const operation = await this.prisma.agentOperation.create({
+        data: {
+          // Context
+          agentId: data.agentId,
+          chatId: data.chatId,
+          userId,
+
+          // Messages
+          userMessage: data.userMessage,
+          agentResponse: data.agentResponse,
+          systemPrompt: data.systemPrompt,
+
+          // Metrics
+          totalTokens: data.totalTokens,
+          promptTokens: data.promptTokens,
+          completionTokens: data.completionTokens,
+          durationMs: data.durationMs,
+          modelName: data.modelName,
+
+          // Tools (stored as JSON)
+          toolsUsed: data.toolsUsed || [],
+
+          // Status
+          status: data.status,
+          error: data.error,
+
+          // Metadata
+          metadata: data.metadata || {},
+        },
+      });
+
+      this.logger.log(
+        `✅ Operation logged: ${operation.id} | Chat: ${data.chatId} | Duration: ${data.durationMs}ms | Tokens: ${data.totalTokens || 'N/A'} | Tools: ${data.toolsUsed?.length || 0}`,
+      );
+
+      return {
+        success: true,
+        operationId: operation.id,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to log operation for ${data.chatId}: ${error.message}`,
+        error.stack,
+      );
+
+      return { success: false };
+    }
   }
 }

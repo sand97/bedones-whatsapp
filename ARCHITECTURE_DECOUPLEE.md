@@ -24,6 +24,31 @@ Séparer les responsabilités entre le **WhatsApp Connector** (client pur) et le
 - Exposer un endpoint pour **exécuter du code** dans la page WhatsApp Web
 - ❌ **NE FAIT PLUS** : Logique métier, téléchargement/upload d'images, traitement de données
 
+### **WhatsApp Agent** (whatsapp-agent)
+
+**Rôle** : Agent IA décentralisé pour le business quotidien
+
+#### Responsabilités :
+
+- **IA & LangChain** : Traitement intelligent des messages avec tools
+- **Intentions** : Gestion des rappels intelligents (relances, suivis)
+- **Mémoires** : Stockage local des préférences et contexte client
+- **Catalogue local** : Cache avec embeddings pour recherche sémantique
+- **Queue** : Traitement asynchrone des intentions programmées
+
+#### Base de données locale :
+
+- `ConversationMemory` : Mémoires persistantes des clients
+- `Intention` : Intentions programmées avec conditions
+- `ScheduledMessage` : Messages programmés (queue)
+- `CatalogProduct` : Catalogue local avec embeddings
+
+#### Communication avec Backend :
+
+- ✅ `POST /agent/can-process` : Vérifier si traiter un message
+- ✅ `POST /agent/log-operation` : Logger les métriques (tokens, tools, durée)
+- ❌ **NE FAIT PAS** : Onboarding, facturation, configuration globale
+
 #### Endpoints exposés :
 
 ```
@@ -44,14 +69,23 @@ WEBHOOK_URLS=http://backend/...   # URLs à notifier
 
 ### **Backend** (apps/backend)
 
-**Rôle** : Orchestrateur et gestionnaire de logique métier
+**Rôle** : Orchestrateur centralisé - Onboarding, Facturation, Configuration
 
 #### Responsabilités :
 
-- Recevoir les webhooks du connector
-- Générer et envoyer des scripts à exécuter au connector
-- Recevoir et traiter les données (images, catalogues, etc.)
-- Stocker dans Minio et base de données
+- **Onboarding** : Gestion du processus d'inscription des clients
+- **Facturation** : Tracking des crédits, abonnements, paiements
+- **Configuration** : WhatsAppAgent, groupes autorisés, contexte métier
+- **Logs & Analytics** : Stockage des AgentOperation (tokens, durée, tools)
+- **Orchestration Connector** : Génération et envoi de scripts au connector
+- **Stockage centralisé** : Minio pour images/avatars, BD pour config globale
+
+#### Ce que le Backend NE FAIT PAS :
+
+- ❌ Traitement IA des messages (délégué à WhatsApp-Agent)
+- ❌ Gestion des intentions et rappels (délégué à WhatsApp-Agent)
+- ❌ Cache catalogue avec embeddings (délégué à WhatsApp-Agent)
+- ❌ Mémoires conversationnelles (délégué à WhatsApp-Agent)
 
 #### Workflow - Récupération du catalogue
 
@@ -232,6 +266,41 @@ for (const product of products) {
 
 ---
 
+## 🏗️ Séparation des Responsabilités
+
+### Backend (Centralisé) vs WhatsApp-Agent (Décentralisé)
+
+| Fonctionnalité | Backend (Centralisé) | WhatsApp-Agent (Décentralisé) |
+|---|---|---|
+| **Onboarding** | ✅ Gestion complète | ❌ |
+| **Facturation** | ✅ Crédits, abonnements | ❌ |
+| **Configuration Agent** | ✅ Contexte métier, groupes | ❌ |
+| **Logs & Analytics** | ✅ Stockage AgentOperation | ✅ Envoi des métriques |
+| **IA & Messages** | ❌ | ✅ LangChain + Tools |
+| **Intentions** | ❌ | ✅ Gestion locale |
+| **Mémoires** | ❌ | ✅ Stockage local |
+| **Catalogue** | ✅ Source de vérité | ✅ Cache + embeddings |
+
+### Pourquoi cette architecture ?
+
+1. **Scalabilité** :
+   - 1 VPS = 1 client → Charge distribuée
+   - Backend léger → Gère des milliers de clients
+
+2. **Performance** :
+   - Agent local → Réponses instantanées
+   - Pas de latence réseau pour chaque message
+
+3. **Isolation** :
+   - Crash d'un agent → N'affecte pas les autres
+   - Données business isolées par VPS
+
+4. **Coûts** :
+   - Agent utilise ses propres ressources (API keys)
+   - Backend ne paie que pour la config/logs
+
+---
+
 ## 📊 Monitoring
 
 ### Logs à surveiller
@@ -250,6 +319,143 @@ for (const product of products) {
 ✅ Image uploadée: 25095720553426064-0 (main)
 📦 Catalogue reçu: 2 collections, 15 produits, 45 images
 ```
+
+---
+
+## 🧠 Système d'Intentions (WhatsApp Agent)
+
+### Principe
+
+L'agent peut créer des **intentions** programmées qui vérifient une condition avant d'agir.
+
+**Exemple** : "Relancer le client dans 2 jours **SI** il n'a pas répondu"
+
+### Flow complet
+
+```mermaid
+sequenceDiagram
+    participant User as Client
+    participant Agent as WhatsApp Agent
+    participant Queue as Bull Queue
+    participant DB as Prisma (Local)
+
+    User->>Agent: "Intéressé par iPhone 15"
+    Agent->>Agent: Analyse: client intéressé mais pas commandé
+    Agent->>DB: Create Intention (type: FOLLOW_UP)
+    Agent->>Queue: Schedule job dans 2 jours
+    Agent->>User: "OK ! Je vous recontacte dans 2 jours"
+
+    Note over Queue: ⏰ 2 jours plus tard
+
+    Queue->>Agent: Trigger intention
+    Agent->>Agent: Invoke tools (get_older_messages)
+    Agent->>Agent: Check condition: "Client a répondu?"
+
+    alt Condition VRAIE (client a répondu)
+        Agent->>User: "Merci pour votre réponse !"
+        Agent->>DB: Mark COMPLETED
+    else Condition FAUSSE (pas de réponse)
+        Agent->>User: "Toujours intéressé par iPhone 15?"
+        Agent->>DB: Mark COMPLETED
+    end
+```
+
+### Modèle de données
+
+```typescript
+model Intention {
+  id        String          @id
+  chatId    String
+  type      IntentionType   // FOLLOW_UP, ORDER_REMINDER, etc.
+  status    IntentionStatus // PENDING → TRIGGERED → COMPLETED
+
+  // Logique
+  reason              String @db.Text  // Pourquoi cette intention
+  conditionToCheck    String @db.Text  // Condition à vérifier
+  actionIfTrue        String? @db.Text // Action si vraie
+  actionIfFalse       String @db.Text  // Action si fausse
+
+  // Timing
+  scheduledFor        DateTime
+
+  // Metadata
+  metadata            Json?
+  createdByRole       String?  // "agent" ou "admin"
+}
+```
+
+### Tools disponibles
+
+#### 1. `schedule_intention`
+
+```typescript
+{
+  chatId: "237xxx@c.us",
+  scheduledFor: "2025-11-29T10:00:00Z",
+  type: "FOLLOW_UP",
+  reason: "Client intéressé par iPhone 15 Pro",
+  conditionToCheck: "Client a répondu au message",
+  actionIfTrue: "Remercier le client",
+  actionIfFalse: "Envoyer rappel avec lien produit",
+  metadata: JSON.stringify({ productId: "iphone-15-pro" })
+}
+```
+
+#### 2. `cancel_intention`
+
+```typescript
+{
+  intentionId: "clx123456"
+}
+```
+
+**Permissions** :
+- ✅ Agent peut annuler ses propres intentions
+- ✅ Admin (dans groupe) peut annuler toutes les intentions
+- ❌ Agent ne peut PAS annuler les intentions créées par admin
+
+#### 3. `list_intentions`
+
+```typescript
+{
+  chatId: "237xxx@c.us"
+}
+```
+
+Retourne toutes les intentions PENDING pour ce client.
+
+### Exemple concret
+
+**Conversation :**
+
+```
+Client: "Je suis intéressé par votre iPhone 15 Pro"
+Agent: "Excellent choix ! Il coûte 1200€. Voulez-vous le commander?"
+Client: "Je vais réfléchir"
+Agent: [Crée intention FOLLOW_UP dans 2 jours]
+       "Pas de problème ! Je vous recontacte dans 2 jours 😊"
+```
+
+**2 jours plus tard :**
+
+```
+Processor: [Déclenche l'intention]
+           [Appelle l'agent avec contexte spécial]
+
+Agent: [Use get_older_messages pour voir l'historique]
+       [Vérifie: Client a répondu entre temps?]
+
+       → SI OUI: "Merci pour votre réponse !"
+       → SI NON: "Bonjour ! Toujours intéressé par l'iPhone 15 Pro? 📱"
+```
+
+### Avantages
+
+✅ **Intelligent** - Vérifie le contexte avant d'agir
+✅ **Flexible** - Agent utilise tous ses tools pour vérifier
+✅ **Annulable** - Client ou admin peut annuler
+✅ **Tracé** - Tous les statuts sont loggés
+✅ **Décentralisé** - Chaque agent gère ses propres intentions
 
 ---
 

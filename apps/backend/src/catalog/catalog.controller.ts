@@ -1,10 +1,12 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   BadRequestException,
   Logger,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,6 +17,7 @@ import {
 
 import { ClientId } from '../common/decorators/client-id.decorator';
 import { CatalogUploadGuard } from '../common/guards/catalog-upload.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 import { CatalogService } from './catalog.service';
 import type { CatalogData, ClientInfoData } from './types/catalog.types';
@@ -265,5 +268,80 @@ export class CatalogController {
       success: true,
       deletedCount: result.deletedCount,
     };
+  }
+
+  @Post('force-sync')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Force catalog synchronization',
+    description:
+      'Triggers full catalog sync: backend (via connector) + whatsapp-agent (local with embeddings). Updates lastCatalogSyncedAt.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Sync completed successfully',
+    schema: {
+      example: {
+        success: true,
+        backendSync: { success: true },
+        agentSync: { success: true, message: 'Sync completed' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - JWT required',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Sync failed',
+    schema: {
+      example: {
+        success: false,
+        error: 'WhatsApp agent not configured',
+      },
+    },
+  })
+  async forceCatalogSync(@Req() req: any) {
+    const userId = req.user.sub; // Extract from JWT
+    this.logger.log(`Force sync requested by user: ${userId}`);
+
+    const result = await this.catalogService.forceCatalogSync(userId);
+
+    if (!result.success) {
+      throw new BadRequestException(result.error || 'Sync failed');
+    }
+
+    return result;
+  }
+
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Récupère le catalogue de l\'utilisateur',
+    description:
+      'Retourne toutes les collections avec leurs produits et les produits non catégorisés.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Catalogue récupéré avec succès',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - JWT required',
+  })
+  async getCatalog(@Req() req: any) {
+    const userId = req.user.sub;
+    this.logger.debug(`Fetching catalog for user: ${userId}`);
+
+    const result = await this.catalogService.getCatalog(userId);
+
+    if (!result.success) {
+      throw new BadRequestException(result.error || 'Failed to fetch catalog');
+    }
+
+    return result;
   }
 }

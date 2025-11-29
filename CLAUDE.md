@@ -1,1 +1,2 @@
 - Pour les import quand le ts config le permet utilise @app plutot que des chemin relatif
+- Ne pas utiliser les @nestjs/event-emitter de facon debile on utilise NestJS en organisant bien le code on devrait pouvoir tout organiser avec des injection de dependances

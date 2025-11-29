@@ -23,6 +23,8 @@ import {
 } from 'langchain';
 import { z } from 'zod';
 
+import { AgentOperationCallbackHandler } from './agent-operation-callback.handler';
+
 /**
  * Context schema for runtime agent execution
  */
@@ -260,15 +262,23 @@ export class WhatsAppAgentService implements OnModuleInit {
         canProcess.authorizedGroups,
       );
 
-      const response = await this.invokeAgent(chatId, sanitized, systemPrompt, {
-        agentId: canProcess.agentId,
-        managementGroupId: canProcess.managementGroupId,
-        agentContext: canProcess.agentContext,
-      });
+      const { response, metrics } = await this.invokeAgent(
+        chatId,
+        sanitized,
+        systemPrompt,
+        {
+          agentId: canProcess.agentId,
+          managementGroupId: canProcess.managementGroupId,
+          agentContext: canProcess.agentContext,
+        },
+      );
 
-      this.logger.log(`✅ Message processed for ${chatId}`);
+      this.logger.log(
+        `✅ Message processed for ${chatId} in ${metrics.durationMs}ms | Tokens: ${metrics.totalTokens || 'N/A'} | Tools: ${metrics.toolsUsed.length}`,
+      );
 
-      await this.logToBackend(chatId, userMessage, response);
+      // Log to backend with full metrics
+      await this.logToBackend(metrics);
     } catch (error: any) {
       this.logger.error('Error processing incoming message:', error.message);
       throw error;
@@ -324,7 +334,7 @@ export class WhatsAppAgentService implements OnModuleInit {
   }
 
   /**
-   * Invoke the agent with runtime context
+   * Invoke the agent with runtime context and metrics capture
    */
   private async invokeAgent(
     chatId: string,
@@ -335,7 +345,10 @@ export class WhatsAppAgentService implements OnModuleInit {
       managementGroupId?: string;
       agentContext?: string;
     },
-  ): Promise<string> {
+  ): Promise<{
+    response: string;
+    metrics: import('./agent-operation-callback.handler').AgentOperationMetrics;
+  }> {
     if (!this.agent) {
       throw new Error('Agent not initialized');
     }
@@ -347,6 +360,14 @@ export class WhatsAppAgentService implements OnModuleInit {
       agentContext: context.agentContext,
     };
 
+    // Create callback handler to capture metrics
+    const callbackHandler = new AgentOperationCallbackHandler(
+      chatId,
+      message,
+      systemPrompt,
+      context.agentId,
+    );
+
     try {
       const result = await this.agent.invoke(
         {
@@ -357,6 +378,7 @@ export class WhatsAppAgentService implements OnModuleInit {
         },
         {
           context: runtimeContext,
+          callbacks: [callbackHandler],
         },
       );
 
@@ -366,30 +388,62 @@ export class WhatsAppAgentService implements OnModuleInit {
           ? lastMessage.content
           : String(lastMessage.content);
 
-      return this.sanitizationService.sanitizeAgentResponse(responseContent);
+      const sanitizedResponse =
+        this.sanitizationService.sanitizeAgentResponse(responseContent);
+
+      // Update metrics with final response
+      callbackHandler.metrics.agentResponse = sanitizedResponse;
+
+      return {
+        response: sanitizedResponse,
+        metrics: callbackHandler.getMetrics(),
+      };
     } catch (error: any) {
       this.logger.error('Agent invocation failed:', error.message);
+
+      // Capture error in metrics
+      callbackHandler.metrics.status = 'error';
+      callbackHandler.metrics.error = error.message;
+
       throw error;
     }
   }
 
   /**
-   * Log conversation to backend for analytics and monitoring
+   * Log operation to backend with full metrics
    */
   private async logToBackend(
-    chatId: string,
-    userMessage: string,
-    agentResponse: string,
+    metrics: import('./agent-operation-callback.handler').AgentOperationMetrics,
   ): Promise<void> {
     try {
-      const result = await this.backendClient.logOperation(
-        chatId,
-        userMessage,
-        agentResponse,
-      );
+      const result = await this.backendClient.logOperation({
+        chatId: metrics.chatId,
+        agentId: metrics.agentId,
+        userId: metrics.userId,
+        userMessage: metrics.userMessage,
+        agentResponse: metrics.agentResponse,
+        systemPrompt: metrics.systemPrompt,
+        totalTokens: metrics.totalTokens,
+        promptTokens: metrics.promptTokens,
+        completionTokens: metrics.completionTokens,
+        durationMs: metrics.durationMs || 0,
+        modelName: metrics.modelName,
+        toolsUsed: metrics.toolsUsed.map((tool) => ({
+          name: tool.name,
+          args: tool.args,
+          result: tool.result,
+          error: tool.error,
+          durationMs: tool.durationMs,
+        })),
+        status: metrics.status,
+        error: metrics.error,
+        metadata: {},
+      });
 
       if (result.success) {
-        this.logger.debug(`Logged conversation for ${chatId} to backend`);
+        this.logger.debug(
+          `Logged operation ${result.operationId} for ${metrics.chatId} to backend`,
+        );
       }
     } catch (error: any) {
       this.logger.error('Error logging to backend:', error.message);

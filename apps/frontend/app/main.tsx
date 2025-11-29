@@ -1,12 +1,8 @@
 import '@app/app.css'
 import { AuthProvider } from '@app/contexts/AuthContext'
 import { antdProviderProps } from '@app/core/theme'
-
-// Layouts
 import AuthLayout from '@app/layout/auth-layout'
 import DashboardLayout from '@app/layout/dashboard-layout'
-
-// Pages
 import LoginPage from '@app/routes/auth.login'
 import PairingCodePage from '@app/routes/auth.pairing-code'
 import VerifyOtpPage from '@app/routes/auth.verify-otp'

@@ -3,6 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { MinioService } from '../minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserSyncService } from '../whatsapp-agent/user-sync.service';
+import { WhatsAppAgentClientService } from '../whatsapp-agent/whatsapp-agent-client.service';
+import { WhatsAppAgentService } from '../whatsapp-agent/whatsapp-agent.service';
 
 import { CatalogData, ClientInfoData } from './types/catalog.types';
 
@@ -13,6 +16,9 @@ export class CatalogService {
   constructor(
     private readonly minioService: MinioService,
     private readonly prisma: PrismaService,
+    private readonly whatsappAgentService: WhatsAppAgentService,
+    private readonly userSyncService: UserSyncService,
+    private readonly whatsappAgentClient: WhatsAppAgentClientService,
   ) {}
 
   /**
@@ -611,6 +617,123 @@ export class CatalogService {
       return {
         success: false,
         error: (error as Error)?.message,
+      };
+    }
+  }
+
+  /**
+   * Force catalog synchronization for a user
+   * Syncs both backend catalog (via connector) and whatsapp-agent local catalog
+   */
+  async forceCatalogSync(userId: string): Promise<{
+    success: boolean;
+    backendSync?: any;
+    agentSync?: any;
+    error?: string;
+  }> {
+    try {
+      this.logger.log(`🔄 Force catalog sync requested by user: ${userId}`);
+
+      // Get user with whatsapp agent
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { whatsappAgent: true },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (!user.whatsappAgent) {
+        throw new Error('WhatsApp agent not configured for this user');
+      }
+
+      const agent = user.whatsappAgent;
+
+      // 1. Sync backend catalog (reuse synchronizeUserData)
+      this.logger.log('📦 Syncing backend catalog via connector...');
+      const backendSyncResult = await this.userSyncService.synchronizeUserData(
+        user.phoneNumber,
+      );
+
+      // 2. Trigger whatsapp-agent local catalog sync
+      this.logger.log('🧠 Triggering whatsapp-agent local catalog sync...');
+      const agentUrl = `http://${agent.ipAddress}:${agent.port}`;
+      const agentSyncResult =
+        await this.whatsappAgentClient.triggerCatalogSync(agentUrl);
+
+      // 3. Update lastCatalogSyncedAt
+      await this.prisma.whatsAppAgent.update({
+        where: { id: agent.id },
+        data: { lastCatalogSyncedAt: new Date() },
+      });
+
+      this.logger.log(
+        `✅ Catalog sync completed for user ${userId} (${user.phoneNumber})`,
+      );
+
+      return {
+        success: true,
+        backendSync: backendSyncResult,
+        agentSync: agentSyncResult,
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ Catalog sync failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Récupère le catalogue complet de l'utilisateur (collections + produits)
+   */
+  async getCatalog(userId: string) {
+    try {
+      this.logger.debug(`Fetching catalog for user: ${userId}`);
+
+      // Récupérer les collections avec leurs produits et images
+      const collections = await this.prisma.collection.findMany({
+        where: { user_id: userId },
+        include: {
+          products: {
+            include: {
+              images: {
+                orderBy: { image_index: 'asc' },
+              },
+              metadata: true,
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      // Récupérer les produits sans collection
+      const uncategorizedProducts = await this.prisma.product.findMany({
+        where: {
+          user_id: userId,
+          collection_id: null,
+        },
+        include: {
+          images: {
+            orderBy: { image_index: 'asc' },
+          },
+          metadata: true,
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      return {
+        success: true,
+        collections,
+        uncategorizedProducts,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch catalog: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message,
       };
     }
   }

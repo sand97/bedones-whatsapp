@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 
 import { CommonModule } from '../common/common.module';
 import { ConnectorClientModule } from '../connector-client/connector-client.module';
@@ -7,6 +8,7 @@ import { PageScriptModule } from '../page-scripts/page-script.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 import { UserSyncService } from './user-sync.service';
+import { WhatsAppAgentClientService } from './whatsapp-agent-client.service';
 import {
   WhatsAppAgentController,
   AgentController,
@@ -17,12 +19,13 @@ import { WhatsAppAgentService } from './whatsapp-agent.service';
   imports: [
     PrismaModule,
     CommonModule,
+    HttpModule,
     ConnectorClientModule,
     PageScriptModule,
     forwardRef(() => OnboardingModule),
   ],
   controllers: [WhatsAppAgentController, AgentController],
-  providers: [WhatsAppAgentService, UserSyncService],
-  exports: [WhatsAppAgentService, UserSyncService],
+  providers: [WhatsAppAgentService, UserSyncService, WhatsAppAgentClientService],
+  exports: [WhatsAppAgentService, UserSyncService, WhatsAppAgentClientService],
 })
 export class WhatsAppAgentModule {}

@@ -23,13 +23,46 @@ export interface CanProcessResponse {
   authorizedGroups?: AuthorizedGroup[];
 }
 
+export interface ToolExecution {
+  name: string;
+  args: any;
+  result?: any;
+  error?: string;
+  durationMs?: number;
+}
+
 export interface LogOperationRequest {
+  // Context
   chatId: string;
+  agentId?: string;
+  userId?: string;
+
+  // Messages
   userMessage: string;
   agentResponse: string;
+  systemPrompt: string;
+
+  // Metrics
+  totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  durationMs: number;
+  modelName?: string;
+
+  // Tools
+  toolsUsed?: ToolExecution[];
+
+  // Status
+  status: 'success' | 'error' | 'rate_limited';
+  error?: string;
+
+  // Metadata
+  metadata?: Record<string, any>;
+
   timestamp: string;
 }
 
 export interface LogOperationResponse {
   success: boolean;
+  operationId?: string;
 }

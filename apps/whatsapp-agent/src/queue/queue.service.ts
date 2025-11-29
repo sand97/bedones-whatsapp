@@ -1,6 +1,7 @@
 import { PrismaService } from '@app/prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import type { Queue } from 'bull';
 
 @Injectable()
@@ -13,18 +14,22 @@ export class QueueService {
   ) {}
 
   /**
-   * Schedule a message for later
+   * Schedule an intention with message for later
    * @param chatId - WhatsApp chat ID
-   * @param scheduledFor - When to send the message
-   * @param context - Context for the message (reason, intent to check, action)
+   * @param scheduledFor - When to check the intention
+   * @param intention - Intention details
    */
-  async scheduleMessage(
+  async scheduleIntention(
     chatId: string,
     scheduledFor: Date,
-    context: {
+    intention: {
+      type: string;
       reason: string;
-      intentToCheck: string;
+      conditionToCheck: string;
+      actionIfTrue?: string;
       actionIfFalse: string;
+      metadata?: any;
+      createdByRole?: string;
     },
   ) {
     try {
@@ -35,96 +40,149 @@ export class QueueService {
         throw new Error('Scheduled time must be in the future');
       }
 
+      // Create intention first
+      const intentionRecord = await this.prisma.intention.create({
+        data: {
+          chatId,
+          type: intention.type as any,
+          reason: intention.reason,
+          conditionToCheck: intention.conditionToCheck,
+          actionIfTrue: intention.actionIfTrue,
+          actionIfFalse: intention.actionIfFalse,
+          scheduledFor,
+          metadata: intention.metadata || {},
+          createdByRole: intention.createdByRole || 'agent',
+          status: 'PENDING',
+        },
+      });
+
       // Add job to queue
       const job = await this.scheduledMessagesQueue.add(
         'send-reminder',
         {
           chatId,
           scheduledFor: scheduledFor.toISOString(),
-          context,
+          intentionId: intentionRecord.id,
         },
         {
           delay,
-          jobId: `reminder-${chatId}-${scheduledFor.getTime()}`,
+          jobId: `intention-${chatId}-${scheduledFor.getTime()}`,
         },
       );
 
-      // Save to database
+      // Create scheduled message linked to intention
       const scheduled = await this.prisma.scheduledMessage.create({
         data: {
           chatId,
           scheduledFor,
-          context,
+          context: {
+            reason: intention.reason,
+            type: intention.type,
+          },
           jobId: job.id.toString(),
           status: 'pending',
         },
       });
 
+      // Link intention to scheduled message
+      await this.prisma.intention.update({
+        where: { id: intentionRecord.id },
+        data: {
+          scheduledMessageId: scheduled.id,
+        },
+      });
+
       this.logger.log(
-        `✅ Scheduled message for ${chatId} at ${scheduledFor.toISOString()}`,
+        `✅ Scheduled intention ${intention.type} for ${chatId} at ${scheduledFor.toISOString()}`,
       );
 
       return {
         success: true,
+        intentionId: intentionRecord.id,
         scheduledId: scheduled.id,
         jobId: job.id.toString(),
       };
     } catch (error: any) {
-      this.logger.error('Failed to schedule message:', error.message);
+      this.logger.error('Failed to schedule intention:', error.message);
       throw error;
     }
   }
 
   /**
-   * Cancel a scheduled message
-   * @param scheduledId - ID of the scheduled message
+   * Cancel an intention
+   * @param intentionId - ID of the intention
+   * @param cancelledByRole - Role of who cancelled (for permission check)
    */
-  async cancelScheduledMessage(scheduledId: string) {
+  async cancelIntention(intentionId: string, cancelledByRole?: string) {
     try {
-      const scheduled = await this.prisma.scheduledMessage.findUnique({
-        where: { id: scheduledId },
+      const intention = await this.prisma.intention.findUnique({
+        where: { id: intentionId },
+        include: { scheduledMessage: true },
       });
 
-      if (!scheduled) {
-        throw new Error('Scheduled message not found');
+      if (!intention) {
+        throw new Error('Intention not found');
       }
 
-      if (scheduled.status !== 'pending') {
-        throw new Error('Message already sent or cancelled');
+      if (intention.status !== 'PENDING') {
+        throw new Error(
+          `Cannot cancel intention with status: ${intention.status}`,
+        );
       }
 
-      // Remove job from queue
-      if (scheduled.jobId) {
-        const job = await this.scheduledMessagesQueue.getJob(scheduled.jobId);
+      // Permission check: admin can cancel any, agent can only cancel own
+      if (cancelledByRole === 'agent' && intention.createdByRole === 'admin') {
+        throw new Error('Agent cannot cancel admin-created intentions');
+      }
+
+      // Remove job from queue if exists
+      if (intention.scheduledMessage?.jobId) {
+        const job = await this.scheduledMessagesQueue.getJob(
+          intention.scheduledMessage.jobId,
+        );
         if (job) {
           await job.remove();
         }
       }
 
-      // Update status in database
-      await this.prisma.scheduledMessage.update({
-        where: { id: scheduledId },
-        data: { status: 'cancelled' },
+      // Update scheduled message status
+      if (intention.scheduledMessage) {
+        await this.prisma.scheduledMessage.update({
+          where: { id: intention.scheduledMessage.id },
+          data: { status: 'cancelled' },
+        });
+      }
+
+      // Update intention status
+      await this.prisma.intention.update({
+        where: { id: intentionId },
+        data: {
+          status: 'CANCELLED',
+          completedAt: new Date(),
+        },
       });
 
-      this.logger.log(`✅ Cancelled scheduled message: ${scheduledId}`);
+      this.logger.log(`✅ Cancelled intention: ${intentionId}`);
 
-      return { success: true };
+      return {
+        success: true,
+        intentionId,
+      };
     } catch (error: any) {
-      this.logger.error('Failed to cancel scheduled message:', error.message);
+      this.logger.error('Failed to cancel intention:', error.message);
       throw error;
     }
   }
 
   /**
-   * Get all pending scheduled messages for a chat
+   * Get pending intentions for a chat
    * @param chatId - WhatsApp chat ID
    */
-  async getPendingScheduledMessages(chatId: string) {
-    return await this.prisma.scheduledMessage.findMany({
+  async getPendingIntentions(chatId: string) {
+    return this.prisma.intention.findMany({
       where: {
         chatId,
-        status: 'pending',
+        status: 'PENDING',
         scheduledFor: {
           gt: new Date(),
         },
@@ -136,11 +194,13 @@ export class QueueService {
   }
 
   /**
-   * Clean old completed scheduled messages (older than 30 days)
+   * Clean old completed scheduled messages (older than 90 days)
+   * Runs automatically every Sunday at midnight
    */
+  @Cron(CronExpression.EVERY_WEEK)
   async cleanOldScheduledMessages() {
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90);
 
     const result = await this.prisma.scheduledMessage.deleteMany({
       where: {
