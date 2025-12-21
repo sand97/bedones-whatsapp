@@ -21,6 +21,7 @@
     "antd": "^5.27.4",
     "antd-phone-input": "^0.3.15",
     "axios": "^1.12.2",
+    "embla-carousel-react": "^8.6.0",
     "isbot": "^5",
     "openapi-fetch": "^0.14.0",
     "openapi-react-query": "^0.5.0",

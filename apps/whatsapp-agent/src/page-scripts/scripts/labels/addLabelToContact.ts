@@ -7,18 +7,23 @@
 /* eslint-disable */
 
 (async () => {
-  const contactId = '{{CONTACT_ID}}';
-  const labelId = '{{LABEL_ID}}';
+  try {
+    const contactId = '{{CONTACT_ID}}';
+    const labelId = '{{LABEL_ID}}';
 
-  if (!contactId || contactId.includes('{{')) {
-    throw new Error('CONTACT_ID is required');
+    if (!contactId || contactId.includes('{{')) {
+      throw new Error('CONTACT_ID is required');
+    }
+
+    if (!labelId || labelId.includes('{{')) {
+      throw new Error('LABEL_ID is required');
+    }
+
+    await window.WPP.labels.addOrRemoveLabels(contactId, [labelId], 'add');
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to add label to contact:', error);
+    throw error;
   }
-
-  if (!labelId || labelId.includes('{{')) {
-    throw new Error('LABEL_ID is required');
-  }
-
-  await WPP.labels.addOrRemoveLabels(contactId, [labelId], 'add');
-
-  return { success: true };
 })();

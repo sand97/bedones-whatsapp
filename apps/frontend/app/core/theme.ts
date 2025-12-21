@@ -17,9 +17,12 @@ export const antdProviderProps: ConfigProviderProps = {
       // Colors from Figma design
       colorText: '#111b21',
       colorTextSecondary: '#494949',
-      colorBgLayout: '#fdfdfd',
+      colorBgLayout: 'transparent',
     },
     components: {
+      Modal: {
+        wireframe: true,
+      },
       Button: {
         borderRadius: 100,
         controlHeight: 46,

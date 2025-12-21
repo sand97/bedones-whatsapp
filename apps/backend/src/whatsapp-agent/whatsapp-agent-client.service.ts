@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { Injectable, Logger } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 
 /**
@@ -24,7 +24,11 @@ export class WhatsAppAgentClientService {
       this.logger.log(`Triggering catalog sync on agent: ${agentUrl}`);
 
       const response = await firstValueFrom(
-        this.httpService.post(`${agentUrl}/catalog/sync`, {}, { timeout: 120000 }), // 2min timeout
+        this.httpService.post(
+          `${agentUrl}/catalog/sync`,
+          {},
+          { timeout: 120000 },
+        ), // 2min timeout
       );
 
       this.logger.log(`✅ Catalog sync triggered successfully on ${agentUrl}`);

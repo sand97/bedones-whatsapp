@@ -9,11 +9,13 @@ import {
   AgentTestCard,
   AgentProductionCard,
 } from '@app/components/agent-config'
+import { DashboardHeader } from '@app/components/layout'
 import { useAuth } from '@app/hooks/useAuth'
 import apiClient from '@app/lib/api/client'
-import { App, Button, Input, Modal, Skeleton, Spin } from 'antd'
+import { App, Button, Input, Modal, Skeleton, Spin, Typography } from 'antd'
 import { useState, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
+const { Text } = Typography
 
 interface ThreadMessage {
   id: string
@@ -287,167 +289,171 @@ export default function ContextOnboardingPage() {
   }
 
   return (
-    <div className='flex h-full flex-col gap-2.5'>
-      {/* Header */}
-      <div className='pb-6'>
-        <div className='mb-2 flex items-center justify-between'>
-          <div className='flex items-center gap-2'>
-            <QuestionCircleOutlined className='text-lg' />
-            <h1 className='m-0 text-xl font-semibold leading-7 tracking-tight text-[#111b21]'>
-              Conversation d&apos;initialisation
-            </h1>
-          </div>
+    <>
+      <DashboardHeader
+        right={
           <div
-            className={`flex h-[46px] items-center justify-center rounded-full border px-4 py-0 ${getScoreColor(score)}`}
+            className={`flex items-center justify-center rounded-full border px-4 py-2 ${getScoreColor(score)}`}
           >
             <span className='text-sm font-semibold tracking-wide'>
               Score • {score}%
             </span>
           </div>
-        </div>
-        <p className='m-0 text-base leading-7 tracking-tight text-[#111b21]'>
-          Cette conversation est utilisée pour améliorer les compétences de
-          l&apos;IA et ses réponses à vos contacts
-        </p>
-      </div>
+        }
+        title={"Contexte de l'IA"}
+      />
 
-      {/* Messages Container */}
-      <div className='flex-1 space-y-4 overflow-y-auto border-t border-gray-100 py-4'>
-        {isLoading ? (
-          <div className='space-y-4'>
-            <Skeleton active avatar paragraph={{ rows: 2 }} />
-            <Skeleton active avatar paragraph={{ rows: 2 }} />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className='py-8 text-center text-gray-500'>
-            <Spin size='large' />
-            <p className='mt-4'>
-              En attente de l&apos;analyse initiale de l&apos;IA...
-            </p>
-          </div>
-        ) : (
-          messages.map(msg => (
-            <div
-              key={msg.id}
-              className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-            >
+      <div className='flex flex-col gap-6 w-full'>
+        {/* Messages Container */}
+        <div className='flex-1 space-y-4 overflow-y-auto lg:p-6 p-4'>
+          {isLoading ? (
+            <div className='space-y-4'>
+              <Skeleton active avatar paragraph={{ rows: 2 }} />
+              <Skeleton active avatar paragraph={{ rows: 2 }} />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className='py-8 text-center text-gray-500'>
+              <Spin size='large' />
+              <p className='mt-4'>
+                En attente de l&apos;analyse initiale de l&apos;IA...
+              </p>
+            </div>
+          ) : (
+            messages.map(msg => (
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                  msg.role === 'user'
-                    ? 'bg-[#24d366] text-white'
-                    : 'bg-gray-100 text-[#111b21]'
-                }`}
+                key={msg.id}
+                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
-                <p className='m-0 whitespace-pre-wrap text-sm'>{msg.content}</p>
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                    msg.role === 'user'
+                      ? 'bg-[#24d366] text-white'
+                      : 'bg-gray-100 text-[#111b21]'
+                  }`}
+                >
+                  <p className='m-0 whitespace-pre-wrap text-sm'>
+                    {msg.content}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Loading indicator for AI response */}
+          {isSubmitting && (
+            <div className='flex gap-3'>
+              <div className='max-w-[80%] rounded-2xl bg-gray-100 px-4 py-3'>
+                <div className='flex items-center gap-3'>
+                  <Spin size='small' />
+                  <span className='text-sm text-gray-600'>{loadingStatus}</span>
+                </div>
               </div>
             </div>
-          ))
-        )}
+          )}
 
-        {/* Loading indicator for AI response */}
-        {isSubmitting && (
-          <div className='flex gap-3'>
-            <div className='max-w-[80%] rounded-2xl bg-gray-100 px-4 py-3'>
-              <div className='flex items-center gap-3'>
-                <Spin size='small' />
-                <span className='text-sm text-gray-600'>{loadingStatus}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area - Always visible */}
-      {!isLoading && (
-        <div className='rounded-[40px] bg-white p-4 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
-          <div className='mb-2 flex items-start gap-4 rounded-3xl bg-[#fdfdfd] px-4 py-2.5 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
-            <Input.TextArea
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onPressEnter={e => {
-                if (!e.shiftKey) {
-                  e.preventDefault()
-                  handleSubmit()
-                }
-              }}
-              placeholder='Écrivez votre réponse... (Entrée pour envoyer, Shift+Entrée pour nouvelle ligne)'
-              variant='borderless'
-              className='flex-1 text-sm'
-              disabled={isSubmitting}
-              autoSize={{ minRows: 1, maxRows: 6 }}
-              style={{ resize: 'none' }}
-            />
-            {isSubmitting ? (
-              <Button
-                type='default'
-                shape='circle'
-                size='large'
-                icon={<StopOutlined />}
-                onClick={handleCancel}
-                danger
-                className='mt-1 border-none !h-10 !w-10 !py-0'
-              />
-            ) : (
-              <Button
-                type='primary'
-                shape='circle'
-                size='large'
-                icon={<ArrowUpOutlined />}
-                onClick={handleSubmit}
-                disabled={!inputValue.trim()}
-                className='mt-1 border-none !h-10 !w-10 !py-0'
-              />
-            )}
-          </div>
-
-          {/* Quick Action Buttons */}
-          <div className='flex gap-2'>
-            <Button
-              type='default'
-              className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
-            >
-              <CustomerServiceOutlined />
-              <span className='text-sm font-medium tracking-tight text-[#050505]'>
-                Support
-              </span>
-            </Button>
-            <Button
-              type='default'
-              className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
-            >
-              <ShopOutlined />
-              <span className='text-sm font-medium tracking-tight text-[#050505]'>
-                Stratégie de vente
-              </span>
-            </Button>
-          </div>
+          <div ref={messagesEndRef} />
         </div>
-      )}
 
-      {/* Activation Modal */}
-      <Modal
-        open={showActivationModal}
-        onCancel={() => setShowActivationModal(false)}
-        footer={null}
-        centered
-        width={800}
-        className='activation-modal'
-      >
-        <div className='flex flex-col gap-6'>
-          <div>
-            <h2 className='m-0 mb-2 text-xl font-semibold text-black'>
-              Votre IA est prête !
-            </h2>
-            <p className='m-0 text-sm'>
-              Vous pouvez maintenant activer votre agent ou continuer à fournir
-              des informations pour le rendre plus précis.
-            </p>
+        {/* Input Area - Always visible */}
+        {!isLoading && (
+          <div className={'bg-white p-1 z-10 sticky bottom-0 rounded-b-2xl'}>
+            <div className='rounded-xl p-4 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
+              <div className='mb-2 flex items-start gap-4 rounded-3xl bg-[#fdfdfd] px-4 py-2.5 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
+                <Input.TextArea
+                  value={inputValue}
+                  onChange={e => setInputValue(e.target.value)}
+                  onPressEnter={e => {
+                    if (!e.shiftKey) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
+                  placeholder='Écrivez votre réponse... (Entrée pour envoyer, Shift+Entrée pour nouvelle ligne)'
+                  variant='borderless'
+                  className='flex-1 text-sm'
+                  disabled={isSubmitting}
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  style={{ resize: 'none' }}
+                />
+                {isSubmitting ? (
+                  <Button
+                    type='default'
+                    shape='circle'
+                    size='large'
+                    icon={<StopOutlined />}
+                    onClick={handleCancel}
+                    danger
+                    className='mt-1 border-none !h-10 !w-10 !py-0'
+                  />
+                ) : (
+                  <Button
+                    type='primary'
+                    shape='circle'
+                    size='large'
+                    icon={<ArrowUpOutlined />}
+                    onClick={handleSubmit}
+                    disabled={!inputValue.trim()}
+                    className='mt-1 border-none !h-10 !w-10 !py-0'
+                  />
+                )}
+              </div>
+
+              {/* Quick Action Buttons */}
+              <div className='flex gap-2'>
+                <Button
+                  type='default'
+                  className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
+                >
+                  <CustomerServiceOutlined />
+                  <span className='text-sm font-medium tracking-tight text-[#050505]'>
+                    Support
+                  </span>
+                </Button>
+                <Button
+                  type='default'
+                  className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
+                >
+                  <ShopOutlined />
+                  <span className='text-sm font-medium tracking-tight text-[#050505]'>
+                    Stratégie de vente
+                  </span>
+                </Button>
+              </div>
+            </div>
           </div>
+        )}
 
+        {/* Activation Modal */}
+        <Modal
+          open={showActivationModal}
+          onCancel={() => setShowActivationModal(false)}
+          footer={
+            <div className={'flex justify-center'}>
+              <Button
+                variant='outlined'
+                onClick={() => setShowActivationModal(false)}
+                className='self-center'
+              >
+                Continuer à améliorer le contexte
+              </Button>
+            </div>
+          }
+          centered
+          width={800}
+          title={
+            <div>
+              <h2 className='m-0 mb-2 text-xl font-semibold text-black'>
+                Votre IA est prête !
+              </h2>
+              <Text type='secondary' className={'!font-normal'}>
+                Vous pouvez maintenant activer votre agent ou continuer à
+                fournir des informations pour le rendre plus précis.
+              </Text>
+            </div>
+          }
+        >
           {/* Cards container - vertical on mobile, horizontal on desktop */}
-          <div className='flex flex-col gap-2 md:flex-row'>
+          <div className='flex flex-col gap-2 md:flex-row py-6'>
             <div className='flex-1'>
               <AgentTestCard />
             </div>
@@ -455,16 +461,8 @@ export default function ContextOnboardingPage() {
               <AgentProductionCard />
             </div>
           </div>
-
-          <Button
-            variant='outlined'
-            onClick={() => setShowActivationModal(false)}
-            className='self-center'
-          >
-            Continuer à améliorer le contexte
-          </Button>
-        </div>
-      </Modal>
-    </div>
+        </Modal>
+      </div>
+    </>
   )
 }

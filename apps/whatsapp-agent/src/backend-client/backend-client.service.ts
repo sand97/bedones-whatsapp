@@ -120,11 +120,10 @@ export class BackendClientService {
         timestamp: new Date().toISOString(),
       };
 
-      const response =
-        await this.httpService.axiosRef.post<CanProcessResponse>(
-          url,
-          requestData,
-        );
+      const response = await this.httpService.axiosRef.post<CanProcessResponse>(
+        url,
+        requestData,
+      );
 
       return response.data;
     } catch (error: any) {

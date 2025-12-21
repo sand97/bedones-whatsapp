@@ -304,7 +304,7 @@ export class CatalogController {
     },
   })
   async forceCatalogSync(@Req() req: any) {
-    const userId = req.user.sub; // Extract from JWT
+    const userId = req.user.id; // Extract from JWT
     this.logger.log(`Force sync requested by user: ${userId}`);
 
     const result = await this.catalogService.forceCatalogSync(userId);
@@ -320,7 +320,7 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Récupère le catalogue de l\'utilisateur',
+    summary: "Récupère le catalogue de l'utilisateur",
     description:
       'Retourne toutes les collections avec leurs produits et les produits non catégorisés.',
   })
@@ -333,7 +333,7 @@ export class CatalogController {
     description: 'Unauthorized - JWT required',
   })
   async getCatalog(@Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.id;
     this.logger.debug(`Fetching catalog for user: ${userId}`);
 
     const result = await this.catalogService.getCatalog(userId);

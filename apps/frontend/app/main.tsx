@@ -16,11 +16,11 @@ import OnboardingImport from '@app/routes/onboarding.import'
 import OnboardingReviewProducts from '@app/routes/onboarding.review-products'
 import Stats from '@app/routes/stats'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ConfigProvider, App as AntdApp } from 'antd'
+import { App as AntdApp, ConfigProvider } from 'antd'
 import frFR from 'antd/locale/fr_FR'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 
 const queryClient = new QueryClient()
 

@@ -8,13 +8,13 @@
 
 (async () => {
   try {
-    const isAuthenticated = await WPP.conn.isAuthenticated();
+    const isAuthenticated = await window.WPP.conn.isAuthenticated();
 
     return {
       success: true,
       isAuthenticated,
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
       isAuthenticated: false,

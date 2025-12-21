@@ -1,4 +1,4 @@
-import { OrderStatus } from '@app/generated/client';
+import { OrderStatus } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsString,

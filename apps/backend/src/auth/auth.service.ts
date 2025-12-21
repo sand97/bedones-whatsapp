@@ -1,6 +1,6 @@
 import { CryptoService } from '@app/common/crypto.service';
 import { ConnectorClientService } from '@app/connector-client';
-import { UserStatus, ConnectionStatus } from '@app/generated/client';
+import { UserStatus, ConnectionStatus } from '@prisma/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { UserSyncService } from '@app/whatsapp-agent/user-sync.service';
 import { WhatsAppAgentService } from '@app/whatsapp-agent/whatsapp-agent.service';
@@ -19,6 +19,7 @@ import { JwtService } from '@nestjs/jwt';
 import { lastValueFrom } from 'rxjs';
 
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { AuthenticatedUser } from './types/authenticated-user.type';
 
 @Injectable()
 export class AuthService {
@@ -517,7 +518,7 @@ export class AuthService {
   /**
    * Validate user by ID (used by JWT strategy)
    */
-  async validateUser(userId: string) {
+  async validateUser(userId: string): Promise<AuthenticatedUser | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {

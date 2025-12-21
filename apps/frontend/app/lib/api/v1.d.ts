@@ -120,6 +120,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/force-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force catalog synchronization
+         * @description Triggers full catalog sync: backend (via connector) + whatsapp-agent (local with embeddings). Updates lastCatalogSyncedAt.
+         */
+        post: operations["CatalogController_forceCatalogSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Récupère le catalogue de l'utilisateur
+         * @description Retourne toutes les collections avec leurs produits et les produits non catégorisés.
+         */
+        get: operations["CatalogController_getCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/whatsapp-agents/me": {
         parameters: {
             query?: never;
@@ -237,6 +277,46 @@ export interface paths {
         head?: never;
         /** Update agent configuration */
         patch: operations["WhatsAppAgentController_updateAgentConfig"];
+        trace?: never;
+    };
+    "/agent/can-process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check if agent can process a message
+         * @description Called by whatsapp-agent service to check if a message should be processed and get agent context + authorized groups
+         */
+        post: operations["AgentController_canProcess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/log-operation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log an agent operation with full metrics
+         * @description Called by whatsapp-agent service to log conversations with tokens, tools, and duration metrics
+         */
+        post: operations["AgentController_logOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/onboarding/threads": {
@@ -595,110 +675,6 @@ export interface paths {
         patch: operations["SettingsController_updatePaymentMethod"];
         trace?: never;
     };
-    "/conversations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get all conversations for current user */
-        get: operations["ConversationsController_getAllConversations"];
-        put?: never;
-        /** Create a new conversation */
-        post: operations["ConversationsController_createConversation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/conversations/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get conversation by ID with messages */
-        get: operations["ConversationsController_getConversation"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update an existing conversation */
-        patch: operations["ConversationsController_updateConversation"];
-        trace?: never;
-    };
-    "/conversations/{id}/tags": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add tag to conversation */
-        post: operations["ConversationsController_addTag"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/conversations/{id}/tags/{tagId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove tag from conversation */
-        delete: operations["ConversationsController_removeTag"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/conversations/{id}/group": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Set group for conversation */
-        patch: operations["ConversationsController_setGroup"];
-        trace?: never;
-    };
-    "/conversations/{id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get messages for conversation */
-        get: operations["ConversationsController_getMessages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/orders": {
         parameters: {
             query?: never;
@@ -844,6 +820,150 @@ export interface components {
              * @example true
              */
             productionEnabled?: boolean;
+        };
+        CanProcessDto: {
+            /**
+             * @description WhatsApp chat ID
+             * @example 237657888690@c.us
+             */
+            chatId: string;
+            /**
+             * @description User message
+             * @example Bonjour, je voudrais commander un produit
+             */
+            message: string;
+            /**
+             * @description Message timestamp
+             * @example 2024-01-15T10:30:00.000Z
+             */
+            timestamp: string;
+        };
+        AuthorizedGroupDto: {
+            /**
+             * @description WhatsApp group ID
+             * @example 12345678@g.us
+             */
+            whatsappGroupId: string;
+            /**
+             * @description Usage description of the group
+             * @example Support client
+             */
+            usage: string;
+        };
+        CanProcessResponseDto: {
+            /**
+             * @description Whether the agent can process this message
+             * @example true
+             */
+            allowed: boolean;
+            /**
+             * @description Reason if not allowed
+             * @example Agent not configured
+             */
+            reason?: string;
+            /**
+             * @description Agent context (business instructions)
+             * @example Vous êtes un assistant commercial...
+             */
+            agentContext?: string;
+            /**
+             * @description Management group ID for forwarding
+             * @example 12345678@g.us
+             */
+            managementGroupId?: string;
+            /**
+             * @description Agent ID
+             * @example clx123456
+             */
+            agentId?: string;
+            /** @description List of authorized groups */
+            authorizedGroups?: components["schemas"]["AuthorizedGroupDto"][];
+        };
+        ToolExecutionDto: {
+            /** @description Tool name */
+            name: string;
+            /** @description Tool arguments */
+            args: Record<string, never>;
+            /** @description Tool result */
+            result?: Record<string, never>;
+            /** @description Error message if tool failed */
+            error?: string;
+            /** @description Tool execution duration in ms */
+            durationMs?: number;
+        };
+        LogOperationDto: {
+            /**
+             * @description WhatsApp chat ID
+             * @example 237657888690@c.us
+             */
+            chatId: string;
+            /**
+             * @description Agent ID
+             * @example clx123456
+             */
+            agentId?: string;
+            /**
+             * @description User ID
+             * @example clx789012
+             */
+            userId?: string;
+            /**
+             * @description User message
+             * @example Bonjour, je voudrais commander un produit
+             */
+            userMessage: string;
+            /**
+             * @description Agent response
+             * @example Bonjour ! Je vais vous aider avec votre commande.
+             */
+            agentResponse: string;
+            /**
+             * @description System prompt used
+             * @example Vous êtes un assistant commercial...
+             */
+            systemPrompt: string;
+            /**
+             * @description Total tokens used
+             * @example 150
+             */
+            totalTokens?: number;
+            /**
+             * @description Prompt tokens
+             * @example 100
+             */
+            promptTokens?: number;
+            /**
+             * @description Completion tokens
+             * @example 50
+             */
+            completionTokens?: number;
+            /**
+             * @description Operation duration in milliseconds
+             * @example 2500
+             */
+            durationMs: number;
+            /**
+             * @description Model name used
+             * @example grok-beta
+             */
+            modelName?: string;
+            /** @description Tools used during execution */
+            toolsUsed?: components["schemas"]["ToolExecutionDto"][];
+            /**
+             * @description Operation status
+             * @example success
+             * @enum {string}
+             */
+            status: "success" | "error" | "rate_limited";
+            /** @description Error message if failed */
+            error?: string;
+            /** @description Additional metadata */
+            metadata?: Record<string, never>;
+            /**
+             * @description Operation timestamp
+             * @example 2024-01-15T10:30:00.000Z
+             */
+            timestamp: string;
         };
         SendMessageDto: Record<string, never>;
         RequestPairingDto: {
@@ -1138,41 +1258,12 @@ export interface components {
              */
             requiresProof?: boolean;
         };
-        CreateConversationDto: {
+        CreateOrderDto: {
             /**
-             * @description WhatsApp chat ID
+             * @description WhatsApp Chat ID (from WhatsApp, not our DB)
              * @example 237612345678@c.us
              */
             whatsappChatId: string;
-            /**
-             * @description Contact name
-             * @example John Doe
-             */
-            contactName?: string;
-            /**
-             * @description Contact phone number
-             * @example 237612345678
-             */
-            contactNumber: string;
-        };
-        UpdateConversationDto: {
-            /**
-             * @description Contact name
-             * @example John Doe
-             */
-            contactName?: string;
-            /**
-             * @description Whether the conversation requires manual response
-             * @example false
-             */
-            requiresManualResponse?: boolean;
-        };
-        CreateOrderDto: {
-            /**
-             * @description Conversation ID
-             * @example clxxx123456789
-             */
-            conversationId: string;
             /**
              * @description Customer name
              * @example John Doe
@@ -1513,6 +1604,67 @@ export interface operations {
             };
         };
     };
+    CatalogController_forceCatalogSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync completed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Sync failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized - JWT required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogController_getCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Catalogue récupéré avec succès */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - JWT required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     WhatsAppAgentController_getMyAgent: {
         parameters: {
             query?: never;
@@ -1717,6 +1869,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AgentController_canProcess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanProcessDto"];
+            };
+        };
+        responses: {
+            /** @description Returns processing decision and agent configuration */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanProcessResponseDto"];
+                };
+            };
+        };
+    };
+    AgentController_logOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogOperationDto"];
+            };
+        };
+        responses: {
+            /** @description Operation logged successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        success?: boolean;
+                        operationId?: string;
+                    };
+                };
             };
         };
     };
@@ -2725,349 +2928,6 @@ export interface operations {
                 content?: never;
             };
             /** @description Payment method not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_getAllConversations: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of conversations retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_createConversation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateConversationDto"];
-            };
-        };
-        responses: {
-            /** @description Conversation created successfully */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_getConversation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Conversation retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_updateConversation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateConversationDto"];
-            };
-        };
-        responses: {
-            /** @description Conversation updated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_addTag: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tag added successfully */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation or tag not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_removeTag: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-                /** @description Tag ID */
-                tagId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tag removed successfully */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation or tag not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_setGroup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Group set successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation or group not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ConversationsController_getMessages: {
-        parameters: {
-            query?: {
-                /** @description Number of messages to retrieve */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Conversation ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Messages retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conversation not found */
             404: {
                 headers: {
                     [name: string]: unknown;

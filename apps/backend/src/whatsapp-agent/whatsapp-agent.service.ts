@@ -5,7 +5,7 @@ import {
   WhatsAppAgent,
   WhatsAppAgentStatus,
   ConnectionStatus,
-} from '@app/generated/client';
+} from '@prisma/client';
 import {
   PageScriptService,
   ScriptVariables,

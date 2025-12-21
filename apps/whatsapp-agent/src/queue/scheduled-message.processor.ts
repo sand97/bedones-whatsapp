@@ -73,7 +73,9 @@ export class ScheduledMessageProcessor {
       // Build context message for the agent
       const intentionContext = this.buildIntentionContext(intention);
 
-      this.logger.log(`🤖 Invoking agent to handle intention: ${intention.type}`);
+      this.logger.log(
+        `🤖 Invoking agent to handle intention: ${intention.type}`,
+      );
 
       // Invoke the agent with intention context
       // The agent will use its tools to:
@@ -106,7 +108,9 @@ export class ScheduledMessageProcessor {
         },
       });
 
-      this.logger.log(`✅ Intention completed for ${chatId}: ${intention.type}`);
+      this.logger.log(
+        `✅ Intention completed for ${chatId}: ${intention.type}`,
+      );
     } catch (error: any) {
       this.logger.error(
         `Failed to process scheduled message for ${chatId}:`,

@@ -1,31 +1,27 @@
 import {
-  HomeOutlined,
   BarChartOutlined,
-  ShoppingCartOutlined,
-  SettingOutlined,
-  ShopOutlined,
-  NotificationOutlined,
   CustomerServiceOutlined,
-  QuestionCircleOutlined,
-  UserOutlined,
+  HomeOutlined,
   LoadingOutlined,
   LogoutOutlined,
+  NotificationOutlined,
+  QuestionCircleOutlined,
+  SettingOutlined,
+  ShopOutlined,
+  ShoppingCartOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
+import { LayoutProvider, useLayout } from '@app/contexts/LayoutContext'
 import { useAuth } from '@app/hooks/useAuth'
-import { Avatar, Spin, Divider, Modal } from 'antd'
+import { Avatar, Layout, Menu, Modal, Spin } from 'antd'
 import { useEffect, useRef } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-interface MenuItem {
-  key: string
-  label: string
-  icon: React.ReactNode
-  path: string
-}
+const { Sider, Content } = Layout
 
 const menuSections = [
   {
-    title: 'Compte',
+    title: 'Général',
     items: [
       {
         key: 'home',
@@ -95,8 +91,9 @@ const menuSections = [
   },
 ]
 
-export default function DashboardLayout() {
+function DashboardLayoutContent() {
   const { user, isLoading, isAuthenticated, logout } = useAuth()
+  const { collapsed } = useLayout()
   const navigate = useNavigate()
   const location = useLocation()
   const [modal, contextHolder] = Modal.useModal()
@@ -155,35 +152,19 @@ export default function DashboardLayout() {
   // Check if context score is below 80% - only context menu should be active
   const isContextIncomplete = (user?.contextScore ?? 0) < 80
 
-  const renderMenuItem = (item: MenuItem) => {
-    // Only context menu is enabled when score < 80%
-    const isDisabled = isContextIncomplete && item.key !== 'context'
-
-    return (
-      <button
-        key={item.key}
-        onClick={() => !isDisabled && navigate(item.path)}
-        type='button'
-        disabled={isDisabled}
-        className={`
-          flex items-center gap-[10px] px-4 py-2 rounded-xl w-full text-left bg-transparent border-none
-          ${
-            isDisabled
-              ? 'cursor-not-allowed opacity-40'
-              : isActive(item.path)
-                ? 'shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)] bg-white font-medium cursor-pointer'
-                : 'hover:bg-white hover:shadow-[0px_0px_1px_0px_rgba(0,0,0,0.2)] cursor-pointer'
-          }
-        `}
-      >
-        <span className='text-lg'>{item.icon}</span>
-        <span className='text-sm text-primary-text leading-4'>
-          {item.label}
-        </span>
-      </button>
-    )
+  // Get currently selected menu key
+  const getSelectedKey = () => {
+    for (const section of menuSections) {
+      for (const item of section.items) {
+        if (isActive(item.path)) {
+          return [item.key]
+        }
+      }
+    }
+    return []
   }
 
+  // Build menu items for Ant Design Menu
   if (isLoading) {
     return (
       <div className='min-h-screen flex items-center justify-center bg-[#fdfdfd]'>
@@ -202,69 +183,124 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className='min-h-screen flex max-w-[1290px] mx-auto'>
+    <Layout className='min-h-screen'>
       {contextHolder}
-      {/* Sidebar */}
-      <aside className='w-[296px] h-screen overflow-y-auto px-4 pt-20 pb-6 flex flex-col gap-12'>
-        {/* User Profile */}
-        <div className='flex items-center gap-2'>
-          <Avatar
-            size={40}
-            src={user?.businessInfo?.avatar_url}
-            icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
-            className='bg-[#bfbfbf] flex-shrink-0'
-          />
-          <div className='flex flex-col gap-2'>
-            <div className='flex items-center gap-2.5'>
-              {user?.whatsappProfile?.pushname && (
-                <span className='font-medium text-base text-black leading-4 tracking-[0.35px]'>
-                  {user?.whatsappProfile?.pushname}
-                </span>
-              )}
-              <span className='bg-[#af52de] text-white text-xs px-2 py-1 rounded leading-3 tracking-[0.35px]'>
-                Free
+      <Sider
+        collapsed={collapsed}
+        collapsedWidth={80}
+        width={280}
+        trigger={null}
+        style={{
+          overflow: 'auto',
+          height: '100vh',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+        }}
+      >
+        <div className='flex flex-col h-full'>
+          {/* User Profile */}
+          <div className='brand-name'>
+            {!collapsed ? (
+              <div className='flex items-center gap-3'>
+                <Avatar
+                  size={40}
+                  src={user?.businessInfo?.avatar_url}
+                  icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
+                  className='bg-[#bfbfbf] flex-shrink-0'
+                />
+                <div className='flex flex-col gap-1 flex-1 min-w-0'>
+                  <div className='flex items-center gap-2'>
+                    {user?.whatsappProfile?.pushname && (
+                      <span className='font-medium text-sm text-black truncate'>
+                        {user?.whatsappProfile?.pushname}
+                      </span>
+                    )}
+                    <span className='bg-[#af52de] text-white text-xs px-2 py-0.5 rounded'>
+                      Free
+                    </span>
+                  </div>
+                  <span className='text-xs text-[#494949] truncate'>
+                    {user?.phoneNumber}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Avatar
+                  size={40}
+                  src={user?.businessInfo?.avatar_url}
+                  icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
+                  className='bg-white'
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Menu */}
+          <div className='flex-1 overflow-auto py-4'>
+            <Menu
+              mode='inline'
+              selectedKeys={getSelectedKey()}
+              items={menuSections.map(section => ({
+                type: 'group' as const,
+                label: section.title,
+                children: section.items.map(item => ({
+                  key: item.key,
+                  icon: item.icon,
+                  label: item.label,
+                  disabled: isContextIncomplete && item.key !== 'context',
+                  onClick: () => navigate(item.path),
+                })),
+              }))}
+              className='border-none'
+              inlineCollapsed={collapsed}
+            />
+          </div>
+
+          {/* Logout Button */}
+          <div className='logout-section'>
+            <button
+              onClick={handleLogout}
+              type='button'
+              className={`flex items-center gap-3 w-full bg-transparent border-none cursor-pointer hover:opacity-80 transition-opacity`}
+            >
+              <span className='text-lg text-error'>
+                <LogoutOutlined />
               </span>
-            </div>
-            <span className='text-sm text-[#494949] leading-[14px] tracking-[0.35px]'>
-              {user?.phoneNumber}
-            </span>
+              <span className='text-sm text-error font-medium logout-text'>
+                Déconnexion
+              </span>
+            </button>
           </div>
         </div>
+      </Sider>
 
-        {/* Menu Sections */}
-        {menuSections.map(section => (
-          <div key={section.title} className='flex flex-col gap-3'>
-            <div className='px-4'>
-              <span className='text-xs text-[#494949] leading-4 tracking-[0.35px]'>
-                {section.title}
-              </span>
-            </div>
-            {section.items.map(renderMenuItem)}
-          </div>
-        ))}
-
-        {/* Logout Button */}
-        <div className='mt-auto px-4'>
-          <Divider className='!mb-6' />
-          <button
-            onClick={handleLogout}
-            type='button'
-            className='flex items-center gap-[10px] w-full text-left bg-transparent border-none cursor-pointer hover:opacity-80 transition-opacity'
+      <Layout
+        style={{
+          marginLeft: collapsed ? 80 : 280,
+          transition: 'margin-left 0.2s',
+        }}
+      >
+        <Content className='min-h-screen bg-transparent'>
+          <div
+            className={
+              'bg-white m-4 lg:ml-2 rounded-2xl shadow-card min-h-[calc(100vh_-_32px)]'
+            }
           >
-            <span className='text-lg text-[#ff4d4f]'>
-              <LogoutOutlined />
-            </span>
-            <span className='text-base text-[#ff4d4f] leading-4 tracking-[0.35px] font-medium'>
-              Déconnexion
-            </span>
-          </button>
-        </div>
-      </aside>
+            <Outlet />
+          </div>
+        </Content>
+      </Layout>
+    </Layout>
+  )
+}
 
-      {/* Main Content */}
-      <main className='flex-1 py-12 px-2 h-screen overflow-y-auto'>
-        <Outlet />
-      </main>
-    </div>
+export default function DashboardLayout() {
+  return (
+    <LayoutProvider>
+      <DashboardLayoutContent />
+    </LayoutProvider>
   )
 }

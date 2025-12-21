@@ -36,7 +36,7 @@ export class UserController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getMe(@Request() req: any) {
-    return this.userService.getById(req.user.userId);
+    return this.userService.getById(req.user.id);
   }
 
   @Patch('me')
@@ -48,7 +48,7 @@ export class UserController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async updateMe(@Request() req: any, @Body() updateUserDto: UpdateUserDto) {
-    return this.userService.updateProfile(req.user.userId, updateUserDto);
+    return this.userService.updateProfile(req.user.id, updateUserDto);
   }
 
   @Post('me/import-whatsapp')
@@ -70,7 +70,7 @@ export class UserController {
   async importWhatsAppData(
     @Request() req: any,
   ): Promise<ImportWhatsAppDataResponseDto> {
-    return this.userService.importWhatsAppData(req.user.userId);
+    return this.userService.importWhatsAppData(req.user.id);
   }
 
   @Get('me/stats')
@@ -82,6 +82,6 @@ export class UserController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getStats(@Request() req: any) {
-    return this.userService.getStats(req.user.userId);
+    return this.userService.getStats(req.user.id);
   }
 }

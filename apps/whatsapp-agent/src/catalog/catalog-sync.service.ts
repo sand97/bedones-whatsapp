@@ -53,7 +53,8 @@ export class CatalogSyncService {
   private async checkAuthentication(): Promise<boolean> {
     try {
       const script = this.scriptService.getScript('isAuthenticated', {});
-      const result = await this.connectorClient.executeScript(script);
+      const { result } = await this.connectorClient.executeScript(script);
+      console.log('result', result);
 
       if (result.success && result.isAuthenticated) {
         return true;
@@ -282,7 +283,9 @@ export class CatalogSyncService {
       {},
     );
 
-    const products = await this.connectorClient.executeScript(script);
+    const { result: products } =
+      await this.connectorClient.executeScript(script);
+
     return products || [];
   }
 

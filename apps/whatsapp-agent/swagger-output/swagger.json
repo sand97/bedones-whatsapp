@@ -26,7 +26,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -41,7 +43,9 @@
                       "example": {},
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -60,7 +64,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -94,7 +100,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -114,7 +122,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -137,7 +147,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -154,6 +166,71 @@
         }
       }
     },
+    "/catalog/sync": {
+      "post": {
+        "operationId": "CatalogController_triggerSync",
+        "summary": "Trigger manual catalog synchronization",
+        "description": "Forces immediate catalog sync with WhatsApp connector, including embeddings generation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Sync triggered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/catalog/status": {
+      "get": {
+        "operationId": "CatalogController_getSyncStatus",
+        "summary": "Get catalog sync status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Sync status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "isSyncing": {
+                      "type": "boolean"
+                    },
+                    "lastSyncTime": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "embeddingsAvailable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
     "/webhook/message": {
       "post": {
         "operationId": "WebhookController_handleEvent",
@@ -165,44 +242,9 @@
             "description": "Event received successfully"
           }
         },
-        "tags": ["Webhook"]
-      }
-    },
-    "/products/analyze": {
-      "post": {
-        "operationId": "ProductsController_analyzeProduct",
-        "summary": "Analyser un produit avec IA",
-        "description": "Analyse un produit pour détecter les erreurs d'orthographe, suggérer des métadonnées et améliorer la description",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AnalyzeProductDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Analyse réussie",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AnalysisResultDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Données invalides"
-          },
-          "500": {
-            "description": "Erreur lors de l'analyse"
-          }
-        },
-        "tags": ["products"]
+        "tags": [
+          "Webhook"
+        ]
       }
     }
   },
@@ -215,109 +257,6 @@
   "tags": [],
   "servers": [],
   "components": {
-    "schemas": {
-      "AnalyzeProductDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Nom du produit",
-            "example": "T-shirt en coton bio"
-          },
-          "description": {
-            "type": "string",
-            "description": "Description du produit",
-            "example": "Un t-shirt confortable en coton biologique, parfait pour l'été"
-          },
-          "category": {
-            "type": "string",
-            "description": "Catégorie du produit",
-            "example": "Vêtements"
-          }
-        },
-        "required": ["name"]
-      },
-      "SpellingCorrection": {
-        "type": "object",
-        "properties": {
-          "original": {
-            "type": "string",
-            "description": "Texte original avec l'erreur",
-            "example": "confortabel"
-          },
-          "corrected": {
-            "type": "string",
-            "description": "Correction suggérée",
-            "example": "confortable"
-          },
-          "position": {
-            "type": "number",
-            "description": "Position de l'erreur dans le texte",
-            "example": 15
-          }
-        },
-        "required": ["original", "corrected"]
-      },
-      "MetadataSuggestion": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "Clé de métadonnée suggérée",
-            "example": "taille"
-          },
-          "values": {
-            "description": "Valeurs possibles pour cette métadonnée",
-            "example": ["XS", "S", "M", "L", "XL", "XXL"],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "reason": {
-            "type": "string",
-            "description": "Raison de la suggestion",
-            "example": "Les vêtements nécessitent généralement une indication de taille"
-          }
-        },
-        "required": ["key", "values"]
-      },
-      "AnalysisResultDto": {
-        "type": "object",
-        "properties": {
-          "spellingCorrections": {
-            "description": "Corrections orthographiques et grammaticales",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SpellingCorrection"
-            }
-          },
-          "metadataSuggestions": {
-            "description": "Suggestions de métadonnées basées sur la catégorie",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MetadataSuggestion"
-            }
-          },
-          "descriptionImprovements": {
-            "description": "Suggestions d'amélioration de la description",
-            "example": [
-              "Ajouter des détails sur la composition exacte du coton",
-              "Préciser les instructions d'entretien",
-              "Mentionner les certifications biologiques"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "spellingCorrections",
-          "metadataSuggestions",
-          "descriptionImprovements"
-        ]
-      }
-    }
+    "schemas": {}
   }
 }

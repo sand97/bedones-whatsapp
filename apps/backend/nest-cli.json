@@ -9,10 +9,6 @@
       {
         "include": "i18n/**/*",
         "watchAssets": true
-      },
-      {
-        "include": "generated/**/*",
-        "watchAssets": true
       }
     ]
   }

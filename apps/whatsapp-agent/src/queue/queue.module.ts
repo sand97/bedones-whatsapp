@@ -1,7 +1,12 @@
+import { ConnectorModule } from '@app/connector/connector.module';
+import { LangChainModule } from '@app/langchain/langchain.module';
+import { PageScriptModule } from '@app/page-scripts/page-script.module';
+import { PrismaModule } from '@app/prisma/prisma.module';
 import { BullModule } from '@nestjs/bull';
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
+import { MessagesTools } from './messages-tools/messages.tools';
 import { QueueService } from './queue.service';
 import { ScheduledMessageProcessor } from './scheduled-message.processor';
 
@@ -10,12 +15,7 @@ import { ScheduledMessageProcessor } from './scheduled-message.processor';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        redis: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-          password: configService.get<string>('REDIS_PASSWORD'),
-          db: configService.get<number>('REDIS_DB', 0),
-        },
+        redis: configService.get<string>('REDIS_URL'),
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -29,8 +29,12 @@ import { ScheduledMessageProcessor } from './scheduled-message.processor';
     BullModule.registerQueue({
       name: 'scheduled-messages',
     }),
+    PrismaModule,
+    ConnectorModule,
+    PageScriptModule,
+    forwardRef(() => LangChainModule),
   ],
-  providers: [QueueService, ScheduledMessageProcessor],
-  exports: [QueueService],
+  providers: [QueueService, ScheduledMessageProcessor, MessagesTools],
+  exports: [QueueService, MessagesTools],
 })
 export class QueueModule {}

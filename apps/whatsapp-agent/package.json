@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && pnpm openapi:generate && nest build",
+    "build": "prisma generate && pnpm openapi:generate && node scripts/post-openapi.js && nest build",
     "start": "nest start",
     "start:dev": "prisma generate && nest start --watch",
     "start:debug": "prisma generate && nest start --debug --watch",

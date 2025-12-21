@@ -1,8 +1,4 @@
-import {
-  BusinessInfo,
-  DeliveryLocation,
-  PaymentMethod,
-} from '@app/generated/client';
+import { BusinessInfo, DeliveryLocation, PaymentMethod } from '@prisma/client';
 import {
   Injectable,
   Logger,

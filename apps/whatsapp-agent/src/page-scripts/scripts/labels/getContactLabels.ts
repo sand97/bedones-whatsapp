@@ -7,17 +7,22 @@
 /* eslint-disable */
 
 (async () => {
-  const contactId = '{{CONTACT_ID}}';
+  try {
+    const contactId = '{{CONTACT_ID}}';
 
-  if (!contactId || contactId.includes('{{')) {
-    throw new Error('CONTACT_ID is required');
+    if (!contactId || contactId.includes('{{')) {
+      throw new Error('CONTACT_ID is required');
+    }
+
+    const labels = await window.WPP.labels.getChatLabels(contactId);
+
+    return labels.map((l) => ({
+      id: l.id,
+      name: l.name,
+      hexColor: l.hexColor,
+    }));
+  } catch (error) {
+    console.error('Failed to get contact labels:', error);
+    throw error;
   }
-
-  const labels = await WPP.labels.getChatLabels(contactId);
-
-  return labels.map((l) => ({
-    id: l.id,
-    name: l.name,
-    hexColor: l.hexColor,
-  }));
 })();

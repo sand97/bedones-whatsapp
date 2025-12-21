@@ -1,4 +1,4 @@
-import { Order, OrderStatus } from '@app/generated/client';
+import { Order, OrderStatus } from '@prisma/client';
 import {
   Injectable,
   NotFoundException,

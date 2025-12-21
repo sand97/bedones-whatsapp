@@ -12,25 +12,7 @@ export class RateLimitService {
   private redis: Redis;
 
   constructor(private readonly configService: ConfigService) {
-    // Initialize Redis connection
-    const redisHost = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
-    const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
-    const redisDb = this.configService.get<number>('REDIS_DB', 0);
-
-    this.redis = new Redis({
-      host: redisHost,
-      port: redisPort,
-      password: redisPassword,
-      db: redisDb,
-      retryStrategy: (times) => {
-        if (times > 3) {
-          this.logger.error('Failed to connect to Redis after 3 attempts');
-          return null;
-        }
-        return Math.min(times * 1000, 3000);
-      },
-    });
+    this.redis = new Redis(this.configService.get<number>('REDIS_URL', 0));
 
     this.redis.on('connect', () => {
       this.logger.log('✅ Connected to Redis for rate limiting');

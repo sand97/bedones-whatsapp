@@ -1,4 +1,4 @@
-import { OrderStatus } from '@app/generated/client';
+import { OrderStatus } from '@prisma/client';
 import {
   Controller,
   Get,
@@ -52,7 +52,7 @@ export class OrdersController {
     @Query('status') status: OrderStatus,
     @Request() req: any,
   ) {
-    return this.ordersService.getAllForUser(req.user.userId, status);
+    return this.ordersService.getAllForUser(req.user.id, status);
   }
 
   @Get(':id')
@@ -66,7 +66,7 @@ export class OrdersController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async getOrder(@Param('id') id: string, @Request() req: any) {
-    return this.ordersService.getById(id, req.user.userId);
+    return this.ordersService.getById(id, req.user.id);
   }
 
   @Post()
@@ -82,7 +82,7 @@ export class OrdersController {
     @Body() createOrderDto: CreateOrderDto,
     @Request() req: any,
   ) {
-    return this.ordersService.create(req.user.userId, createOrderDto);
+    return this.ordersService.create(req.user.id, createOrderDto);
   }
 
   @Patch(':id')
@@ -101,7 +101,7 @@ export class OrdersController {
     @Body() updateOrderDto: UpdateOrderDto,
     @Request() req: any,
   ) {
-    return this.ordersService.update(id, req.user.userId, updateOrderDto);
+    return this.ordersService.update(id, req.user.id, updateOrderDto);
   }
 
   @Patch(':id/status')
@@ -122,7 +122,7 @@ export class OrdersController {
   ) {
     return this.ordersService.updateStatus(
       id,
-      req.user.userId,
+      req.user.id,
       updateOrderStatusDto.status,
     );
   }
@@ -138,6 +138,6 @@ export class OrdersController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async markAsDelivered(@Param('id') id: string, @Request() req: any) {
-    return this.ordersService.markAsDelivered(id, req.user.userId);
+    return this.ordersService.markAsDelivered(id, req.user.id);
   }
 }

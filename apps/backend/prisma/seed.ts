@@ -24,13 +24,9 @@ async function main() {
 
   // Nettoyer la base de données (développement uniquement)
   console.log('🧹 Cleaning database...');
-  await prisma.conversationTag.deleteMany();
-  await prisma.message.deleteMany();
   await prisma.order.deleteMany();
-  await prisma.conversation.deleteMany();
   await prisma.productMetadata.deleteMany();
   await prisma.product.deleteMany();
-  await prisma.tag.deleteMany();
   await prisma.group.deleteMany();
   await prisma.deliveryLocation.deleteMany();
   await prisma.paymentMethod.deleteMany();
@@ -52,7 +48,7 @@ async function main() {
       connectionStatus: 'CONNECTED',
       metadata: {
         environment: 'development',
-        containerIddocker: 'local-dev',
+        containerId: 'local-dev',
       },
     },
   });

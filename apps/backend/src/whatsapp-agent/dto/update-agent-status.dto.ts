@@ -1,4 +1,4 @@
-import { WhatsAppAgentStatus, ConnectionStatus } from '@app/generated/client';
+import { WhatsAppAgentStatus, ConnectionStatus } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsOptional } from 'class-validator';
 

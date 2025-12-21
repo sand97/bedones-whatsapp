@@ -1,21 +1,15 @@
-import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
-import { CatalogSyncService } from '../catalog/catalog-sync.service';
 
 @Injectable()
-export class ConnectorClientService implements OnModuleInit {
+export class ConnectorClientService {
   private readonly logger = new Logger(ConnectorClientService.name);
   private readonly connectorUrl: string;
   public readonly sessionName: string;
   private axiosInstance: AxiosInstance;
-  private isReady = false;
 
-  constructor(
-    private readonly configService: ConfigService,
-    @Inject(forwardRef(() => CatalogSyncService))
-    private readonly catalogSyncService: CatalogSyncService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     this.connectorUrl = this.configService.get<string>(
       'CONNECTOR_URL',
       'http://localhost:3001',
@@ -35,49 +29,6 @@ export class ConnectorClientService implements OnModuleInit {
 
     this.logger.log(`Connector URL configured: ${this.connectorUrl}`);
     this.logger.log(`Session Name: ${this.sessionName}`);
-  }
-
-  /**
-   * Check connector status on module init and emit ready event
-   */
-  async onModuleInit() {
-    // Wait a bit for connector to start, then check status
-    setTimeout(() => {
-      this.checkAndEmitReady().catch((error) => {
-        this.logger.warn(
-          `Failed to check connector status on startup: ${error.message}`,
-        );
-      });
-    }, 2000);
-  }
-
-  /**
-   * Check if connector is ready and emit event if it is
-   */
-  private async checkAndEmitReady(): Promise<void> {
-    try {
-      const status = await this.getStatus();
-
-      if (status?.isReady === true && !this.isReady) {
-        this.isReady = true;
-        this.logger.log('✅ Connector is ready - triggering catalog sync');
-
-        // Trigger catalog sync directly
-        this.catalogSyncService
-          .triggerManualSync()
-          .then(() => {
-            this.logger.log('✅ Catalog sync triggered after connector ready');
-          })
-          .catch((error) => {
-            this.logger.error(
-              'Failed to trigger catalog sync on ready:',
-              error.message,
-            );
-          });
-      }
-    } catch (error) {
-      this.logger.debug(`Connector not ready yet: ${error.message}`);
-    }
   }
 
   /**
@@ -180,11 +131,17 @@ export class ConnectorClientService implements OnModuleInit {
   async executeScript(script: string): Promise<any> {
     this.logger.debug(`[CONNECTOR] Executing script in page context`);
 
-    const response = await this.axiosInstance.post('/whatsapp/execute-script', {
-      sessionName: this.sessionName,
-      script,
-    });
+    try {
+      const response = await this.axiosInstance.post(
+        '/whatsapp/execute-script',
+        {
+          script,
+        },
+      );
 
-    return response.data;
+      return response.data;
+    } catch (e) {
+      console.log(e);
+    }
   }
 }

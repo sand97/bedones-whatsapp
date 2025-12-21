@@ -1,4 +1,4 @@
-import { WhatsAppAgent } from '@app/generated/client';
+import { WhatsAppAgent } from '@prisma/client';
 import {
   Controller,
   Get,
@@ -20,10 +20,7 @@ import {
 
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
-import {
-  CanProcessDto,
-  CanProcessResponseDto,
-} from './dto/can-process.dto';
+import { CanProcessDto, CanProcessResponseDto } from './dto/can-process.dto';
 import { LogOperationDto } from './dto/log-operation.dto';
 import { UpdateAgentConfigDto } from './dto/update-agent-config.dto';
 import { UpdateAgentStatusDto } from './dto/update-agent-status.dto';
@@ -48,7 +45,7 @@ export class WhatsAppAgentController {
     description: 'WhatsApp agent not found for this user',
   })
   async getMyAgent(@Request() req): Promise<WhatsAppAgent> {
-    const userId = req.user.userId || req.user.id;
+    const userId = req.user.id;
     const agent = await this.whatsappAgentService.getAgentForUser(userId);
 
     if (!agent) {
@@ -69,7 +66,7 @@ export class WhatsAppAgentController {
     description: 'WhatsApp agent already exists for this user',
   })
   async provisionAgent(@Request() req): Promise<WhatsAppAgent> {
-    const userId = req.user.userId || req.user.id;
+    const userId = req.user.id;
     return this.whatsappAgentService.provisionAgent(userId);
   }
 
@@ -152,7 +149,7 @@ export class WhatsAppAgentController {
       count: number;
     }>
   > {
-    const userId = req.user.userId || req.user.id;
+    const userId = req.user.id;
     return this.whatsappAgentService.getLabels(userId);
   }
 
@@ -182,7 +179,7 @@ export class WhatsAppAgentController {
     phoneNumber: string;
     contactId?: string;
   }> {
-    const userId = req.user.userId || req.user.id;
+    const userId = req.user.id;
     return this.whatsappAgentService.validateContact(userId, dto.phoneNumber);
   }
 
@@ -200,7 +197,7 @@ export class WhatsAppAgentController {
     @Request() req,
     @Body() dto: UpdateAgentConfigDto,
   ): Promise<WhatsAppAgent> {
-    const userId = req.user.userId || req.user.id;
+    const userId = req.user.id;
     return this.whatsappAgentService.updateAgentConfig(userId, dto);
   }
 }

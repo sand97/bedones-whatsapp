@@ -3,14 +3,16 @@ import {
   AuthorizedGroup,
 } from '@app/backend-client/backend-api.types';
 import { BackendClientService } from '@app/backend-client/backend-client.service';
+import { MessagesTools } from '@app/queue/messages-tools/messages.tools';
 import { RateLimitService } from '@app/security/rate-limit.service';
 import { SanitizationService } from '@app/security/sanitization.service';
 import { CatalogTools } from '@app/tools/catalog/catalog.tools';
+import { ChatTools } from '@app/tools/chat/chat.tools';
 import { CommunicationTools } from '@app/tools/communication/communication.tools';
+import { GroupTools } from '@app/tools/group/group.tools';
 import { IntentTools } from '@app/tools/intent/intent.tools';
 import { LabelsTools } from '@app/tools/labels/labels.tools';
 import { MemoryTools } from '@app/tools/memory/memory.tools';
-import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -65,6 +67,8 @@ export class WhatsAppAgentService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly communicationTools: CommunicationTools,
     private readonly catalogTools: CatalogTools,
+    private readonly chatTools: ChatTools,
+    private readonly groupTools: GroupTools,
     private readonly labelsTools: LabelsTools,
     private readonly memoryTools: MemoryTools,
     private readonly messagesTools: MessagesTools,
@@ -114,6 +118,8 @@ export class WhatsAppAgentService implements OnModuleInit {
     const tools = [
       ...this.communicationTools.createTools(),
       ...this.catalogTools.createTools(),
+      ...this.chatTools.createTools(),
+      ...this.groupTools.createTools(),
       ...this.labelsTools.createTools(),
       ...this.memoryTools.createTools(),
       ...this.messagesTools.createTools(),

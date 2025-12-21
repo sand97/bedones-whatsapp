@@ -1,5 +1,6 @@
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { Prisma } from '@app/generated/client';
+import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { Injectable, Logger } from '@nestjs/common';
 
@@ -43,6 +44,7 @@ export class CatalogSearchService {
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
     private readonly connectorClient: ConnectorClientService,
+    private readonly pageScriptService: PageScriptService,
   ) {}
 
   /**
@@ -149,37 +151,15 @@ export class CatalogSearchService {
   }> {
     this.logger.debug(`📱 Direct WhatsApp search for: "${query}"`);
 
-    const script = `
-      (async () => {
-        const collections = await WPP.catalog.getCollections();
-        let allProducts = [];
-        const searchQuery = "${query}".toLowerCase();
+    const script = this.pageScriptService.getScript(
+      'catalog/searchProductsDirect',
+      {
+        QUERY: query,
+        LIMIT: limit.toString(),
+      },
+    );
 
-        for (const collection of collections) {
-          const products = await WPP.catalog.getProductsFromCollection(collection.id, 100);
-
-          const filtered = products.filter(p =>
-            p.name?.toLowerCase().includes(searchQuery) ||
-            p.description?.toLowerCase().includes(searchQuery) ||
-            collection.name?.toLowerCase().includes(searchQuery)
-          );
-
-          allProducts = allProducts.concat(filtered.map(p => ({
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            price: p.price,
-            currency: p.currency,
-            availability: p.availability,
-            collectionName: collection.name
-          })));
-        }
-
-        return allProducts.slice(0, ${limit});
-      })()
-    `;
-
-    const products = await this.connectorClient.executeScript(script);
+    const { result: products } = await this.connectorClient.executeScript(script);
 
     this.logger.debug(
       `✅ Found ${products?.length || 0} results via direct WhatsApp search`,

@@ -42,8 +42,7 @@ export class OnboardingService {
   ) {
     // Initialize models
     const xaiApiKey = this.configService.get<string>('ai.xai.apiKey');
-    const xaiModelName =
-      this.configService.get<string>('ai.xai.model') || 'grok-3';
+    const xaiModelName = this.configService.get<string>('ai.xai.model');
     const geminiApiKey = this.configService.get<string>('ai.gemini.apiKey');
     const geminiModelName = this.configService.get<string>('ai.gemini.model');
 

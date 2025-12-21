@@ -1,5 +1,5 @@
-import { Module, forwardRef } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { Module, forwardRef } from '@nestjs/common';
 
 import { CommonModule } from '../common/common.module';
 import { ConnectorClientModule } from '../connector-client/connector-client.module';
@@ -25,7 +25,11 @@ import { WhatsAppAgentService } from './whatsapp-agent.service';
     forwardRef(() => OnboardingModule),
   ],
   controllers: [WhatsAppAgentController, AgentController],
-  providers: [WhatsAppAgentService, UserSyncService, WhatsAppAgentClientService],
+  providers: [
+    WhatsAppAgentService,
+    UserSyncService,
+    WhatsAppAgentClientService,
+  ],
   exports: [WhatsAppAgentService, UserSyncService, WhatsAppAgentClientService],
 })
 export class WhatsAppAgentModule {}

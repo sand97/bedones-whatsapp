@@ -1,4 +1,4 @@
-import { Prisma } from '@app/generated/client';
+import { Prisma } from '@prisma/client';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { MinioService } from '../minio/minio.service';
@@ -678,7 +678,10 @@ export class CatalogService {
         agentSync: agentSyncResult,
       };
     } catch (error: any) {
-      this.logger.error(`❌ Catalog sync failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `❌ Catalog sync failed: ${error.message}`,
+        error.stack,
+      );
       return {
         success: false,
         error: error.message,
@@ -730,7 +733,10 @@ export class CatalogService {
         uncategorizedProducts,
       };
     } catch (error: any) {
-      this.logger.error(`Failed to fetch catalog: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to fetch catalog: ${error.message}`,
+        error.stack,
+      );
       return {
         success: false,
         error: error.message,

@@ -1,34 +1,34 @@
 /**
- * Get all catalog collections with their products
- * Variables: LIMIT (optional, default 20)
+ * Get all WhatsApp catalog collections
+ * Returns list of collections without products
  */
 
 // @ts-nocheck
 /* eslint-disable */
 
 (async () => {
-  const limit = parseInt('{{LIMIT}}') || 20;
+  try {
+    // Get user ID
+    const userId = window.WPP.conn?.getMyUserId()?._serialized || '';
 
-  const collections = await WPP.catalog.getCollections();
-  let allProducts = [];
+    if (!userId) {
+      throw new Error('User ID not found');
+    }
 
-  for (const collection of collections) {
-    const products = await WPP.catalog.getProductsFromCollection(
-      collection.id,
-      limit,
+    // Get all collections
+    const collections = await window.WPP.catalog.getCollections(
+      userId,
+      50,
+      100,
     );
-    allProducts = allProducts.concat(
-      products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: p.price,
-        currency: p.currency,
-        availability: p.availability,
-        collectionName: collection.name,
-      })),
-    );
+
+    return collections.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      productsCount: collection.products?.length || 0,
+    }));
+  } catch (error) {
+    console.error('Failed to get collections:', error);
+    throw error;
   }
-
-  return allProducts.slice(0, limit);
 })();

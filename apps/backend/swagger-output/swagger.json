@@ -26,7 +26,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -41,7 +43,9 @@
                       "example": {},
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -60,7 +64,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -94,7 +100,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -114,7 +122,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -137,7 +147,9 @@
                       },
                       "additionalProperties": {
                         "type": "object",
-                        "required": ["status"],
+                        "required": [
+                          "status"
+                        ],
                         "properties": {
                           "status": {
                             "type": "string"
@@ -181,7 +193,9 @@
             "description": "Token invalide ou expiré"
           }
         },
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "security": [
           {
             "bearer": []
@@ -200,7 +214,9 @@
             "description": "Avatar uploadé avec succès"
           }
         },
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "security": [
           {
             "bearer": []
@@ -219,7 +235,9 @@
             "description": "Informations sauvegardées avec succès"
           }
         },
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "security": [
           {
             "bearer": []
@@ -238,7 +256,9 @@
             "description": "Catalogue sauvegardé avec succès"
           }
         },
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "security": [
           {
             "bearer": []
@@ -273,7 +293,86 @@
             "description": "Token invalide ou expiré"
           }
         },
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/catalog/force-sync": {
+      "post": {
+        "operationId": "CatalogController_forceCatalogSync",
+        "summary": "Force catalog synchronization",
+        "description": "Triggers full catalog sync: backend (via connector) + whatsapp-agent (local with embeddings). Updates lastCatalogSyncedAt.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Sync completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "success": true,
+                    "backendSync": {
+                      "success": true
+                    },
+                    "agentSync": {
+                      "success": true,
+                      "message": "Sync completed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Sync failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "success": false,
+                    "error": "WhatsApp agent not configured"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - JWT required"
+          }
+        },
+        "tags": [
+          "Catalog"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/catalog": {
+      "get": {
+        "operationId": "CatalogController_getCatalog",
+        "summary": "Récupère le catalogue de l'utilisateur",
+        "description": "Retourne toutes les collections avec leurs produits et les produits non catégorisés.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Catalogue récupéré avec succès"
+          },
+          "401": {
+            "description": "Unauthorized - JWT required"
+          }
+        },
+        "tags": [
+          "Catalog"
+        ],
         "security": [
           {
             "bearer": []
@@ -294,7 +393,9 @@
             "description": "WhatsApp agent not found for this user"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -315,7 +416,9 @@
             "description": "WhatsApp agent already exists for this user"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -356,7 +459,9 @@
             "description": "WhatsApp agent not found"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -387,7 +492,9 @@
             "description": "WhatsApp agent not found"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -435,7 +542,9 @@
             "description": "WhatsApp agent not found"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -484,7 +593,9 @@
             "description": "WhatsApp agent not found"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
@@ -515,11 +626,87 @@
             "description": "WhatsApp agent not found"
           }
         },
-        "tags": ["whatsapp-agents"],
+        "tags": [
+          "whatsapp-agents"
+        ],
         "security": [
           {
             "bearer": []
           }
+        ]
+      }
+    },
+    "/agent/can-process": {
+      "post": {
+        "operationId": "AgentController_canProcess",
+        "summary": "Check if agent can process a message",
+        "description": "Called by whatsapp-agent service to check if a message should be processed and get agent context + authorized groups",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanProcessDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Returns processing decision and agent configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanProcessResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/agent/log-operation": {
+      "post": {
+        "operationId": "AgentController_logOperation",
+        "summary": "Log an agent operation with full metrics",
+        "description": "Called by whatsapp-agent service to log conversations with tokens, tools, and duration metrics",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogOperationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Operation logged successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "agent"
         ]
       }
     },
@@ -534,7 +721,9 @@
             "description": ""
           }
         },
-        "tags": ["Onboarding"],
+        "tags": [
+          "Onboarding"
+        ],
         "security": [
           {
             "bearer": []
@@ -563,7 +752,9 @@
             "description": ""
           }
         },
-        "tags": ["Onboarding"],
+        "tags": [
+          "Onboarding"
+        ],
         "security": [
           {
             "bearer": []
@@ -582,7 +773,9 @@
             "description": ""
           }
         },
-        "tags": ["Onboarding"],
+        "tags": [
+          "Onboarding"
+        ],
         "security": [
           {
             "bearer": []
@@ -631,7 +824,9 @@
             "description": "Bad request - User is already paired"
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/verify-pairing": {
@@ -687,7 +882,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/confirm-pairing": {
@@ -746,7 +943,9 @@
             "description": "Invalid or expired pairing token / Invalid OTP code"
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/verify-otp": {
@@ -806,7 +1005,9 @@
             "description": "Invalid or expired OTP"
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/me": {
@@ -844,7 +1045,9 @@
             "description": "Unauthorized"
           }
         },
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "security": [
           {
             "bearer": []
@@ -868,7 +1071,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "security": [
           {
             "bearer": []
@@ -900,7 +1105,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "security": [
           {
             "bearer": []
@@ -934,7 +1141,9 @@
             "description": "Failed to import WhatsApp data"
           }
         },
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "security": [
           {
             "bearer": []
@@ -958,7 +1167,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "security": [
           {
             "bearer": []
@@ -979,7 +1190,9 @@
             "description": "Unauthorized"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1011,7 +1224,9 @@
             "description": "Unauthorized"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1047,7 +1262,9 @@
             "description": "Product not found"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1094,7 +1311,9 @@
             "description": "Product not found"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1128,7 +1347,9 @@
             "description": "Product not found"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1177,7 +1398,9 @@
             "description": "Product not found"
           }
         },
-        "tags": ["products"],
+        "tags": [
+          "products"
+        ],
         "security": [
           {
             "bearer": []
@@ -1201,7 +1424,9 @@
             "description": "Business information not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1233,7 +1458,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1257,7 +1484,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1289,7 +1518,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1335,7 +1566,9 @@
             "description": "Delivery location not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1369,7 +1602,9 @@
             "description": "Delivery location not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1393,7 +1628,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1425,7 +1662,9 @@
             "description": "User not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1471,7 +1710,9 @@
             "description": "Payment method not found"
           }
         },
-        "tags": ["settings"],
+        "tags": [
+          "settings"
+        ],
         "security": [
           {
             "bearer": []
@@ -1505,317 +1746,9 @@
             "description": "Payment method not found"
           }
         },
-        "tags": ["settings"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations": {
-      "get": {
-        "operationId": "ConversationsController_getAllConversations",
-        "summary": "Get all conversations for current user",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "List of conversations retrieved successfully"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      },
-      "post": {
-        "operationId": "ConversationsController_createConversation",
-        "summary": "Create a new conversation",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateConversationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Conversation created successfully"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations/{id}": {
-      "get": {
-        "operationId": "ConversationsController_getConversation",
-        "summary": "Get conversation by ID with messages",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          }
+        "tags": [
+          "settings"
         ],
-        "responses": {
-          "200": {
-            "description": "Conversation retrieved successfully"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation not found"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      },
-      "patch": {
-        "operationId": "ConversationsController_updateConversation",
-        "summary": "Update an existing conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateConversationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Conversation updated successfully"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation not found"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations/{id}/tags": {
-      "post": {
-        "operationId": "ConversationsController_addTag",
-        "summary": "Add tag to conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Tag added successfully"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation or tag not found"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations/{id}/tags/{tagId}": {
-      "delete": {
-        "operationId": "ConversationsController_removeTag",
-        "summary": "Remove tag from conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "tagId",
-            "required": true,
-            "in": "path",
-            "description": "Tag ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Tag removed successfully"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation or tag not found"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations/{id}/group": {
-      "patch": {
-        "operationId": "ConversationsController_setGroup",
-        "summary": "Set group for conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Group set successfully"
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation or group not found"
-          }
-        },
-        "tags": ["conversations"],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/conversations/{id}/messages": {
-      "get": {
-        "operationId": "ConversationsController_getMessages",
-        "summary": "Get messages for conversation",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Conversation ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "description": "Number of messages to retrieve",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Messages retrieved successfully"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Conversation not found"
-          }
-        },
-        "tags": ["conversations"],
         "security": [
           {
             "bearer": []
@@ -1834,7 +1767,12 @@
             "in": "query",
             "description": "Filter by order status",
             "schema": {
-              "enum": ["NEGOTIATION", "CONFIRMED", "DELIVERED", "CANCELLED"],
+              "enum": [
+                "NEGOTIATION",
+                "CONFIRMED",
+                "DELIVERED",
+                "CANCELLED"
+              ],
               "type": "string"
             }
           }
@@ -1847,7 +1785,9 @@
             "description": "Unauthorized"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -1879,7 +1819,9 @@
             "description": "Unauthorized"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -1916,7 +1858,9 @@
             "description": "Order not found"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -1964,7 +1908,9 @@
             "description": "Order not found"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -2014,7 +1960,9 @@
             "description": "Order not found"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -2051,7 +1999,9 @@
             "description": "Order not found"
           }
         },
-        "tags": ["orders"],
+        "tags": [
+          "orders"
+        ],
         "security": [
           {
             "bearer": []
@@ -2080,7 +2030,9 @@
             "description": "Connexion traitée avec succès"
           }
         },
-        "tags": ["webhooks"]
+        "tags": [
+          "webhooks"
+        ]
       }
     }
   },
@@ -2106,7 +2058,13 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["PROVISIONING", "RUNNING", "STOPPED", "ERROR", "DELETED"],
+            "enum": [
+              "PROVISIONING",
+              "RUNNING",
+              "STOPPED",
+              "ERROR",
+              "DELETED"
+            ],
             "description": "The new status of the agent",
             "example": "RUNNING"
           },
@@ -2122,7 +2080,9 @@
             "example": "CONNECTED"
           }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "ValidateContactDto": {
         "type": "object",
@@ -2133,14 +2093,19 @@
             "example": "+237612345678"
           }
         },
-        "required": ["phoneNumber"]
+        "required": [
+          "phoneNumber"
+        ]
       },
       "UpdateAgentConfigDto": {
         "type": "object",
         "properties": {
           "testPhoneNumbers": {
             "description": "Phone numbers for test mode (AI only responds to these)",
-            "example": ["+237612345678", "+237698765432"],
+            "example": [
+              "+237612345678",
+              "+237698765432"
+            ],
             "type": "array",
             "items": {
               "type": "string"
@@ -2148,7 +2113,10 @@
           },
           "testLabels": {
             "description": "Label names for test mode (AI only responds to contacts with these labels)",
-            "example": ["Test", "VIP"],
+            "example": [
+              "Test",
+              "VIP"
+            ],
             "type": "array",
             "items": {
               "type": "string"
@@ -2156,7 +2124,10 @@
           },
           "labelsToNotReply": {
             "description": "Label names to exclude in production mode (AI will not respond to contacts with these labels)",
-            "example": ["DoNotReply", "Blocked"],
+            "example": [
+              "DoNotReply",
+              "Blocked"
+            ],
             "type": "array",
             "items": {
               "type": "string"
@@ -2168,6 +2139,218 @@
             "example": true
           }
         }
+      },
+      "CanProcessDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "WhatsApp chat ID",
+            "example": "237657888690@c.us"
+          },
+          "message": {
+            "type": "string",
+            "description": "User message",
+            "example": "Bonjour, je voudrais commander un produit"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message timestamp",
+            "example": "2024-01-15T10:30:00.000Z"
+          }
+        },
+        "required": [
+          "chatId",
+          "message",
+          "timestamp"
+        ]
+      },
+      "AuthorizedGroupDto": {
+        "type": "object",
+        "properties": {
+          "whatsappGroupId": {
+            "type": "string",
+            "description": "WhatsApp group ID",
+            "example": "12345678@g.us"
+          },
+          "usage": {
+            "type": "string",
+            "description": "Usage description of the group",
+            "example": "Support client"
+          }
+        },
+        "required": [
+          "whatsappGroupId",
+          "usage"
+        ]
+      },
+      "CanProcessResponseDto": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "description": "Whether the agent can process this message",
+            "example": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason if not allowed",
+            "example": "Agent not configured"
+          },
+          "agentContext": {
+            "type": "string",
+            "description": "Agent context (business instructions)",
+            "example": "Vous êtes un assistant commercial..."
+          },
+          "managementGroupId": {
+            "type": "string",
+            "description": "Management group ID for forwarding",
+            "example": "12345678@g.us"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID",
+            "example": "clx123456"
+          },
+          "authorizedGroups": {
+            "description": "List of authorized groups",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizedGroupDto"
+            }
+          }
+        },
+        "required": [
+          "allowed"
+        ]
+      },
+      "ToolExecutionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tool name"
+          },
+          "args": {
+            "type": "object",
+            "description": "Tool arguments"
+          },
+          "result": {
+            "type": "object",
+            "description": "Tool result"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if tool failed"
+          },
+          "durationMs": {
+            "type": "number",
+            "description": "Tool execution duration in ms"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ]
+      },
+      "LogOperationDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "WhatsApp chat ID",
+            "example": "237657888690@c.us"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID",
+            "example": "clx123456"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID",
+            "example": "clx789012"
+          },
+          "userMessage": {
+            "type": "string",
+            "description": "User message",
+            "example": "Bonjour, je voudrais commander un produit"
+          },
+          "agentResponse": {
+            "type": "string",
+            "description": "Agent response",
+            "example": "Bonjour ! Je vais vous aider avec votre commande."
+          },
+          "systemPrompt": {
+            "type": "string",
+            "description": "System prompt used",
+            "example": "Vous êtes un assistant commercial..."
+          },
+          "totalTokens": {
+            "type": "number",
+            "description": "Total tokens used",
+            "example": 150
+          },
+          "promptTokens": {
+            "type": "number",
+            "description": "Prompt tokens",
+            "example": 100
+          },
+          "completionTokens": {
+            "type": "number",
+            "description": "Completion tokens",
+            "example": 50
+          },
+          "durationMs": {
+            "type": "number",
+            "description": "Operation duration in milliseconds",
+            "example": 2500
+          },
+          "modelName": {
+            "type": "string",
+            "description": "Model name used",
+            "example": "grok-beta"
+          },
+          "toolsUsed": {
+            "description": "Tools used during execution",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolExecutionDto"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "Operation status",
+            "example": "success",
+            "enum": [
+              "success",
+              "error",
+              "rate_limited"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Additional metadata"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Operation timestamp",
+            "example": "2024-01-15T10:30:00.000Z"
+          }
+        },
+        "required": [
+          "chatId",
+          "userMessage",
+          "agentResponse",
+          "systemPrompt",
+          "durationMs",
+          "status",
+          "timestamp"
+        ]
       },
       "SendMessageDto": {
         "type": "object",
@@ -2182,7 +2365,9 @@
             "example": "+15551234567"
           }
         },
-        "required": ["phoneNumber"]
+        "required": [
+          "phoneNumber"
+        ]
       },
       "VerifyPairingDto": {
         "type": "object",
@@ -2201,7 +2386,10 @@
             }
           }
         },
-        "required": ["phoneNumber", "whatsappProfile"]
+        "required": [
+          "phoneNumber",
+          "whatsappProfile"
+        ]
       },
       "ConfirmPairingDto": {
         "type": "object",
@@ -2217,7 +2405,9 @@
             "example": "123456"
           }
         },
-        "required": ["pairingToken"]
+        "required": [
+          "pairingToken"
+        ]
       },
       "VerifyOtpDto": {
         "type": "object",
@@ -2233,7 +2423,10 @@
             "example": "123456"
           }
         },
-        "required": ["phoneNumber", "code"]
+        "required": [
+          "phoneNumber",
+          "code"
+        ]
       },
       "UpdateUserDto": {
         "type": "object",
@@ -2264,7 +2457,11 @@
             "description": "Number of contacts imported"
           }
         },
-        "required": ["businessInfo", "productsImported", "contactsImported"]
+        "required": [
+          "businessInfo",
+          "productsImported",
+          "contactsImported"
+        ]
       },
       "CreateProductDto": {
         "type": "object",
@@ -2307,7 +2504,9 @@
             }
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
       },
       "UpdateProductDto": {
         "type": "object",
@@ -2370,7 +2569,11 @@
             "example": true
           }
         },
-        "required": ["key", "value", "isVisible"]
+        "required": [
+          "key",
+          "value",
+          "isVisible"
+        ]
       },
       "UpdateBusinessInfoDto": {
         "type": "object",
@@ -2420,7 +2623,10 @@
           },
           "phoneNumbers": {
             "description": "Additional phone numbers",
-            "example": ["+237699999999", "+237600000000"],
+            "example": [
+              "+237699999999",
+              "+237600000000"
+            ],
             "type": "array",
             "items": {
               "type": "string"
@@ -2452,7 +2658,12 @@
             "example": 5000
           }
         },
-        "required": ["country", "city", "name", "price"]
+        "required": [
+          "country",
+          "city",
+          "name",
+          "price"
+        ]
       },
       "UpdateDeliveryLocationDto": {
         "type": "object",
@@ -2485,7 +2696,10 @@
           "type": {
             "type": "string",
             "description": "Payment method type",
-            "enum": ["CASH", "MOBILE_MONEY"],
+            "enum": [
+              "CASH",
+              "MOBILE_MONEY"
+            ],
             "example": "MOBILE_MONEY"
           },
           "mobileMoneyNumber": {
@@ -2504,7 +2718,9 @@
             "example": true
           }
         },
-        "required": ["type"]
+        "required": [
+          "type"
+        ]
       },
       "UpdatePaymentMethodDto": {
         "type": "object",
@@ -2512,7 +2728,10 @@
           "type": {
             "type": "string",
             "description": "Payment method type",
-            "enum": ["CASH", "MOBILE_MONEY"],
+            "enum": [
+              "CASH",
+              "MOBILE_MONEY"
+            ],
             "example": "MOBILE_MONEY"
           },
           "mobileMoneyNumber": {
@@ -2532,49 +2751,13 @@
           }
         }
       },
-      "CreateConversationDto": {
+      "CreateOrderDto": {
         "type": "object",
         "properties": {
           "whatsappChatId": {
             "type": "string",
-            "description": "WhatsApp chat ID",
+            "description": "WhatsApp Chat ID (from WhatsApp, not our DB)",
             "example": "237612345678@c.us"
-          },
-          "contactName": {
-            "type": "string",
-            "description": "Contact name",
-            "example": "John Doe"
-          },
-          "contactNumber": {
-            "type": "string",
-            "description": "Contact phone number",
-            "example": "237612345678"
-          }
-        },
-        "required": ["whatsappChatId", "contactNumber"]
-      },
-      "UpdateConversationDto": {
-        "type": "object",
-        "properties": {
-          "contactName": {
-            "type": "string",
-            "description": "Contact name",
-            "example": "John Doe"
-          },
-          "requiresManualResponse": {
-            "type": "boolean",
-            "description": "Whether the conversation requires manual response",
-            "example": false
-          }
-        }
-      },
-      "CreateOrderDto": {
-        "type": "object",
-        "properties": {
-          "conversationId": {
-            "type": "string",
-            "description": "Conversation ID",
-            "example": "clxxx123456789"
           },
           "customerName": {
             "type": "string",
@@ -2620,7 +2803,7 @@
           }
         },
         "required": [
-          "conversationId",
+          "whatsappChatId",
           "customerName",
           "customerPhone",
           "products",
@@ -2675,7 +2858,12 @@
           "status": {
             "type": "string",
             "description": "Order status",
-            "enum": ["NEGOTIATION", "CONFIRMED", "DELIVERED", "CANCELLED"]
+            "enum": [
+              "NEGOTIATION",
+              "CONFIRMED",
+              "DELIVERED",
+              "CANCELLED"
+            ]
           }
         }
       },
@@ -2685,11 +2873,18 @@
           "status": {
             "type": "string",
             "description": "Order status",
-            "enum": ["NEGOTIATION", "CONFIRMED", "DELIVERED", "CANCELLED"],
+            "enum": [
+              "NEGOTIATION",
+              "CONFIRMED",
+              "DELIVERED",
+              "CANCELLED"
+            ],
             "example": "CONFIRMED"
           }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "WhatsAppConnectedDto": {
         "type": "object",

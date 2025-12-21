@@ -40,7 +40,7 @@ export class ProductsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getAllProducts(@Request() req: any) {
-    return this.productsService.getAllForUser(req.user.userId);
+    return this.productsService.getAllForUser(req.user.id);
   }
 
   @Get(':id')
@@ -53,7 +53,7 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   async getProduct(@Param('id') id: string, @Request() req: any) {
-    return this.productsService.getById(id, req.user.userId);
+    return this.productsService.getById(id, req.user.id);
   }
 
   @Post()
@@ -69,7 +69,7 @@ export class ProductsController {
     @Body() createProductDto: CreateProductDto,
     @Request() req: any,
   ) {
-    return this.productsService.create(req.user.userId, createProductDto);
+    return this.productsService.create(req.user.id, createProductDto);
   }
 
   @Patch(':id')
@@ -87,7 +87,7 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @Request() req: any,
   ) {
-    return this.productsService.update(id, req.user.userId, updateProductDto);
+    return this.productsService.update(id, req.user.id, updateProductDto);
   }
 
   @Delete(':id')
@@ -101,7 +101,7 @@ export class ProductsController {
   @ApiResponse({ status: 404, description: 'Product not found' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteProduct(@Param('id') id: string, @Request() req: any) {
-    await this.productsService.delete(id, req.user.userId);
+    await this.productsService.delete(id, req.user.id);
   }
 
   @Post(':id/metadata')
@@ -122,7 +122,7 @@ export class ProductsController {
   ) {
     return this.productsService.addMetadata(
       id,
-      req.user.userId,
+      req.user.id,
       addMetadataDto.key,
       addMetadataDto.value,
       addMetadataDto.isVisible,

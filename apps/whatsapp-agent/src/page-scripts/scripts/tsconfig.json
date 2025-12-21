@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // Ne pas compiler ces fichiers
+    "noEmit": true,
+
+    // Configuration pour le navigateur
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "node",
+
+    // Options strictes pour la qualité du code
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Types
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types", "./"]
+  },
+  "include": ["**/*.ts", "global.d.ts", "**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

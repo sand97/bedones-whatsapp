@@ -43,7 +43,7 @@ export class SettingsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Business information not found' })
   async getBusinessInfo(@Request() req: any) {
-    return this.settingsService.getBusinessInfo(req.user.userId);
+    return this.settingsService.getBusinessInfo(req.user.id);
   }
 
   @Patch('business')
@@ -59,7 +59,7 @@ export class SettingsController {
     @Body() updateBusinessInfoDto: UpdateBusinessInfoDto,
   ) {
     return this.settingsService.updateBusinessInfo(
-      req.user.userId,
+      req.user.id,
       updateBusinessInfoDto,
     );
   }
@@ -76,7 +76,7 @@ export class SettingsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getDeliveryLocations(@Request() req: any) {
-    return this.settingsService.getDeliveryLocations(req.user.userId);
+    return this.settingsService.getDeliveryLocations(req.user.id);
   }
 
   @Post('delivery-locations')
@@ -92,7 +92,7 @@ export class SettingsController {
     @Body() createDeliveryLocationDto: CreateDeliveryLocationDto,
   ) {
     return this.settingsService.createDeliveryLocation(
-      req.user.userId,
+      req.user.id,
       createDeliveryLocationDto,
     );
   }
@@ -113,7 +113,7 @@ export class SettingsController {
   ) {
     return this.settingsService.updateDeliveryLocation(
       id,
-      req.user.userId,
+      req.user.id,
       updateDeliveryLocationDto,
     );
   }
@@ -128,7 +128,7 @@ export class SettingsController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Delivery location not found' })
   async deleteDeliveryLocation(@Request() req: any, @Param('id') id: string) {
-    return this.settingsService.deleteDeliveryLocation(id, req.user.userId);
+    return this.settingsService.deleteDeliveryLocation(id, req.user.id);
   }
 
   // ==================== PAYMENT METHODS ====================
@@ -143,7 +143,7 @@ export class SettingsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getPaymentMethods(@Request() req: any) {
-    return this.settingsService.getPaymentMethods(req.user.userId);
+    return this.settingsService.getPaymentMethods(req.user.id);
   }
 
   @Post('payment-methods')
@@ -159,7 +159,7 @@ export class SettingsController {
     @Body() createPaymentMethodDto: CreatePaymentMethodDto,
   ) {
     return this.settingsService.createPaymentMethod(
-      req.user.userId,
+      req.user.id,
       createPaymentMethodDto,
     );
   }
@@ -180,7 +180,7 @@ export class SettingsController {
   ) {
     return this.settingsService.updatePaymentMethod(
       id,
-      req.user.userId,
+      req.user.id,
       updatePaymentMethodDto,
     );
   }
@@ -195,6 +195,6 @@ export class SettingsController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Payment method not found' })
   async deletePaymentMethod(@Request() req: any, @Param('id') id: string) {
-    return this.settingsService.deletePaymentMethod(id, req.user.userId);
+    return this.settingsService.deletePaymentMethod(id, req.user.id);
   }
 }

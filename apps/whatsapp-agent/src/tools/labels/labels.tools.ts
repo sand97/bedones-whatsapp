@@ -22,6 +22,7 @@ export class LabelsTools {
     return [
       this.createGetContactLabelsTool(),
       this.createAddLabelToContactTool(),
+      this.createRemoveLabelFromContactTool(),
     ];
   }
 
@@ -39,7 +40,7 @@ export class LabelsTools {
             },
           );
 
-          const labels = await this.connectorClient.executeScript(script);
+          const { result: labels } = await this.connectorClient.executeScript(script);
 
           return JSON.stringify({
             success: true,
@@ -101,6 +102,47 @@ export class LabelsTools {
             .string()
             .describe('ID du contact WhatsApp (format: 237xxx@c.us)'),
           labelId: z.string().describe('ID du label à ajouter'),
+        }),
+      },
+    );
+  }
+
+  /**
+   * Remove a label from a contact
+   */
+  private createRemoveLabelFromContactTool() {
+    return tool(
+      async ({ contactId, labelId }, config?: any) => {
+        try {
+          const script = this.scriptService.getScript(
+            'labels/removeLabelFromContact',
+            {
+              CONTACT_ID: contactId,
+              LABEL_ID: labelId,
+            },
+          );
+
+          await this.connectorClient.executeScript(script);
+
+          return JSON.stringify({
+            success: true,
+            message: 'Label retiré avec succès',
+          });
+        } catch (error: any) {
+          return JSON.stringify({
+            success: false,
+            error: error.message,
+          });
+        }
+      },
+      {
+        name: 'remove_label_from_contact',
+        description: 'Retirer un label (tag) d\'un contact WhatsApp',
+        schema: z.object({
+          contactId: z
+            .string()
+            .describe('ID du contact WhatsApp (format: 237xxx@c.us)'),
+          labelId: z.string().describe('ID du label à retirer'),
         }),
       },
     );

@@ -1,4 +1,4 @@
-import { Product, ProductMetadata } from '@app/generated/client';
+import { Product, ProductMetadata } from '@prisma/client';
 import {
   Injectable,
   NotFoundException,

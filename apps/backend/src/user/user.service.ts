@@ -1,4 +1,4 @@
-import { User } from '@app/generated/client';
+import { User } from '@prisma/client';
 import {
   Injectable,
   NotFoundException,
