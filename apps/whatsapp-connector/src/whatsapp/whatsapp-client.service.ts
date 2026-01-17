@@ -19,12 +19,16 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   private client: Client;
   private isReady = false;
   private qrCode: string | null = null;
+  private connectedUserId: string | null = null;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly webhookService: WebhookService,
     private readonly httpService: HttpService,
-  ) {}
+  ) {
+    // Set reference in webhook service to avoid circular dependency
+    this.webhookService.setWhatsAppClientService(this);
+  }
 
   async onModuleInit() {
     await this.initialize();
@@ -177,6 +181,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
         );
         this.logger.log('isAuthenticated', isAuthenticated);
 
+        // Store the connected user ID
+        this.connectedUserId = id;
+        this.logger.log(`Connected user ID: ${id}`);
+
         // Notify backend of successful pairing
         await this.notifyBackendConnected(id);
       } catch (error) {
@@ -194,6 +202,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     // Disconnected - traitement spécial pour le flag isReady
     this.client.on('disconnected', (...args) => {
       this.isReady = false;
+      this.connectedUserId = null;
       this.logger.warn('WhatsApp client disconnected:', args);
       this.webhookService.sendEvent('disconnected', args);
     });
@@ -205,9 +214,97 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Messages
-    this.client.on('message', (...args) => {
+    this.client.on('message', async (...args) => {
       const [message] = args;
-      this.logger.debug(`Message received from ${message?.from || 'unknown'}`);
+
+      // Enrich message with proper chatId and contact labels
+      try {
+        // Get the real chatId (not @lid format)
+        // For individual chats, use the contact ID
+        // For group chats, use the chat ID
+        const chat = await message.getChat();
+        const contactId = (await message?.getContact())?.id?._serialized;
+
+        // Add contactId to message object (generic way, like labels)
+        // This ensures all events have access to the real contact ID
+        (message as any).contactId = contactId;
+
+        this.logger.debug(
+          `Message from: ${message.from} | Real contactId: ${contactId}`,
+        );
+
+        // Get contact labels
+        if (contactId && this.client.pupPage) {
+          this.logger.debug(`Fetching labels for contact: ${contactId}`);
+
+          // Use WPP API in browser context (the method that works)
+          // const labels = await this.client.pupPage.evaluate(async (chatId) => {
+          //   try {
+          //     // Get the contact object which contains label IDs
+          //     const contact = await window.WPP.contact.get(chatId);
+          //     console.log('contact', contact);
+          //
+          //     if (!contact) {
+          //       return [];
+          //     }
+          //
+          //     const contactLabelIds = contact.attributes.labels || [];
+          //
+          //     console.log('contactLabelIds', contactLabelIds);
+          //
+          //     if (!contactLabelIds || contactLabelIds.length === 0) {
+          //       return [];
+          //     }
+          //
+          //     // Get all available labels
+          //     const allLabels = await window.WPP.labels.getAllLabels();
+          //
+          //     // Filter to get only the labels assigned to this contact
+          //     const contactLabels = allLabels.filter((label: any) =>
+          //       contactLabelIds.includes(label.id),
+          //     );
+          //
+          //     console.log('contactLabels', contactLabels);
+          //
+          //     // Return the label objects
+          //     return contactLabels.map((l: any) => ({
+          //       id: l.id,
+          //       name: l.name,
+          //       hexColor: l.hexColor,
+          //     }));
+          //   } catch (err) {
+          //     console.error(`Error fetching labels for ${chatId}:`, err);
+          //     return [];
+          //   }
+          // }, contactId);
+          //
+          // // Enrich the message object with labels
+          const labels = await this.client.getChatLabels(contactId);
+          if (labels && labels.length > 0) {
+            (message as any).contactLabels = labels;
+            this.logger.log(
+              `✅ Contact ${contactId} has ${labels.length} label(s): ${labels.map((l) => l.name).join(', ')}`,
+            );
+          } else {
+            this.logger.debug(`Contact ${contactId} has no labels`);
+          }
+        } else {
+          if (!contactId) {
+            this.logger.warn('No contactId found in message');
+          }
+          if (!this.client.pupPage) {
+            this.logger.warn('pupPage not available');
+          }
+        }
+      } catch (error) {
+        this.logger.error(
+          'Failed to get contact labels:',
+          error.message,
+          error.stack,
+        );
+        // Continue even if label retrieval fails
+      }
+
       this.webhookService.sendEvent('message', args);
     });
 
@@ -610,5 +707,12 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.error('Failed to notify of connection:', error.message);
       // Don't throw - this is not critical
     }
+  }
+
+  /**
+   * Get the connected user ID (WhatsApp account ID)
+   */
+  getConnectedUserId(): string | null {
+    return this.connectedUserId;
   }
 }

@@ -3,15 +3,15 @@
  * Executed in WhatsApp Web context
  *
  * Variables:
- * - TO: Recipient chat ID (can be phone number or full ID with @c.us)
+ * - TO: Recipient phone number (international format) or chat ID
  * - MESSAGE: Text content to send
  * - USE_TYPING: Whether to simulate typing (default: true)
  *
  * Features:
+ * - Verifies contact exists using queryExists
  * - Natural typing delay based on message length (80 WPM)
  * - Shows "typing..." indicator before sending
  * - Delay capped between 500ms and 5000ms
- * - Skip contact verification if TO contains '@'
  */
 
 // @ts-nocheck
@@ -31,11 +31,25 @@
       throw new Error('MESSAGE is required');
     }
 
-    // Determine if TO is already a full contact ID
-    const isContactId = to.includes('@');
-    const chatId = isContactId ? to : `${to}@c.us`;
+    console.log(`Sending text message to ${to}`);
 
-    console.log(`Sending text message to ${chatId}`);
+    // Determine if TO is already a full contact ID or a phone number
+    let chatId;
+    if (to.includes('@')) {
+      // Already a chat ID (e.g., "123456789@c.us")
+      chatId = to;
+    } else {
+      // Phone number - verify it exists and get the proper WID
+      console.log(`Verifying contact exists: ${to}`);
+      const contact = await window.WPP.contact.queryExists(to);
+
+      if (!contact) {
+        throw new Error(`Contact not found: ${to}`);
+      }
+
+      chatId = contact.wid._serialized;
+      console.log(`Contact verified: ${chatId}`);
+    }
 
     // Simulate natural typing if enabled
     if (useTyping) {

@@ -220,7 +220,12 @@ export class AgentController {
     type: CanProcessResponseDto,
   })
   async canProcess(@Body() dto: CanProcessDto): Promise<CanProcessResponseDto> {
-    return this.whatsappAgentService.canProcess(dto.chatId, dto.message);
+    return this.whatsappAgentService.canProcess(
+      dto.userId,
+      dto.chatId,
+      dto.message,
+      dto.contactLabels,
+    );
   }
 
   @Post('log-operation')

@@ -14,9 +14,23 @@
       throw new Error('CONTACT_ID is required');
     }
 
-    const labels = await window.WPP.labels.getChatLabels(contactId);
+    // Get the contact object which contains label IDs
+    const contact = await window.WPP.contact.get(contactId);
+    const contactLabelIds = contact.labels || [];
 
-    return labels.map((l) => ({
+    if (!contactLabelIds || contactLabelIds.length === 0) {
+      return [];
+    }
+
+    // Get all available labels
+    const allLabels = await window.WPP.labels.getAllLabels();
+
+    // Filter to get only the labels assigned to this contact
+    const contactLabels = allLabels.filter((label) =>
+      contactLabelIds.includes(label.id),
+    );
+
+    return contactLabels.map((l) => ({
       id: l.id,
       name: l.name,
       hexColor: l.hexColor,

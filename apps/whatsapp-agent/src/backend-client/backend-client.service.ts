@@ -105,18 +105,26 @@ export class BackendClientService {
   /**
    * Check if the agent can process a message
    * Returns agent configuration and authorized groups
+   * @param userId - ID of the connected WhatsApp account (e.g., "237657888690@c.us")
+   * @param chatId - ID of the chat where the message was received
+   * @param message - The message content
+   * @param contactLabels - Labels of the contact sending the message
    */
   async canProcess(
+    userId: string,
     chatId: string,
     message: string,
+    contactLabels?: Array<{ id: string; name: string; hexColor: string }>,
   ): Promise<CanProcessResponse> {
     const url = `${this.baseUrl}/agent/can-process`;
-    this.logger.debug(`POST ${url} for chatId: ${chatId}`);
+    this.logger.debug(`POST ${url} for userId: ${userId}, chatId: ${chatId}`);
 
     try {
       const requestData: CanProcessRequest = {
+        userId,
         chatId,
         message,
+        contactLabels,
         timestamp: new Date().toISOString(),
       };
 
@@ -128,7 +136,7 @@ export class BackendClientService {
       return response.data;
     } catch (error: any) {
       this.logger.error(
-        `Error checking can-process for ${chatId}: ${error.message}`,
+        `Error checking can-process for userId ${userId}, chatId ${chatId}: ${error.message}`,
       );
       throw error;
     }

@@ -1,7 +1,7 @@
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { tool } from '@langchain/core/tools';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 
 /**
@@ -10,6 +10,8 @@ import { z } from 'zod';
  */
 @Injectable()
 export class ChatTools {
+  private readonly logger = new Logger(ChatTools.name);
+
   constructor(
     private readonly connectorClient: ConnectorClientService,
     private readonly scriptService: PageScriptService,
@@ -20,7 +22,8 @@ export class ChatTools {
    */
   createTools() {
     return [
-      this.createSendTextMessageTool(),
+      this.createReplyToMessageTool(), // SECURED: Reply to current conversation only
+      this.createSendToAdminGroupTool(), // SECURED: Send to admin group only
       this.createSendReactionTool(),
       this.createSendLocationTool(),
       this.createEditMessageTool(),
@@ -34,14 +37,31 @@ export class ChatTools {
   }
 
   /**
-   * Send text message with natural typing simulation
+   * Reply to current conversation (SECURED - cannot send to arbitrary contacts)
    */
-  private createSendTextMessageTool() {
+  private createReplyToMessageTool() {
     return tool(
-      async ({ to, message, useTyping }, config?: any) => {
+      async ({ message, useTyping }, config?: any) => {
         try {
+          // SECURITY: Only send to the current conversation chatId from runtime context
+          console.log(
+            'Full config structure:',
+            JSON.stringify(config, null, 2),
+          );
+          const chatId = config?.configurable?.context?.chatId;
+          console.log('send message', chatId);
+
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
+          this.logger.log(`Replying to conversation: ${chatId}`);
+
           const script = this.scriptService.getScript('chat/sendTextMessage', {
-            TO: to,
+            TO: chatId,
             MESSAGE: message,
             USE_TYPING: String(useTyping !== false),
           });
@@ -57,16 +77,11 @@ export class ChatTools {
         }
       },
       {
-        name: 'send_text_message',
+        name: 'reply_to_message',
         description:
-          'Envoyer un message texte avec simulation de frappe naturelle. L\'agent montrera "en train d\'écrire..." pendant un délai calculé (80 WPM). Parfait pour des conversations naturelles.',
+          "Répondre au message de l'utilisateur dans la conversation actuelle. L'agent montrera \"en train d'écrire...\" pendant un délai naturel (80 WPM). Utilisez ceci pour TOUTES les réponses aux utilisateurs.",
         schema: z.object({
-          to: z
-            .string()
-            .describe(
-              'ID du destinataire (numéro ou ID complet avec @c.us). Ex: "33765538022" ou "33765538022@c.us"',
-            ),
-          message: z.string().describe('Contenu du message texte'),
+          message: z.string().describe('Contenu du message à envoyer'),
           useTyping: z
             .boolean()
             .optional()
@@ -74,6 +89,65 @@ export class ChatTools {
             .describe(
               'Activer la simulation de frappe (défaut: true). Désactiver pour messages urgents.',
             ),
+        }),
+      },
+    );
+  }
+
+  /**
+   * Send message to admin/management group (SECURED - only to configured group)
+   */
+  private createSendToAdminGroupTool() {
+    return tool(
+      async ({ message, useTyping }, config?: any) => {
+        try {
+          // SECURITY: Only send to the configured managementGroupId from runtime context
+          const managementGroupId =
+            config?.configurable?.context?.managementGroupId;
+
+          if (!managementGroupId) {
+            return JSON.stringify({
+              success: false,
+              error:
+                'No management group configured. Please configure a management group first.',
+            });
+          }
+
+          this.logger.log(
+            `Forwarding message to management group: ${managementGroupId}`,
+          );
+
+          const script = this.scriptService.getScript('chat/sendTextMessage', {
+            TO: managementGroupId,
+            MESSAGE: message,
+            USE_TYPING: String(useTyping !== false),
+          });
+
+          const result = await this.connectorClient.executeScript(script);
+
+          return JSON.stringify(result);
+        } catch (error: any) {
+          return JSON.stringify({
+            success: false,
+            error: error.message,
+          });
+        }
+      },
+      {
+        name: 'send_to_admin_group',
+        description:
+          'Envoyer un message au groupe de gestion/admin. À utiliser UNIQUEMENT pour transférer des demandes qui nécessitent une intervention humaine (problèmes complexes, escalade, etc.). Ne PAS utiliser pour les réponses normales aux utilisateurs.',
+        schema: z.object({
+          message: z
+            .string()
+            .describe(
+              "Message à transférer au groupe admin. Inclure le contexte et la raison du transfert. Ex: 'Client demande une annulation urgente de réservation #123. Besoin d\\'intervention manuelle.'",
+            ),
+          useTyping: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe('Activer la simulation de frappe (défaut: false)'),
         }),
       },
     );

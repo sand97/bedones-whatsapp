@@ -2269,18 +2269,52 @@
           }
         }
       },
+      "ContactLabelDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Label ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Label name"
+          },
+          "hexColor": {
+            "type": "string",
+            "description": "Label hex color"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hexColor"
+        ]
+      },
       "CanProcessDto": {
         "type": "object",
         "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Connected WhatsApp account ID (owner of the WhatsApp instance)",
+            "example": "237657888690@c.us"
+          },
           "chatId": {
             "type": "string",
-            "description": "WhatsApp chat ID",
+            "description": "WhatsApp chat ID (where the message was received)",
             "example": "237657888690@c.us"
           },
           "message": {
             "type": "string",
             "description": "User message",
             "example": "Bonjour, je voudrais commander un produit"
+          },
+          "contactLabels": {
+            "description": "Labels of the contact sending the message",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactLabelDto"
+            }
           },
           "timestamp": {
             "type": "string",
@@ -2289,6 +2323,7 @@
           }
         },
         "required": [
+          "userId",
           "chatId",
           "message",
           "timestamp"

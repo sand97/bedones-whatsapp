@@ -2,12 +2,13 @@ import { z } from 'zod';
 
 /**
  * Schema Zod pour l'objet user dans le contexte
+ * Matches AuthenticatedUser type from auth module
  */
 export const userSchema = z.object({
   id: z.string(),
   phoneNumber: z.string(),
   status: z.string(),
-  createdAt: z.date(),
+  // Note: createdAt is not available in AuthenticatedUser, removed to fix validation
 });
 
 /**

@@ -292,4 +292,19 @@ export class OnboardingGateway
       .emit('onboarding:thinking', { isThinking });
     this.logger.debug(`Emitted thinking to user ${userId}: ${isThinking}`);
   }
+
+  /**
+   * Emit error to user when AI processing fails
+   */
+  emitError(
+    userId: string,
+    data: {
+      message: string;
+      type: 'ai_failure' | 'system_error';
+      retryable: boolean;
+    },
+  ) {
+    this.server.to(`user:${userId}`).emit('onboarding:error', data);
+    this.logger.error(`Emitted error to user ${userId}: ${data.message}`);
+  }
 }

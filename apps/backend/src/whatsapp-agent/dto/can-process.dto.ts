@@ -1,9 +1,28 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsISO8601 } from 'class-validator';
+import { IsString, IsISO8601, IsOptional, IsArray } from 'class-validator';
+
+export class ContactLabelDto {
+  @ApiProperty({ description: 'Label ID' })
+  id: string;
+
+  @ApiProperty({ description: 'Label name' })
+  name: string;
+
+  @ApiProperty({ description: 'Label hex color' })
+  hexColor: string;
+}
 
 export class CanProcessDto {
   @ApiProperty({
-    description: 'WhatsApp chat ID',
+    description:
+      'Connected WhatsApp account ID (owner of the WhatsApp instance)',
+    example: '237657888690@c.us',
+  })
+  @IsString()
+  userId: string;
+
+  @ApiProperty({
+    description: 'WhatsApp chat ID (where the message was received)',
     example: '237657888690@c.us',
   })
   @IsString()
@@ -15,6 +34,15 @@ export class CanProcessDto {
   })
   @IsString()
   message: string;
+
+  @ApiProperty({
+    description: 'Labels of the contact sending the message',
+    type: [ContactLabelDto],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  contactLabels?: ContactLabelDto[];
 
   @ApiProperty({
     description: 'Message timestamp',

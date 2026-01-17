@@ -11,12 +11,20 @@ import { BaseWebhookPayload } from './types/webhook-events.types';
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
   private webhookUrls: string[] = [];
+  private whatsappClientService: any = null; // Will be set after initialization to avoid circular dependency
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
   ) {
     this.loadWebhookUrls();
+  }
+
+  /**
+   * Set WhatsAppClientService reference (called after module initialization to avoid circular dependency)
+   */
+  setWhatsAppClientService(service: any) {
+    this.whatsappClientService = service;
   }
 
   private loadWebhookUrls() {
@@ -50,10 +58,14 @@ export class WebhookService {
       return;
     }
 
+    // Get the connected user ID if available
+    const userId = this.whatsappClientService?.getConnectedUserId?.() || null;
+
     const payload: BaseWebhookPayload<T> = {
       event: eventName,
       timestamp: new Date().toISOString(),
       data,
+      userId: userId || undefined,
     };
 
     this.logger.debug(

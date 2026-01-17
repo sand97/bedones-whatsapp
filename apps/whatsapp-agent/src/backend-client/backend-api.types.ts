@@ -8,9 +8,17 @@ export interface AuthorizedGroup {
   usage: string; // Usage du groupe (ex: "Support client", "Ventes")
 }
 
+export interface ContactLabel {
+  id: string;
+  name: string;
+  hexColor: string;
+}
+
 export interface CanProcessRequest {
-  chatId: string;
+  userId: string; // ID of the connected WhatsApp account (e.g., "237657888690@c.us")
+  chatId: string; // ID of the chat where the message was received
   message: string;
+  contactLabels?: ContactLabel[]; // Labels of the contact sending the message
   timestamp: string;
 }
 

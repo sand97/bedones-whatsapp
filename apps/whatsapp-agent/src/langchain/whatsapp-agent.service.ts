@@ -39,10 +39,18 @@ const contextSchema = z.object({
 
 type AgentContext = z.infer<typeof contextSchema>;
 
+interface ContactLabel {
+  id: string;
+  name: string;
+  hexColor: string;
+}
+
 interface MessageData {
   fromMe: boolean;
   from: string;
   body: string;
+  contactId?: string; // Real contact ID (not @lid format), added by connector
+  contactLabels?: ContactLabel[];
 }
 
 /**
@@ -193,7 +201,10 @@ export class WhatsAppAgentService implements OnModuleInit {
   /**
    * Process an incoming WhatsApp message
    */
-  async processIncomingMessage(messageData: MessageData[]): Promise<void> {
+  async processIncomingMessage(
+    messageData: MessageData[],
+    userId?: string,
+  ): Promise<void> {
     if (!this.agent) {
       this.logger.error('Cannot process message: Agent not initialized');
       return;
@@ -208,7 +219,22 @@ export class WhatsAppAgentService implements OnModuleInit {
       }
 
       const userMessage = message?.body || '';
-      const chatId = message?.from || '';
+      // Get chatId from message.contactId (added by connector)
+      // Fallback to message.from for backward compatibility
+      // For individual chats: "33765538022@c.us"
+      // For group chats: "123456@g.us"
+      const chatId = message?.contactId || message?.from || '';
+
+      console.log('message', message);
+
+      // Warn if we still receive @lid format (shouldn't happen with connector enrichment)
+      if (chatId.includes('@lid')) {
+        this.logger.error(
+          `Received message with @lid format: ${chatId}. Connector should add contactId property!`,
+        );
+        // Skip processing as we can't reliably send messages back
+        return;
+      }
 
       const sanitized = this.sanitizationService.sanitizeUserInput(userMessage);
 
@@ -228,8 +254,21 @@ export class WhatsAppAgentService implements OnModuleInit {
         `💬 Processing message from ${chatId}: ${sanitized.substring(0, 50)}...`,
       );
 
-      // Check with backend first (returns authorized groups)
-      const canProcess = await this.checkCanProcess(chatId, sanitized);
+      // Check with backend first using userId (connected WhatsApp account ID) instead of chatId
+      // userId format: "237657888690@c.us" (the phone number of the WhatsApp account owner)
+      if (!userId) {
+        this.logger.error(
+          'userId not provided in webhook, cannot identify user',
+        );
+        return;
+      }
+
+      const canProcess = await this.checkCanProcess(
+        userId,
+        chatId,
+        sanitized,
+        message.contactLabels,
+      );
 
       if (!canProcess.allowed) {
         this.logger.log(
@@ -268,7 +307,7 @@ export class WhatsAppAgentService implements OnModuleInit {
         canProcess.authorizedGroups,
       );
 
-      const { response, metrics } = await this.invokeAgent(
+      const { metrics } = await this.invokeAgent(
         chatId,
         sanitized,
         systemPrompt,
@@ -293,12 +332,23 @@ export class WhatsAppAgentService implements OnModuleInit {
 
   /**
    * Check with backend if we should process this message
+   * @param userId - The connected WhatsApp account ID (e.g., "237657888690@c.us")
+   * @param chatId - The chat ID where the message was received
+   * @param message - The message content
+   * @param contactLabels - Labels of the contact sending the message
    */
   private async checkCanProcess(
+    userId: string,
     chatId: string,
     message: string,
+    contactLabels?: ContactLabel[],
   ): Promise<CanProcessResponse> {
-    return this.backendClient.canProcess(chatId, message);
+    return this.backendClient.canProcess(
+      userId,
+      chatId,
+      message,
+      contactLabels,
+    );
   }
 
   /**

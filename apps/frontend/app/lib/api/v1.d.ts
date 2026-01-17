@@ -881,9 +881,22 @@ export interface components {
              */
             productionEnabled?: boolean;
         };
+        ContactLabelDto: {
+            /** @description Label ID */
+            id: string;
+            /** @description Label name */
+            name: string;
+            /** @description Label hex color */
+            hexColor: string;
+        };
         CanProcessDto: {
             /**
-             * @description WhatsApp chat ID
+             * @description Connected WhatsApp account ID (owner of the WhatsApp instance)
+             * @example 237657888690@c.us
+             */
+            userId: string;
+            /**
+             * @description WhatsApp chat ID (where the message was received)
              * @example 237657888690@c.us
              */
             chatId: string;
@@ -892,6 +905,8 @@ export interface components {
              * @example Bonjour, je voudrais commander un produit
              */
             message: string;
+            /** @description Labels of the contact sending the message */
+            contactLabels?: components["schemas"]["ContactLabelDto"][];
             /**
              * @description Message timestamp
              * @example 2024-01-15T10:30:00.000Z

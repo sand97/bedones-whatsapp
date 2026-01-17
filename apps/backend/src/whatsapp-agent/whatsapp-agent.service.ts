@@ -294,6 +294,31 @@ export class WhatsAppAgentService {
   }
 
   /**
+   * Create a new label or return existing one with the same name
+   */
+  async createLabel(
+    userId: string,
+    labelName: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    hexColor: string;
+    colorIndex: number;
+    alreadyExists?: boolean;
+  }> {
+    const result = await this.executeScript(userId, 'labels/addNewLabel', {
+      LABEL_NAME: labelName,
+    });
+    return result as {
+      id: string;
+      name: string;
+      hexColor: string;
+      colorIndex: number;
+      alreadyExists?: boolean;
+    };
+  }
+
+  /**
    * Validate if a phone number exists on WhatsApp
    */
   async validateContact(
@@ -347,12 +372,65 @@ export class WhatsAppAgentService {
       updateData.testPhoneNumbers = config.testPhoneNumbers;
     }
     if (config.testLabels !== undefined) {
+      // Create labels if they don't exist
+      for (const labelName of config.testLabels) {
+        if (labelName && labelName.trim()) {
+          try {
+            await this.createLabel(userId, labelName.trim());
+            this.logger.log(
+              `Label "${labelName}" created or verified for user ${userId}`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `Failed to create label "${labelName}" for user ${userId}`,
+              error,
+            );
+            // Continue even if label creation fails
+          }
+        }
+      }
       updateData.testLabels = config.testLabels;
     }
     if (config.labelsToNotReply !== undefined) {
+      // Create labels if they don't exist
+      for (const labelName of config.labelsToNotReply) {
+        if (labelName && labelName.trim()) {
+          try {
+            await this.createLabel(userId, labelName.trim());
+            this.logger.log(
+              `Label "${labelName}" created or verified for user ${userId}`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `Failed to create label "${labelName}" for user ${userId}`,
+              error,
+            );
+            // Continue even if label creation fails
+          }
+        }
+      }
       updateData.labelsToNotReply = config.labelsToNotReply;
     }
     if (config.productionEnabled !== undefined) {
+      // When enabling production mode, ensure labelsToNotReply exist
+      if (config.productionEnabled && agent.labelsToNotReply?.length > 0) {
+        for (const labelName of agent.labelsToNotReply) {
+          if (labelName && labelName.trim()) {
+            try {
+              await this.createLabel(userId, labelName.trim());
+              this.logger.log(
+                `Label "${labelName}" created or verified for production mode`,
+              );
+            } catch (error) {
+              this.logger.error(
+                `Failed to create label "${labelName}" for user ${userId}`,
+                error,
+              );
+              // Continue even if label creation fails
+            }
+          }
+        }
+      }
       updateData.productionEnabled = config.productionEnabled;
     }
 
@@ -365,10 +443,16 @@ export class WhatsAppAgentService {
   /**
    * Check if the agent can process a message from a chat
    * Returns agent configuration, context, and authorized groups
+   * @param userId - ID of the connected WhatsApp account (e.g., "237657888690@c.us")
+   * @param chatId - ID of the chat where the message was received
+   * @param message - The message content
+   * @param contactLabels - Labels of the contact sending the message
    */
   async canProcess(
+    userId: string,
     chatId: string,
     message: string,
+    contactLabels?: Array<{ id: string; name: string; hexColor: string }>,
   ): Promise<{
     allowed: boolean;
     reason?: string;
@@ -377,76 +461,17 @@ export class WhatsAppAgentService {
     agentId?: string;
     authorizedGroups?: Array<{ whatsappGroupId: string; usage: string }>;
   }> {
-    // Extract user phone from chatId (format: "237657888690@c.us" or "12345@g.us")
-    const phoneMatch = chatId.match(/^(\d+)@c\.us$/);
+    // Extract phone number from userId (format: "237657888690@c.us")
+    const phoneMatch = userId.match(/^(\d+)@c\.us$/);
 
     if (!phoneMatch) {
-      // For group messages, we need to find the user another way
-      // For now, we'll handle group authorization later
-      const isGroup = chatId.includes('@g.us');
-
-      if (isGroup) {
-        // Find user by checking if this group is in their authorized groups
-        const group = await this.prisma.group.findFirst({
-          where: { whatsappGroupId: chatId },
-          include: {
-            user: {
-              include: {
-                whatsappAgent: true,
-                groups: true,
-                onboardingThread: true,
-              },
-            },
-          },
-        });
-
-        if (!group || !group.user) {
-          return {
-            allowed: false,
-            reason: 'Group not found or not authorized',
-          };
-        }
-
-        const user = group.user;
-        const agent = user.whatsappAgent;
-
-        if (!agent) {
-          return {
-            allowed: false,
-            reason: 'Agent not found for this user',
-          };
-        }
-
-        // Get agent context from onboarding thread
-        const agentContext = user.onboardingThread?.context || '';
-
-        // Get all authorized groups for this user
-        const authorizedGroups = user.groups.map((g) => ({
-          whatsappGroupId: g.whatsappGroupId,
-          usage: g.usage,
-        }));
-
-        // Find management group (you can define this by usage or have a specific field)
-        const managementGroup = user.groups.find((g) =>
-          g.usage.toLowerCase().includes('gestion'),
-        );
-
-        return {
-          allowed: true,
-          agentContext,
-          managementGroupId: managementGroup?.whatsappGroupId,
-          agentId: agent.id,
-          authorizedGroups,
-        };
-      }
-
       return {
         allowed: false,
-        reason: 'Invalid chat ID format',
+        reason: 'Invalid userId format',
       };
     }
 
-    const phoneNumber = phoneMatch[1];
+    const phoneNumber = '+' + phoneMatch[1];
 
     // Find user by phone number
     const user = await this.prisma.user.findUnique({
@@ -480,6 +505,63 @@ export class WhatsAppAgentService {
         allowed: false,
         reason: `Agent is not running (status: ${agent.status})`,
       };
+    }
+
+    // Check if contact has a label in labelsToNotReply (applies in both modes)
+    if (agent.labelsToNotReply && agent.labelsToNotReply.length > 0) {
+      const hasBlockedLabel =
+        contactLabels?.some((label) =>
+          agent.labelsToNotReply.includes(label.name),
+        ) || false;
+
+      if (hasBlockedLabel) {
+        const blockedLabel = contactLabels?.find((label) =>
+          agent.labelsToNotReply.includes(label.name),
+        );
+        this.logger.debug(
+          `Contact has blocked label: ${blockedLabel?.name}, not replying`,
+        );
+        return {
+          allowed: false,
+          reason: `Contact has label "${blockedLabel?.name}" which is in the do-not-reply list`,
+        };
+      }
+    }
+
+    // Check production mode vs test mode
+    if (agent.productionEnabled) {
+      // Production mode: process all messages
+      this.logger.log(`Production mode enabled for user ${phoneNumber}`);
+    } else {
+      // Test mode: only process messages from contacts with testLabels
+      if (!agent.testLabels || agent.testLabels.length === 0) {
+        return {
+          allowed: false,
+          reason:
+            'Test mode active but no test labels configured. Please configure test labels.',
+        };
+      }
+
+      // Check if contact has at least one label in testLabels
+      const hasTestLabel =
+        contactLabels?.some((label) => agent.testLabels.includes(label.name)) ||
+        false;
+
+      if (!hasTestLabel) {
+        const contactLabelNames =
+          contactLabels?.map((l) => l.name).join(', ') || 'none';
+        this.logger.debug(
+          `Contact labels: [${contactLabelNames}] - Test labels: [${agent.testLabels.join(', ')}]`,
+        );
+        return {
+          allowed: false,
+          reason: `Test mode active. Contact must have one of these labels: ${agent.testLabels.join(', ')}`,
+        };
+      }
+
+      this.logger.log(
+        `Test mode: Contact has valid test label, processing message`,
+      );
     }
 
     // Get agent context from onboarding thread

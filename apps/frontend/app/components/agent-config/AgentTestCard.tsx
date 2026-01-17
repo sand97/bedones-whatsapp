@@ -87,7 +87,7 @@ export function AgentTestCard() {
           </div>
           <div>
             <Text strong className='block mb-1'>
-              Test avec un contact ou des Tags
+              Activation ciblée
             </Text>
             <Text type='secondary'>
               {hasConfig
@@ -99,7 +99,7 @@ export function AgentTestCard() {
       </Card>
 
       <Modal
-        title='Configuration du mode test'
+        title="Configuration de l'activation ciblée"
         open={isModalOpen}
         onCancel={handleCloseModal}
         footer={[
@@ -128,7 +128,7 @@ export function AgentTestCard() {
             <div>
               <FormItem
                 name='labelName'
-                label='Label de test'
+                label='Label actif'
                 rules={[
                   {
                     required: true,
@@ -146,8 +146,8 @@ export function AgentTestCard() {
                     <>
                       Nous allons créer le label{' '}
                       <strong>&quot;{labelNameValue.trim()}&quot;</strong> sur
-                      votre WhatsApp. Pour tester l&apos;IA, ajoutez simplement
-                      ce label aux conversations de votre choix.
+                      votre WhatsApp. Pour activer l&apos;IA sur une
+                      conversation, ajoutez-y simplement ce label.
                     </>
                   }
                   type='info'

@@ -4,6 +4,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatXAI } from '@langchain/xai';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import {
   createAgent,
   createMiddleware,
@@ -55,6 +56,8 @@ export class OnboardingService {
         maxRetries: 0, // Fail fast to trigger fallback
       });
       this.logger.log(`✅ Grok model initialized: ${xaiModelName}`);
+    } else {
+      this.logger.warn('⚠️ No xAI API key provided (XAI_API_KEY)');
     }
 
     // Create fallback model (Gemini)
@@ -68,10 +71,14 @@ export class OnboardingService {
       this.logger.log(
         `✅ Gemini model initialized: ${geminiModelName || 'gemini-2.5-pro'}`,
       );
+    } else {
+      this.logger.warn('⚠️ No Gemini API key provided (GEMINI_API_KEY)');
     }
 
     if (!this.primaryModel && !this.fallbackModel) {
-      this.logger.error('❌ No AI model configured');
+      this.logger.error(
+        '❌ No AI model configured - agent will not be created',
+      );
       return; // Don't create agent if no models configured
     }
 
@@ -319,10 +326,36 @@ export class OnboardingService {
         if (!this.primaryModel && !this.fallbackModel) {
           throw new Error('No AI model configured');
         }
+        this.logger.log(
+          `🤖 [User ${userId}] Starting initial evaluation with AI`,
+        );
         aiResponse = await this.executeToolsLoop(userId, prompt);
+        this.logger.log(
+          `✅ [User ${userId}] Initial evaluation completed successfully`,
+        );
       } catch (error) {
-        this.logger.error('AI invocation failed', error);
-        // Static fallback response
+        this.logger.error(`❌ [User ${userId}] Initial AI evaluation failed:`, {
+          errorName: error instanceof Error ? error.name : 'Unknown',
+          errorMessage: error instanceof Error ? error.message : String(error),
+          primaryModelAvailable: !!this.primaryModel,
+          fallbackModelAvailable: !!this.fallbackModel,
+        });
+
+        // Capture in Sentry
+        Sentry.captureException(error, {
+          tags: {
+            component: 'onboarding',
+            phase: 'initial_evaluation',
+            userId,
+            primaryModel: this.primaryModel ? 'available' : 'unavailable',
+            fallbackModel: this.fallbackModel ? 'available' : 'unavailable',
+          },
+        });
+
+        // For initial evaluation, we use a generic fallback to not block the user
+        this.logger.warn(
+          `⚠️ [User ${userId}] Using generic fallback for initial evaluation`,
+        );
         aiResponse = JSON.stringify({
           score: 20,
           context:
@@ -448,26 +481,70 @@ export class OnboardingService {
         if (!this.primaryModel && !this.fallbackModel) {
           throw new Error('No AI model configured');
         }
+        this.logger.log(
+          `🤖 [User ${userId}] Calling AI agent (message count: ${thread.messages.length})`,
+        );
+        this.logger.debug(
+          `📝 Prompt length: ${prompt.length} chars, conversation history: ${conversationHistory.length} messages`,
+        );
+
         aiResponse = await this.executeToolsLoop(
           userId,
           prompt,
           controller.signal,
           user, // Pass full user object to avoid DB queries in tools
         );
+
+        this.logger.log(
+          `✅ [User ${userId}] AI response received successfully`,
+        );
+        this.logger.debug(`📤 AI response length: ${aiResponse.length} chars`);
       } catch (error) {
         // Check if this was an abort
         if (error instanceof Error && error.name === 'AbortError') {
           this.logger.log(`⏹️ Processing cancelled for user ${userId}`);
           return; // Exit without sending response
         }
-        this.logger.error('AI invocation failed', error);
-        aiResponse = JSON.stringify({
-          score: Math.min(thread.score + 5, 100),
-          context: thread.context || '',
-          needs: thread.needs || [],
-          question:
-            "Merci pour ces informations. Pouvez-vous m'en dire plus sur vos modalités de paiement ?",
+
+        // Log detailed error information
+        this.logger.error(`❌ [User ${userId}] AI invocation failed:`, {
+          errorName: error instanceof Error ? error.name : 'Unknown',
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack:
+            error instanceof Error
+              ? error.stack?.split('\n').slice(0, 3).join('\n')
+              : undefined,
+          userId,
+          messageCount: thread.messages.length,
+          primaryModelAvailable: !!this.primaryModel,
+          fallbackModelAvailable: !!this.fallbackModel,
         });
+
+        // Capture error in Sentry with context
+        Sentry.captureException(error, {
+          tags: {
+            component: 'onboarding',
+            userId,
+            primaryModel: this.primaryModel ? 'available' : 'unavailable',
+            fallbackModel: this.fallbackModel ? 'available' : 'unavailable',
+          },
+          extra: {
+            messageCount: thread.messages.length,
+            threadScore: thread.score,
+            userMessage: content,
+          },
+        });
+
+        // Emit error to user via WebSocket
+        this.onboardingGateway.emitError(userId, {
+          message:
+            "Désolé, l'IA rencontre actuellement un problème technique. Notre équipe a été notifiée. Veuillez réessayer dans quelques instants.",
+          type: 'ai_failure',
+          retryable: true,
+        });
+
+        // Don't save any fallback message - exit the function
+        return;
       }
 
       const evaluation = this.parseAIResponse(aiResponse);

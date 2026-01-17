@@ -87,11 +87,19 @@ export default function ContextOnboardingPage() {
 
   // Show activation modal when score reaches 80%
   useEffect(() => {
-    if (score >= 80 && !hasShownModal && !isLoading) {
+    // Check if user has already configured the agent
+    const hasConfiguredAgent =
+      (user?.agentConfig?.testPhoneNumbers?.length ?? 0) > 0 ||
+      (user?.agentConfig?.testLabels?.length ?? 0) > 0 ||
+      (user?.agentConfig?.labelsToNotReply?.length ?? 0) > 0 ||
+      user?.agentConfig?.productionEnabled === true
+
+    // Don't show modal if user has already configured the agent
+    if (score >= 80 && !hasShownModal && !isLoading && !hasConfiguredAgent) {
       setShowActivationModal(true)
       setHasShownModal(true)
     }
-  }, [score, hasShownModal, isLoading])
+  }, [score, hasShownModal, isLoading, user?.agentConfig])
 
   // Fetch thread and connect to WebSocket on mount
   useEffect(() => {
@@ -234,6 +242,45 @@ export default function ContextOnboardingPage() {
       }
     )
 
+    // Listen for AI errors
+    socket.on(
+      'onboarding:error',
+      (data: { message: string; type: string; retryable: boolean }) => {
+        setIsSubmitting(false)
+        setLoadingStatus('Réflexion en cours...')
+
+        // Show error notification
+        notification.error({
+          message: 'Erreur technique',
+          description: data.message,
+          duration: data.retryable ? 10 : 0, // 10 seconds if retryable, persistent if not
+        })
+
+        // Remove the last user message from the UI if retryable
+        if (data.retryable) {
+          setMessages(prev => {
+            const reversedIndex = [...prev]
+              .reverse()
+              .findIndex(m => m.role === 'user')
+
+            if (reversedIndex === -1) return prev
+            const lastUserIndex = prev.length - 1 - reversedIndex
+
+            // Restore the message to the input so user can retry
+            const lastUserMessage = prev[lastUserIndex]
+            if (lastUserMessage) {
+              setInputValue(lastUserMessage.content)
+            }
+
+            return [
+              ...prev.slice(0, lastUserIndex),
+              ...prev.slice(lastUserIndex + 1),
+            ]
+          })
+        }
+      }
+    )
+
     socketRef.current = socket
 
     return () => {
@@ -303,7 +350,7 @@ export default function ContextOnboardingPage() {
         title={"Contexte de l'IA"}
       />
 
-      <div className='flex flex-col gap-6 w-full'>
+      <div className='flex flex-col gap-6 w-full h-[calc(100vh-80px)]'>
         {/* Messages Container */}
         <div className='flex-1 space-y-4 overflow-y-auto lg:p-6 p-4'>
           {isLoading ? (
@@ -354,11 +401,11 @@ export default function ContextOnboardingPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area - Always visible */}
+        {/* Input Area - Always visible at bottom */}
         {!isLoading && (
-          <div className={'bg-white p-1 z-10 sticky bottom-0 rounded-b-2xl'}>
-            <div className='rounded-xl p-4 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
-              <div className='mb-2 flex items-start gap-4 rounded-3xl bg-[#fdfdfd] px-4 py-2.5 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
+          <div className='bg-white p-2 rounded-b-2xl'>
+            <div className='rounded-xl'>
+              <div className='flex items-start gap-4 rounded-xl  pr-4 py-2.5 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'>
                 <Input.TextArea
                   value={inputValue}
                   onChange={e => setInputValue(e.target.value)}
@@ -399,26 +446,26 @@ export default function ContextOnboardingPage() {
               </div>
 
               {/* Quick Action Buttons */}
-              <div className='flex gap-2'>
-                <Button
-                  type='default'
-                  className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
-                >
-                  <CustomerServiceOutlined />
-                  <span className='text-sm font-medium tracking-tight text-[#050505]'>
-                    Support
-                  </span>
-                </Button>
-                <Button
-                  type='default'
-                  className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'
-                >
-                  <ShopOutlined />
-                  <span className='text-sm font-medium tracking-tight text-[#050505]'>
-                    Stratégie de vente
-                  </span>
-                </Button>
-              </div>
+              {/*<div className='flex gap-2'>*/}
+              {/*  <Button*/}
+              {/*    type='default'*/}
+              {/*    className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'*/}
+              {/*  >*/}
+              {/*    <CustomerServiceOutlined />*/}
+              {/*    <span className='text-sm font-medium tracking-tight text-[#050505]'>*/}
+              {/*      Support*/}
+              {/*    </span>*/}
+              {/*  </Button>*/}
+              {/*  <Button*/}
+              {/*    type='default'*/}
+              {/*    className='flex h-auto items-center gap-2 rounded-full border-none bg-white px-4 py-3 shadow-[0px_0px_1px_0px_rgba(0,0,0,0.4)]'*/}
+              {/*  >*/}
+              {/*    <ShopOutlined />*/}
+              {/*    <span className='text-sm font-medium tracking-tight text-[#050505]'>*/}
+              {/*      Stratégie de vente*/}
+              {/*    </span>*/}
+              {/*  </Button>*/}
+              {/*</div>*/}
             </div>
           </div>
         )}

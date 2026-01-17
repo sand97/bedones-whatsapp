@@ -79,6 +79,23 @@ export class PageScriptService {
   }
 
   /**
+   * Escape special characters for JavaScript string literals
+   */
+  private escapeJavaScriptString(str: string): string {
+    return str
+      .replace(/\\/g, '\\\\') // Backslash must be first
+      .replace(/'/g, "\\'") // Single quote
+      .replace(/"/g, '\\"') // Double quote
+      .replace(/\n/g, '\\n') // Newline
+      .replace(/\r/g, '\\r') // Carriage return
+      .replace(/\t/g, '\\t') // Tab
+      .replace(/\f/g, '\\f') // Form feed
+      .replace(/\v/g, '\\v') // Vertical tab
+      .replace(/\u2028/g, '\\u2028') // Line separator
+      .replace(/\u2029/g, '\\u2029'); // Paragraph separator
+  }
+
+  /**
    * Replace placeholders in script
    * Format: {{VARIABLE_NAME}}
    */
@@ -92,7 +109,9 @@ export class PageScriptService {
     for (const [key, value] of Object.entries(variables)) {
       if (value !== undefined) {
         const placeholder = new RegExp(`{{${key}}}`, 'g');
-        processedScript = processedScript.replace(placeholder, value);
+        // Escape the value to prevent breaking JavaScript syntax
+        const escapedValue = this.escapeJavaScriptString(value);
+        processedScript = processedScript.replace(placeholder, escapedValue);
       }
     }
 

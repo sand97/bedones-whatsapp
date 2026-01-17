@@ -28,14 +28,14 @@ export class WebhookController {
     description: 'Event received successfully',
   })
   async handleEvent(@Body() payload: any) {
-    const { event, timestamp, data } = payload;
+    const { event, timestamp, data, userId } = payload;
 
-    this.logger.debug(`Received event: ${event}`, { timestamp });
+    this.logger.debug(`Received event: ${event}`, { timestamp, userId });
 
     try {
       // Traiter les messages entrants
       if (event === 'message') {
-        await this.agentService.processIncomingMessage(data);
+        await this.agentService.processIncomingMessage(data, userId);
       }
 
       // Traiter l'événement de pairing réussi (événement custom du connector)

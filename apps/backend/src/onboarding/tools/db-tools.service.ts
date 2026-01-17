@@ -59,7 +59,6 @@ export class DbToolsService {
             id: userFromContext.id,
             phoneNumber: userFromContext.phoneNumber,
             status: userFromContext.status,
-            createdAt: userFromContext.createdAt,
           });
         }
 
@@ -70,7 +69,7 @@ export class DbToolsService {
             id: true,
             phoneNumber: true,
             status: true,
-            createdAt: true,
+            createdAt: true, // Keep for DB query, just not in userFromContext
           },
         });
         return JSON.stringify(user);
