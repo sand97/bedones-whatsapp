@@ -2,6 +2,7 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { MessageHistoryService } from './services/message-history.service';
 import { WebhookService } from './webhook.service';
 import { WhatsAppClientService } from './whatsapp-client.service';
 import { WhatsAppController } from './whatsapp.controller';
@@ -15,7 +16,7 @@ import { WhatsAppController } from './whatsapp.controller';
     ConfigModule,
   ],
   controllers: [WhatsAppController],
-  providers: [WhatsAppClientService, WebhookService],
+  providers: [WhatsAppClientService, WebhookService, MessageHistoryService],
   exports: [WhatsAppClientService, WebhookService],
 })
 export class WhatsAppModule {}

@@ -16,6 +16,36 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 
 const { Text, Paragraph } = Typography
 
+function formatCatalogPrice(
+  rawPrice?: number | null,
+  rawCurrency?: string | null,
+) {
+  if (rawPrice === null || rawPrice === undefined) return null
+  if (!rawCurrency) return null
+
+  const currencyLabel = rawCurrency.trim()
+  if (!currencyLabel) return null
+
+  const numericPrice = Number(rawPrice)
+  if (!Number.isFinite(numericPrice)) return null
+
+  const majorAmount = numericPrice / 100
+  const currencyUpper = currencyLabel.toUpperCase()
+  const currencyForIntl = currencyUpper === 'FCFA' ? 'XAF' : currencyUpper
+
+  try {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: currencyForIntl,
+    }).format(majorAmount)
+  } catch {
+    const formatted = new Intl.NumberFormat('fr-FR', {
+      maximumFractionDigits: 2,
+    }).format(majorAmount)
+    return `${formatted} ${currencyUpper}`
+  }
+}
+
 export function meta() {
   return [
     { title: 'Catalogue - WhatsApp Agent' },
@@ -99,9 +129,7 @@ function ImageCarousel({ images }: { images: Array<{ url: string }> }) {
 }
 
 function ProductCard({ product }: { product: Product }) {
-  const price = product.price
-    ? `${product.price} ${product.currency || 'FCFA'}`
-    : null
+  const price = formatCatalogPrice(product.price, product.currency)
 
   return (
     <div className='bg-white rounded-lg  overflow-hidden shadow-card flex flex-col h-full'>
@@ -111,6 +139,12 @@ function ProductCard({ product }: { product: Product }) {
         <Text strong className='block mb-2 text-base'>
           {product.name}
         </Text>
+
+        {product.retailer_id && (
+          <Text type='secondary' className='block mb-2 text-sm'>
+            #{product.retailer_id}
+          </Text>
+        )}
 
         {product.description && (
           <Paragraph
@@ -123,15 +157,18 @@ function ProductCard({ product }: { product: Product }) {
         )}
 
         {(price || product.category) && (
-          <div className='flex items-center justify-between mt-auto'>
-            {price && (
-              <Text strong className='text-base'>
-                {price}
+          <div className='flex items-center justify-between mt-auto gap-2'>
+            {product.category && (
+              <Text
+                type='secondary'
+                className='text-xs pr-4 truncate min-w-0 flex-1'
+              >
+                {product.category}
               </Text>
             )}
-            {product.category && (
-              <Text type='secondary' className='text-xs'>
-                {product.category}
+            {price && (
+              <Text strong className='text-base shrink-0'>
+                {price}
               </Text>
             )}
           </div>
@@ -218,6 +255,10 @@ export default function CatalogPage() {
     return { collections: collectionsCount, products: productsCount }
   }, [catalogData])
 
+  const headerTitle = `${statistics.collections} collection${
+    statistics.collections > 1 ? 's' : ''
+  }, ${statistics.products} produit${statistics.products > 1 ? 's' : ''}`
+
   const hasContent = useMemo(() => {
     if (!catalogData) return false
     return (
@@ -237,7 +278,7 @@ export default function CatalogPage() {
   return (
     <>
       <DashboardHeader
-        title={'Catalogue'}
+        title={headerTitle}
         right={
           <Button
             className={'!h-9 !py-0'}
@@ -253,16 +294,6 @@ export default function CatalogPage() {
       <div className='flex flex-col gap-6 w-full py-6 px-6'>
         {hasContent ? (
           <>
-            {/* Statistics Header */}
-            <div className='flex items-center gap-2'>
-              <Text className='text-base font-semibold'>
-                {statistics.collections} collection
-                {statistics.collections > 1 ? 's' : ''}, {statistics.products}{' '}
-                produit
-                {statistics.products > 1 ? 's' : ''}
-              </Text>
-            </div>
-
             {/* Collections and their products */}
             {catalogData?.collections.map((collection, index) => (
               <div key={index} className='flex flex-col gap-4'>
@@ -276,7 +307,7 @@ export default function CatalogPage() {
                 </div>
 
                 {/* Products Grid */}
-                <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                <div className='grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4'>
                   {collection.products.map((product, productIndex) => (
                     <ProductCard key={productIndex} product={product} />
                   ))}
@@ -299,7 +330,7 @@ export default function CatalogPage() {
                 </div>
 
                 {/* Products Grid */}
-                <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                <div className='grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4'>
                   {catalogData.uncategorizedProducts.map(
                     (product, productIndex) => (
                       <ProductCard key={productIndex} product={product} />

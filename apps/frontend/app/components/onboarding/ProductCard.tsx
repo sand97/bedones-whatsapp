@@ -8,6 +8,7 @@ interface Product {
   name: string
   description: string
   price: number
+  currency?: string
   image?: string
   approved?: boolean
 }
@@ -55,6 +56,30 @@ export function ProductCard({
     setSuggestions(prev => prev.filter(s => s !== suggestion))
   }
 
+  const formatPrice = (price: number, currency?: string) => {
+    if (!currency) return null
+    const trimmed = currency.trim()
+    if (!trimmed) return null
+
+    const currencyUpper = trimmed.toUpperCase()
+    const currencyForIntl = currencyUpper === 'FCFA' ? 'XAF' : currencyUpper
+    const majorAmount = price / 100
+
+    try {
+      return new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: currencyForIntl,
+      }).format(majorAmount)
+    } catch {
+      const formatted = new Intl.NumberFormat('fr-FR', {
+        maximumFractionDigits: 2,
+      }).format(majorAmount)
+      return `${formatted} ${currencyUpper}`
+    }
+  }
+
+  const formattedPrice = formatPrice(product.price, product.currency)
+
   return (
     <Card className='mb-4 hover:shadow-md transition-shadow'>
       <div className='flex gap-4'>
@@ -87,9 +112,11 @@ export function ProductCard({
                 {product.description}
               </p>
             </div>
-            <Tag color='green' className='text-base font-semibold px-3 py-1'>
-              {product.price.toLocaleString('fr-FR')} FCFA
-            </Tag>
+            {formattedPrice && (
+              <Tag color='green' className='text-base font-semibold px-3 py-1'>
+                {formattedPrice}
+              </Tag>
+            )}
           </div>
 
           {/* Actions */}

@@ -6,6 +6,7 @@
 export interface AuthorizedGroup {
   whatsappGroupId: string; // ID WhatsApp du groupe (ex: "12345@g.us")
   usage: string; // Usage du groupe (ex: "Support client", "Ventes")
+  name?: string; // Nom du groupe (optionnel)
 }
 
 export interface ContactLabel {

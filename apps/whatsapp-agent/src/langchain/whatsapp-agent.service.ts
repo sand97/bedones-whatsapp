@@ -3,7 +3,9 @@ import {
   AuthorizedGroup,
 } from '@app/backend-client/backend-api.types';
 import { BackendClientService } from '@app/backend-client/backend-client.service';
-import { MessagesTools } from '@app/queue/messages-tools/messages.tools';
+import { ConnectorClientService } from '@app/connector/connector-client.service';
+import { PageScriptService } from '@app/page-scripts/page-script.service';
+import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { RateLimitService } from '@app/security/rate-limit.service';
 import { SanitizationService } from '@app/security/sanitization.service';
 import { CatalogTools } from '@app/tools/catalog/catalog.tools';
@@ -22,10 +24,12 @@ import {
   createMiddleware,
   modelCallLimitMiddleware,
   modelFallbackMiddleware,
+  toolCallLimitMiddleware,
 } from 'langchain';
 import { z } from 'zod';
 
 import { AgentOperationCallbackHandler } from './agent-operation-callback.handler';
+import { SystemPromptService } from './system-prompt.service';
 
 /**
  * Context schema for runtime agent execution
@@ -35,6 +39,15 @@ const contextSchema = z.object({
   agentId: z.string().optional(),
   managementGroupId: z.string().optional(),
   agentContext: z.string().optional(),
+  authorizedGroups: z
+    .array(
+      z.object({
+        whatsappGroupId: z.string(),
+        usage: z.string(),
+        name: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 type AgentContext = z.infer<typeof contextSchema>;
@@ -45,12 +58,36 @@ interface ContactLabel {
   hexColor: string;
 }
 
+interface HistoryMessage {
+  id: string;
+  body: string;
+  from: string;
+  fromMe: boolean;
+  timestamp: number;
+  type: string;
+  hasMedia: boolean;
+  quotedMsg?: {
+    id: string;
+    body: string;
+  };
+}
+
+interface MessageHistory {
+  messages: HistoryMessage[];
+  hostMessageCount: number;
+  ourMessageCount: number;
+  totalFetched: number;
+  reachedLimit: boolean;
+}
+
 interface MessageData {
+  id?: any; // Message ID from WhatsApp
   fromMe: boolean;
   from: string;
   body: string;
   contactId?: string; // Real contact ID (not @lid format), added by connector
   contactLabels?: ContactLabel[];
+  messageHistory?: MessageHistory; // Added by connector
 }
 
 /**
@@ -84,38 +121,26 @@ export class WhatsAppAgentService implements OnModuleInit {
     private readonly sanitizationService: SanitizationService,
     private readonly rateLimitService: RateLimitService,
     private readonly backendClient: BackendClientService,
+    private readonly connectorClient: ConnectorClientService,
+    private readonly scriptService: PageScriptService,
+    private readonly systemPromptService: SystemPromptService,
   ) {
     this.logger.log('🚀 Initializing WhatsApp Agent...');
 
-    // Initialize models
-    const grokApiKey = this.configService.get<string>('GROK_API_KEY');
-    if (grokApiKey) {
-      this.primaryModel = new ChatOpenAI({
-        openAIApiKey: grokApiKey,
-        modelName: this.configService.get<string>('GROK_MODEL') || 'grok-beta',
-        temperature: 0.7,
-        maxRetries: 0, // Fail fast to trigger fallback
-        configuration: {
-          baseURL:
-            this.configService.get<string>('GROK_API_BASE') ||
-            'https://api.x.ai/v1',
-        },
-      });
-      this.logger.log('✅ Grok model initialized');
-    }
+    // Get model configuration
+    const primaryModelType =
+      this.configService.get<string>('PRIMARY_MODEL') || 'grok';
+    const fallbackModelType =
+      this.configService.get<string>('FALLBACK_MODEL') || 'gemini';
 
-    const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY');
-    if (geminiApiKey) {
-      this.fallbackModel = new ChatGoogleGenerativeAI({
-        apiKey: geminiApiKey,
-        model:
-          this.configService.get<string>('GEMINI_MODEL') ||
-          'gemini-2.0-flash-exp',
-        temperature: 0.7,
-        maxRetries: 2,
-      });
-      this.logger.log('✅ Gemini model initialized');
-    }
+    this.logger.log(`📋 Model Configuration:`);
+    this.logger.log(`   Primary: ${primaryModelType}`);
+    this.logger.log(`   Fallback: ${fallbackModelType}`);
+
+    // Initialize models based on configuration
+    const models = this.initializeModels(primaryModelType, fallbackModelType);
+    (this.primaryModel as any) = models.primary;
+    (this.fallbackModel as any) = models.fallback;
 
     if (!this.primaryModel && !this.fallbackModel) {
       this.logger.error('❌ No AI model configured');
@@ -143,12 +168,42 @@ export class WhatsAppAgentService implements OnModuleInit {
     }
 
     // Build middleware array
+    const sideEffectToolLimiters = [
+      'reply_to_message',
+      'send_message',
+      'send_product',
+      'send_products',
+      'send_collection',
+      'send_catalog_link',
+      'send_to_admin_group',
+      'notify_authorized_group',
+      'forward_to_management_group',
+      'send_reaction',
+      'send_location',
+      'send_group_invite',
+      'add_label_to_contact',
+      'remove_label_from_contact',
+      'set_notes',
+      'send_scheduled_call',
+      'schedule_intention',
+      'cancel_intention',
+      'save_persistent_memory',
+    ].map((toolName) =>
+      toolCallLimitMiddleware({
+        toolName,
+        runLimit: 1,
+        exitBehavior: 'continue',
+      }),
+    );
+
     const middleware = [
       // Model call limit middleware (max 6 iterations)
       modelCallLimitMiddleware({
         runLimit: 6,
         exitBehavior: 'end',
       }),
+      // Prevent duplicate side-effect tool calls in a single run
+      ...sideEffectToolLimiters,
       // Tool execution tracking middleware
       createMiddleware({
         name: 'ToolTracking',
@@ -193,8 +248,96 @@ export class WhatsAppAgentService implements OnModuleInit {
   async onModuleInit() {
     if (!this.agent) {
       this.logger.error(
-        '❌ Agent not initialized. Please configure GROK_API_KEY or GEMINI_API_KEY',
+        '❌ Agent not initialized. Please configure AI model API keys',
       );
+    }
+  }
+
+  /**
+   * Initialize AI models based on configuration
+   */
+  private initializeModels(primaryType: string, fallbackType: string) {
+    const primary = this.createModel(primaryType, true);
+    const fallback =
+      fallbackType !== 'none' ? this.createModel(fallbackType, false) : null;
+
+    return { primary, fallback };
+  }
+
+  /**
+   * Create a specific AI model instance
+   */
+  private createModel(
+    modelType: string,
+    isPrimary: boolean,
+  ): ChatOpenAI | ChatGoogleGenerativeAI | null {
+    const retries = isPrimary ? 0 : 2; // Primary fails fast, fallback retries
+
+    switch (modelType.toLowerCase()) {
+      case 'grok':
+      case 'xai': {
+        const apiKey = this.configService.get<string>('XAI_API_KEY');
+        if (!apiKey) {
+          this.logger.warn(`⚠️ XAI_API_KEY not configured for ${modelType}`);
+          return null;
+        }
+        const model = new ChatOpenAI({
+          openAIApiKey: apiKey,
+          modelName: this.configService.get<string>('XAI_MODEL') || 'grok-beta',
+          temperature: 0.7,
+          maxRetries: retries,
+          configuration: {
+            baseURL: 'https://api.x.ai/v1',
+          },
+        });
+        this.logger.log(
+          `✅ Grok model initialized (${isPrimary ? 'primary' : 'fallback'})`,
+        );
+        return model;
+      }
+
+      case 'gemini': {
+        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+        if (!apiKey) {
+          this.logger.warn(`⚠️ GEMINI_API_KEY not configured for ${modelType}`);
+          return null;
+        }
+        const model = new ChatGoogleGenerativeAI({
+          apiKey,
+          model:
+            this.configService.get<string>('GEMINI_MODEL') ||
+            'gemini-2.0-flash-exp',
+          temperature: 0.7,
+          maxRetries: retries,
+        });
+        this.logger.log(
+          `✅ Gemini model initialized (${isPrimary ? 'primary' : 'fallback'})`,
+        );
+        return model;
+      }
+
+      case 'openai':
+      case 'gpt': {
+        const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+        if (!apiKey) {
+          this.logger.warn(`⚠️ OPENAI_API_KEY not configured for ${modelType}`);
+          return null;
+        }
+        const model = new ChatOpenAI({
+          openAIApiKey: apiKey,
+          modelName: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o',
+          temperature: 0.7,
+          maxRetries: retries,
+        });
+        this.logger.log(
+          `✅ OpenAI model initialized (${isPrimary ? 'primary' : 'fallback'})`,
+        );
+        return model;
+      }
+
+      default:
+        this.logger.warn(`⚠️ Unknown model type: ${modelType}`);
+        return null;
     }
   }
 
@@ -219,21 +362,23 @@ export class WhatsAppAgentService implements OnModuleInit {
       }
 
       const userMessage = message?.body || '';
+      const messageId = message?.id?._serialized || message?.id || '';
       // Get chatId from message.contactId (added by connector)
       // Fallback to message.from for backward compatibility
       // For individual chats: "33765538022@c.us"
       // For group chats: "123456@g.us"
-      const chatId = message?.contactId || message?.from || '';
+      const chatId = message?.from || '';
 
-      console.log('message', message);
-
-      // Warn if we still receive @lid format (shouldn't happen with connector enrichment)
-      if (chatId.includes('@lid')) {
-        this.logger.error(
-          `Received message with @lid format: ${chatId}. Connector should add contactId property!`,
+      // Log what the agent receives
+      this.logger.log(
+        `📥 [AGENT] Received message from ${chatId}, messageId: ${messageId}, messageHistory attached: ${!!message.messageHistory}`,
+      );
+      if (message.messageHistory) {
+        this.logger.log(
+          `📦 [AGENT] messageHistory contains ${message.messageHistory.messages?.length || 0} messages`,
         );
-        // Skip processing as we can't reliably send messages back
-        return;
+      } else {
+        this.logger.warn(`⚠️ [AGENT] No messageHistory in received message!`);
       }
 
       const sanitized = this.sanitizationService.sanitizeUserInput(userMessage);
@@ -301,20 +446,35 @@ export class WhatsAppAgentService implements OnModuleInit {
         );
       }
 
-      const systemPrompt = this.buildSystemPrompt(
+      const systemPrompt = this.systemPromptService.buildSystemPrompt(
         canProcess.agentContext || '',
         groupUsage,
         canProcess.authorizedGroups,
       );
 
+      // Build conversation history from message history
+      const conversationHistory = this.buildConversationHistory(
+        message.messageHistory,
+        messageId,
+      );
+
+      this.logger.log(
+        `🔄 [AGENT] Built conversation history: ${conversationHistory.length} messages`,
+      );
+
+      // Log conversation before sending to agent
+      this.logConversation(conversationHistory, sanitized);
+
       const { metrics } = await this.invokeAgent(
         chatId,
         sanitized,
         systemPrompt,
+        conversationHistory,
         {
           agentId: canProcess.agentId,
           managementGroupId: canProcess.managementGroupId,
           agentContext: canProcess.agentContext,
+          authorizedGroups: canProcess.authorizedGroups,
         },
       );
 
@@ -352,41 +512,67 @@ export class WhatsAppAgentService implements OnModuleInit {
   }
 
   /**
-   * Build system prompt with agent context, group context, and authorized groups list
+   * Log conversation in a simple, readable format
    */
-  private buildSystemPrompt(
-    agentContext: string,
-    groupUsage?: string,
-    authorizedGroups?: AuthorizedGroup[],
-  ): string {
-    // Group-specific context
-    const groupContext = groupUsage
-      ? `\n\n## 📍 Contexte du groupe actuel:\nCe message provient d'un groupe WhatsApp dédié à: **${groupUsage}**.\nAdaptez vos réponses et votre ton en fonction de ce contexte spécifique.\n`
-      : '';
+  private logConversation(
+    conversationHistory: Array<{ role: string; content: string }>,
+    currentMessage: string,
+  ): void {
+    this.logger.log('\n=== 💬 CONVERSATION ===');
 
-    // Authorized groups list
-    const groupsList =
-      authorizedGroups && authorizedGroups.length > 0
-        ? `\n\n## 🔗 Groupes autorisés:\nVous avez accès aux groupes WhatsApp suivants, chacun avec un usage spécifique:\n${authorizedGroups
-            .map(
-              (g, idx) =>
-                `${idx + 1}. **${g.usage}** (ID: ${g.whatsappGroupId})`,
-            )
-            .join(
-              '\n',
-            )}\n\nUtilisez l'outil \`forward_to_management_group\` pour transférer des conversations vers le groupe de gestion si nécessaire.\n`
-        : '';
+    // Log history
+    conversationHistory.forEach((msg) => {
+      const sender = msg.role === 'assistant' ? 'ME' : 'CONTACT';
+      const preview = msg.content.substring(0, 100);
+      this.logger.log(
+        `${sender}: ${preview}${msg.content.length > 100 ? '...' : ''}`,
+      );
+    });
 
-    return `${agentContext}${groupContext}${groupsList}
+    // Log current message
+    this.logger.log(`CONTACT: ${currentMessage}`);
+    this.logger.log('======================\n');
+  }
 
-## 📋 Règles de comportement:
-1. **Concision**: Répondez de manière concise (max 500 caractères par message). Si nécessaire, divisez en plusieurs messages.
-2. **Proactivité**: Utilisez les outils disponibles de manière proactive pour aider le client.
-3. **Professionnalisme**: Soyez toujours poli, professionnel et orienté solution.
-4. **Transfert**: Si vous ne pouvez pas aider ou si la situation l'exige, transférez vers un groupe de gestion.
-5. **Langue**: Répondez toujours dans la langue de l'utilisateur.
+  /**
+   * Build conversation history from message history
+   * Converts WhatsApp messages to LangChain message format
+   */
+  private buildConversationHistory(
+    messageHistory?: MessageHistory,
+    currentMessageId?: string,
+  ): Array<{ role: string; content: string }> {
+    if (!messageHistory || messageHistory.messages.length === 0) {
+      return [];
+    }
 
-💡 **Stratégie**: Soyez orienté action et apportez une valeur ajoutée à chaque interaction.`;
+    // Sort messages by timestamp (oldest first) to maintain chronological order
+    const sortedMessages = [...messageHistory.messages].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
+
+    // Convert to LangChain message format
+    const seenIds = new Set<string>();
+    const history = sortedMessages
+      .filter((msg) => {
+        const msgId = msg.id || '';
+        if (currentMessageId && msgId && msgId === currentMessageId) {
+          return false;
+        }
+        if (msgId) {
+          if (seenIds.has(msgId)) {
+            return false;
+          }
+          seenIds.add(msgId);
+        }
+        return true;
+      })
+      .map((msg) => ({
+        role: msg.fromMe ? 'assistant' : 'user',
+        content: msg.body || '[Message sans texte]',
+      }));
+
+    return history;
   }
 
   /**
@@ -396,10 +582,12 @@ export class WhatsAppAgentService implements OnModuleInit {
     chatId: string,
     message: string,
     systemPrompt: string,
+    conversationHistory: Array<{ role: string; content: string }>,
     context: {
       agentId?: string;
       managementGroupId?: string;
       agentContext?: string;
+      authorizedGroups?: AuthorizedGroup[];
     },
   ): Promise<{
     response: string;
@@ -414,6 +602,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       agentId: context.agentId,
       managementGroupId: context.managementGroupId,
       agentContext: context.agentContext,
+      authorizedGroups: context.authorizedGroups,
     };
 
     // Create callback handler to capture metrics
@@ -425,12 +614,20 @@ export class WhatsAppAgentService implements OnModuleInit {
     );
 
     try {
+      // Build messages array with system prompt, conversation history, and current message
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...conversationHistory,
+        { role: 'user', content: message },
+      ];
+
+      this.logger.debug(
+        `Invoking agent with ${messages.length} messages (${conversationHistory.length} from history)`,
+      );
+
       const result = await this.agent.invoke(
         {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message },
-          ],
+          messages,
         },
         {
           context: runtimeContext,
@@ -449,6 +646,9 @@ export class WhatsAppAgentService implements OnModuleInit {
 
       // Update metrics with final response
       callbackHandler.metrics.agentResponse = sanitizedResponse;
+
+      // Log agent response (simple)
+      this.logger.log(`\n📤 RESPONSE: ${sanitizedResponse}\n`);
 
       return {
         response: sanitizedResponse,

@@ -7,9 +7,15 @@ export interface ScriptVariables {
   CHAT_ID?: string;
   TO?: string;
   MESSAGE?: string;
+  QUOTED_MESSAGE_ID?: string;
   PRODUCT_ID?: string;
+  PRODUCT_IDS?: string;
   COLLECTION_ID?: string;
+  OWNER_ID?: string;
   LIMIT?: string;
+  MAX_TOTAL?: string;
+  MESSAGE_ID?: string;
+  DIRECTION?: string;
   QUERY?: string;
   LABEL_NAME?: string;
   LABEL_COLOR?: string;

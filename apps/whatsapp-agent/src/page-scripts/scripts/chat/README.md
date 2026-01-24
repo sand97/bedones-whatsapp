@@ -15,9 +15,9 @@ Envoie un message texte avec simulation naturelle de frappe.
 - `USE_TYPING`: Active la simulation (défaut: true)
 
 **Fonctionnalités:**
-- ✅ Simulation de frappe (80 WPM = 75ms/caractère)
+- ✅ Simulation de frappe via l'option `delay` de WPP.js (80 WPM = 75ms/caractère)
 - ✅ Délai: 500ms à 5000ms selon longueur
-- ✅ Indicateur "en train d'écrire..."
+- ✅ Indicateur "en train d'écrire..." géré par WPP
 - ✅ Vérification automatique du format contact ID
 
 **Exemple:**
@@ -126,7 +126,7 @@ Affiche l'indicateur "en train d'écrire...".
 - `CHAT_ID`: ID de la conversation
 - `DURATION`: Durée en ms (défaut: 2000)
 
-**Note:** `sendTextMessage` l'utilise automatiquement.
+**Note:** `sendTextMessage` utilise l'option `delay` de WPP pour simuler la frappe.
 
 ---
 
@@ -175,10 +175,8 @@ Récupère le message cité dans une réponse.
 
 ---
 
-## 🔧 Helpers
 
-### `helpers/typingSimulation.ts`
-Fonctions utilitaires pour la simulation de frappe.
+**Note:** `sendTextMessage` utilise désormais l'option `delay` de WPP.
 
 **Fonctions:**
 - `simulateTyping(chatId, messageLength)`: Calcule et exécute le délai
@@ -247,7 +245,7 @@ Tous les scripts retournent:
 ## 📝 Notes importantes
 
 1. **setNotes** requiert WhatsApp Business
-2. **sendTextMessage** gère automatiquement markIsComposing
+2. **sendTextMessage** utilise l'option `delay` de WPP pour la frappe
 3. Tous les scripts utilisent `window.WPP` (context navigateur)
 4. Délais de typing améliorent l'UX et rendent l'agent plus humain
 5. Format contact: accepte avec ou sans `@c.us`

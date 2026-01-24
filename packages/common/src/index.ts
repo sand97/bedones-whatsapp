@@ -145,3 +145,46 @@ export const SUCCESS_MESSAGES = {
   LOGIN_SUCCESS: 'Login successful',
   LOGOUT_SUCCESS: 'Logout successful',
 } as const
+
+export function normalizeWhatsAppPrice(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+
+    const cleaned = trimmed.replace(/[^\d.,-]/g, '')
+    if (!cleaned) return null
+
+    const hasComma = cleaned.includes(',')
+    const hasDot = cleaned.includes('.')
+    let normalized = cleaned
+
+    if (hasComma && hasDot) {
+      normalized = cleaned.replace(/,/g, '')
+    } else if (hasComma && !hasDot) {
+      normalized = cleaned.replace(',', '.')
+    }
+
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const candidate =
+      record.amount ??
+      record.value ??
+      record.amount1000 ??
+      record.amountInCents ??
+      record.price ??
+      null
+    return normalizeWhatsAppPrice(candidate)
+  }
+
+  return null
+}

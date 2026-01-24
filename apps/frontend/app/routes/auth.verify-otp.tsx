@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 
 interface VerifyOtpResponse {
   accessToken: string
+  redirectTo?: string
   user: {
     id: string
     phoneNumber: string
@@ -80,13 +81,25 @@ export default function VerifyOtpPage() {
         description: 'Vous êtes maintenant connecté',
       })
 
-      // Check context score and redirect accordingly
-      const contextScore = response.data.user.contextScore ?? 0
-      if (contextScore < 80) {
-        navigate('/context')
-      } else {
-        navigate('/')
+      // Refresh user to get up-to-date context score (if not returned by confirm-pairing)
+      let contextScore = response.data.user.contextScore
+      let redirectTo = response.data.redirectTo
+
+      try {
+        const meResponse = await apiClient.get('/auth/me')
+        if (meResponse.data) {
+          login(response.data.accessToken, meResponse.data)
+          contextScore = meResponse.data.contextScore
+        }
+      } catch (meError) {
+        console.warn('Failed to refresh user after login:', meError)
       }
+
+      if (typeof contextScore === 'number') {
+        redirectTo = contextScore < 80 ? '/context' : '/dashboard'
+      }
+
+      navigate(redirectTo || '/context')
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } }
       notification.error({

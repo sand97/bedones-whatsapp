@@ -112,12 +112,16 @@ function DashboardLayoutContent() {
   }, [isLoading, isAuthenticated, navigate])
 
   // Redirect to context if score < 80% and trying to access restricted routes
-  const contextScore = user?.contextScore ?? 0
+  const contextScore = user?.contextScore
+  const hasContextScore = typeof contextScore === 'number'
   useEffect(() => {
     // Only run this check when user is authenticated and loaded
     if (isLoading || !isAuthenticated || !user) return
 
     const isContextRoute = location.pathname === '/context'
+
+    // Wait until context score is known to avoid redirecting with stale data
+    if (!hasContextScore) return
 
     // If score < 80% and not on context route, redirect to context
     if (contextScore < 80 && !isContextRoute) {
@@ -128,6 +132,7 @@ function DashboardLayoutContent() {
     isAuthenticated,
     user,
     contextScore,
+    hasContextScore,
     location.pathname,
     navigate,
   ])
@@ -150,7 +155,7 @@ function DashboardLayoutContent() {
   }
 
   // Check if context score is below 80% - only context menu should be active
-  const isContextIncomplete = (user?.contextScore ?? 0) < 80
+  const isContextIncomplete = hasContextScore ? contextScore < 80 : false
 
   // Get currently selected menu key
   const getSelectedKey = () => {

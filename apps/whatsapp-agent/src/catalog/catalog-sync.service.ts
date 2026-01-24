@@ -4,6 +4,7 @@ import { ConnectorClientService } from '@app/connector/connector-client.service'
 import { Prisma } from '@app/generated/client';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { normalizeWhatsAppPrice } from '@apps/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
@@ -13,7 +14,7 @@ interface WhatsAppProduct {
   id: string;
   name: string;
   description?: string;
-  price?: number;
+  price?: number | null;
   currency?: string;
   availability?: string;
   retailerId?: string;
@@ -286,7 +287,10 @@ export class CatalogSyncService {
     const { result: products } =
       await this.connectorClient.executeScript(script);
 
-    return products || [];
+    return (products || []).map((product: WhatsAppProduct) => ({
+      ...product,
+      price: normalizeWhatsAppPrice(product.price),
+    }));
   }
 
   /**

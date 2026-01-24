@@ -89,6 +89,15 @@ export class SanitizationService {
 
     let sanitized = response;
 
+    // Normalize escaped newlines from model outputs (e.g., "\\n" or "\\\\n").
+    sanitized = sanitized
+      .replace(/\\\\r\\\\n/g, '\n')
+      .replace(/\\\\n/g, '\n')
+      .replace(/\\\\r/g, '\r')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r');
+
     // Remove any accidentally leaked system prompts or context
     sanitized = sanitized.replace(/\[SYSTEM\][\s\S]*?\[\/SYSTEM\]/gi, '');
 

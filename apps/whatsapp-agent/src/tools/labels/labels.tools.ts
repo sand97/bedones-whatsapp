@@ -31,8 +31,16 @@ export class LabelsTools {
    */
   private createGetContactLabelsTool() {
     return tool(
-      async ({ contactId }, config?: any) => {
+      async (_input, config?: any) => {
         try {
+          const contactId = config?.context?.chatId;
+          if (!contactId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript(
             'labels/getContactLabels',
             {
@@ -57,11 +65,8 @@ export class LabelsTools {
       {
         name: 'get_contact_labels',
         description:
-          'Récupérer les labels (tags) associés à un contact WhatsApp',
+          'Retrieve labels (tags) associated with the current WhatsApp contact',
         schema: z.object({
-          contactId: z
-            .string()
-            .describe('ID du contact WhatsApp (format: 237xxx@c.us)'),
         }),
       },
     );
@@ -72,8 +77,16 @@ export class LabelsTools {
    */
   private createAddLabelToContactTool() {
     return tool(
-      async ({ contactId, labelId }, config?: any) => {
+      async ({ labelId }, config?: any) => {
         try {
+          const contactId = config?.context?.chatId;
+          if (!contactId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript(
             'labels/addLabelToContact',
             {
@@ -97,12 +110,9 @@ export class LabelsTools {
       },
       {
         name: 'add_label_to_contact',
-        description: 'Ajouter un label (tag) à un contact WhatsApp',
+        description: 'Add a label (tag) to the current WhatsApp contact',
         schema: z.object({
-          contactId: z
-            .string()
-            .describe('ID du contact WhatsApp (format: 237xxx@c.us)'),
-          labelId: z.string().describe('ID du label à ajouter'),
+          labelId: z.string().describe('Label ID to add'),
         }),
       },
     );
@@ -113,8 +123,16 @@ export class LabelsTools {
    */
   private createRemoveLabelFromContactTool() {
     return tool(
-      async ({ contactId, labelId }, config?: any) => {
+      async ({ labelId }, config?: any) => {
         try {
+          const contactId = config?.context?.chatId;
+          if (!contactId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript(
             'labels/removeLabelFromContact',
             {
@@ -138,12 +156,9 @@ export class LabelsTools {
       },
       {
         name: 'remove_label_from_contact',
-        description: "Retirer un label (tag) d'un contact WhatsApp",
+        description: 'Remove a label (tag) from the current WhatsApp contact',
         schema: z.object({
-          contactId: z
-            .string()
-            .describe('ID du contact WhatsApp (format: 237xxx@c.us)'),
-          labelId: z.string().describe('ID du label à retirer'),
+          labelId: z.string().describe('Label ID to remove'),
         }),
       },
     );

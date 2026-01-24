@@ -4,6 +4,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons'
 import { featuresConfig } from '@app/data/features'
+import { useAuth } from '@app/hooks/useAuth'
 import apiClient from '@app/lib/api/client'
 import { App, Button, Modal, Spin } from 'antd'
 import Form from 'antd/es/form'
@@ -38,6 +39,7 @@ function isMobileDevice() {
 export default function LoginPage() {
   const navigate = useNavigate()
   const { notification } = App.useApp()
+  const { login } = useAuth()
   const [form] = Form.useForm<FormValues>()
   const [isLoading, setIsLoading] = useState(false)
   const [selectedFeatureKey, setSelectedFeatureKey] = useState<string | null>(
@@ -112,7 +114,32 @@ export default function LoginPage() {
           })
 
           setTimeout(() => {
-            navigate(response.data.redirectTo || '/context')
+            let contextScore = response.data.user?.contextScore
+            let redirectTo = response.data.redirectTo
+
+            if (response.data.accessToken) {
+              login(response.data.accessToken, response.data.user)
+
+              apiClient
+                .get('/auth/me')
+                .then(meResponse => {
+                  if (meResponse.data) {
+                    login(response.data.accessToken, meResponse.data)
+                    contextScore = meResponse.data.contextScore
+                  }
+                })
+                .catch(meError => {
+                  console.warn('Failed to refresh user after login:', meError)
+                })
+                .finally(() => {
+                  if (typeof contextScore === 'number') {
+                    redirectTo = contextScore < 80 ? '/context' : '/dashboard'
+                  }
+                  navigate(redirectTo || '/context')
+                })
+            } else {
+              navigate(redirectTo || '/context')
+            }
           }, 1000)
         } catch (error) {
           console.error('Error confirming pairing:', error)
@@ -143,7 +170,7 @@ export default function LoginPage() {
     return () => {
       socket.disconnect()
     }
-  }, [pairingToken, navigate, notification])
+  }, [pairingToken, navigate, notification, login])
 
   // Monitor QR code expiration
   useEffect(() => {

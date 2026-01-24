@@ -60,12 +60,12 @@ export class CatalogTools {
       {
         name: 'list_products',
         description:
-          'Lister les produits du catalogue WhatsApp directement depuis WhatsApp Web.',
+          'List products from the WhatsApp catalog directly from WhatsApp Web.',
         schema: z.object({
           limit: z
             .number()
             .default(20)
-            .describe('Nombre maximum de produits à retourner'),
+            .describe('Maximum number of products to return'),
         }),
       },
     );
@@ -101,14 +101,14 @@ export class CatalogTools {
       {
         name: 'search_products',
         description:
-          'Rechercher des produits de manière intelligente. Utilise la recherche sémantique si disponible (comprend les synonymes, le contexte), sinon cherche directement dans WhatsApp.',
+          'Search products intelligently. Uses semantic search if available (understands synonyms and context), otherwise searches directly in WhatsApp.',
         schema: z.object({
           query: z
             .string()
             .describe(
-              'Recherche en langage naturel (ex: "robe élégante pour soirée", "chaussures confortables")',
+              'Natural language query (e.g. "elegant evening dress", "comfortable shoes")',
             ),
-          limit: z.number().default(10).describe('Nombre maximum de résultats'),
+          limit: z.number().default(10).describe('Maximum number of results'),
         }),
       },
     );
@@ -149,9 +149,9 @@ export class CatalogTools {
       {
         name: 'get_product_details',
         description:
-          "Obtenir les détails complets d'un produit spécifique directement depuis WhatsApp (prix, description, images, disponibilité, etc.)",
+          'Get full details for a specific product directly from WhatsApp (price, description, images, availability, etc.).',
         schema: z.object({
-          productId: z.string().describe('ID du produit WhatsApp'),
+          productId: z.string().describe('WhatsApp product ID'),
         }),
       },
     );

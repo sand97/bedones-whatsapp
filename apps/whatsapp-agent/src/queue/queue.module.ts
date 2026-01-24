@@ -6,7 +6,7 @@ import { BullModule } from '@nestjs/bull';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { MessagesTools } from './messages-tools/messages.tools';
+import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { QueueService } from './queue.service';
 import { ScheduledMessageProcessor } from './scheduled-message.processor';
 

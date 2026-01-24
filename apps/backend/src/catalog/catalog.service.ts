@@ -1,3 +1,4 @@
+import { normalizeWhatsAppPrice } from '@apps/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -347,6 +348,7 @@ export class CatalogService {
 
       return {
         success: true,
+
         deletedCount: deleteResult.count,
       };
     } catch (error: unknown) {
@@ -479,10 +481,12 @@ export class CatalogService {
           });
 
           // Préparer les données du produit (snake_case comme WhatsApp)
+          const normalizedPrice = normalizeWhatsAppPrice(productData.price);
+
           const productPayload: Prisma.ProductUpdateInput = {
             name: productData.name || 'Sans nom',
             description: productData.description || null,
-            price: productData.price || null,
+            price: normalizedPrice,
             currency: productData.currency || null,
             retailer_id: productData.retailer_id || null,
             availability: productData.availability || null,
@@ -532,7 +536,7 @@ export class CatalogService {
               collection_id: collection?.id,
               name: productData.name || 'Sans nom',
               description: productData.description || null,
-              price: productData.price || null,
+              price: normalizedPrice,
               currency: productData.currency || null,
               retailer_id: productData.retailer_id || null,
               availability: productData.availability || null,

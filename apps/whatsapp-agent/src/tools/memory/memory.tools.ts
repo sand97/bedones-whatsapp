@@ -26,8 +26,16 @@ export class MemoryTools {
    */
   private createSavePersistentMemoryTool() {
     return tool(
-      async ({ chatId, type, key, value, expiresInDays }, config?: any) => {
+      async ({ type, key, value, expiresInDays }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           // Calculate expiration date
           let expiresAt: Date | undefined;
           if (expiresInDays) {
@@ -60,30 +68,27 @@ export class MemoryTools {
       {
         name: 'save_persistent_memory',
         description:
-          'Sauvegarder une mémoire persistante importante (préférence client, note VIP, information de commande, etc.). Ces informations seront disponibles lors des futures conversations.',
+          'Save an important persistent memory for the current conversation (customer preference, VIP note, order info, etc.). This information will be available in future conversations.',
         schema: z.object({
-          chatId: z
-            .string()
-            .describe('ID du chat WhatsApp (format: 237xxx@c.us)'),
           type: z
             .enum(['PREFERENCE', 'VIP_NOTE', 'ORDER', 'CONTEXT'])
             .describe(
-              'Type de mémoire: PREFERENCE (préférence client), VIP_NOTE (note VIP), ORDER (commande), CONTEXT (contexte)',
+              'Memory type: PREFERENCE (customer preference), VIP_NOTE (VIP note), ORDER (order), CONTEXT (context)',
             ),
           key: z
             .string()
             .describe(
-              'Clé de la mémoire (ex: "color_preference", "vip_reason", "last_order")',
+              'Memory key (e.g. "color_preference", "vip_reason", "last_order")',
             ),
           value: z
             .any()
             .describe(
-              'Valeur de la mémoire (peut être un objet JSON, texte, nombre, etc.)',
+              'Memory value (can be a JSON object, text, number, etc.)',
             ),
           expiresInDays: z
             .number()
             .optional()
-            .describe('Nombre de jours avant expiration (optionnel)'),
+            .describe('Number of days before expiration (optional)'),
         }),
       },
     );
@@ -94,8 +99,16 @@ export class MemoryTools {
    */
   private createRetrievePersistentMemoryTool() {
     return tool(
-      async ({ chatId, type }, config?: any) => {
+      async ({ type }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           // Get memories
           const memories = await this.prisma.getChatMemories(chatId, type);
 
@@ -119,16 +132,13 @@ export class MemoryTools {
       {
         name: 'retrieve_persistent_memory',
         description:
-          "Récupérer les mémoires persistantes d'un client (préférences, notes VIP, commandes précédentes, etc.)",
+          'Retrieve persistent memories for the current conversation (preferences, VIP notes, past orders, etc.).',
         schema: z.object({
-          chatId: z
-            .string()
-            .describe('ID du chat WhatsApp (format: 237xxx@c.us)'),
           type: z
             .enum(['PREFERENCE', 'VIP_NOTE', 'ORDER', 'CONTEXT'])
             .optional()
             .describe(
-              'Type de mémoire à récupérer (optionnel, récupère tous les types si non spécifié)',
+              'Memory type to retrieve (optional, returns all types if not specified)',
             ),
         }),
       },

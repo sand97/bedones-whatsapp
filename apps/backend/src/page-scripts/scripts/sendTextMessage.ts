@@ -38,10 +38,15 @@
     const wid = contact.wid._serialized;
     console.log(`✅ Contact trouvé: ${wid}`);
 
-    // Étape 2: Envoyer le message
+    // Étape 2: Envoyer le message (avec délai de frappe simulé)
     console.log(`📤 Envoi du message...`);
 
-    const result = await WPP.chat.sendTextMessage(wid, MESSAGE);
+    const baseDelay = MESSAGE.length * 75;
+    const typingDelay = Math.max(500, Math.min(5000, baseDelay));
+
+    const result = await WPP.chat.sendTextMessage(wid, MESSAGE, {
+      delay: typingDelay,
+    });
 
     console.log(`✅ Message envoyé avec succès`);
 

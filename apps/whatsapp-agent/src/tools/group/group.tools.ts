@@ -27,10 +27,18 @@ export class GroupTools {
    */
   private createSendGroupInviteTool() {
     return tool(
-      async ({ to, inviteCode, groupId, expiration }, config?: any) => {
+      async ({ inviteCode, groupId, expiration }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript('group/sendGroupInvite', {
-            TO: to,
+            TO: chatId,
             INVITE_CODE: inviteCode,
             GROUP_ID: groupId,
             EXPIRATION: expiration ? String(expiration) : '',
@@ -49,18 +57,17 @@ export class GroupTools {
       {
         name: 'send_group_invite',
         description:
-          'Envoyer une invitation à rejoindre un groupe WhatsApp. Parfait pour inviter des clients dans des groupes de support, communautés, groupes VIP, etc.',
+          'Send a WhatsApp group invite to the current conversation. Great for inviting customers to support groups, communities, VIP groups, etc.',
         schema: z.object({
-          to: z.string().describe('ID du destinataire (numéro ou avec @c.us)'),
           inviteCode: z
             .string()
-            .describe("Code d'invitation du groupe (obtenu via WhatsApp)"),
-          groupId: z.string().describe('ID du groupe (format: xxxxx@g.us)'),
+            .describe('Group invite code (from WhatsApp)'),
+          groupId: z.string().describe('Group ID (format: xxxxx@g.us)'),
           expiration: z
             .number()
             .optional()
             .describe(
-              "Timestamp d'expiration de l'invitation (en millisecondes)",
+              'Invite expiration timestamp (in milliseconds)',
             ),
         }),
       },

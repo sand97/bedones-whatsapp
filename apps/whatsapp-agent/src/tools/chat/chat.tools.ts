@@ -24,15 +24,12 @@ export class ChatTools {
     return [
       this.createReplyToMessageTool(), // SECURED: Reply to current conversation only
       this.createSendToAdminGroupTool(), // SECURED: Send to admin group only
+      this.createNotifyAuthorizedGroupTool(), // SECURED: Send to authorized group + reply to user
       this.createSendReactionTool(),
       this.createSendLocationTool(),
-      this.createEditMessageTool(),
-      this.createMarkIsReadTool(),
-      this.createMarkIsUnreadTool(),
       this.createSetNotesTool(),
       this.createSendScheduledCallTool(),
       this.createGetQuotedMessageTool(),
-      this.createMarkIsComposingTool(),
     ];
   }
 
@@ -41,13 +38,8 @@ export class ChatTools {
    */
   private createReplyToMessageTool() {
     return tool(
-      async ({ message, useTyping }, config?: any) => {
+      async ({ message, quotedMessageId }, config?: any) => {
         try {
-          // SECURITY: Only send to the current conversation chatId from runtime context
-          console.log(
-            'Full config structure:',
-            JSON.stringify(config, null, 2),
-          );
           const chatId = config?.context?.chatId;
           console.log('send message', chatId);
 
@@ -63,7 +55,8 @@ export class ChatTools {
           const script = this.scriptService.getScript('chat/sendTextMessage', {
             TO: chatId,
             MESSAGE: message,
-            USE_TYPING: String(useTyping !== false),
+            USE_TYPING: 'true',
+            QUOTED_MESSAGE_ID: quotedMessageId || '',
           });
 
           const result = await this.connectorClient.executeScript(script);
@@ -79,16 +72,13 @@ export class ChatTools {
       {
         name: 'reply_to_message',
         description:
-          "Répondre au message de l'utilisateur dans la conversation actuelle. L'agent montrera \"en train d'écrire...\" pendant un délai naturel (80 WPM). Utilisez ceci pour TOUTES les réponses aux utilisateurs.",
+          'REQUIRED: Use this tool for EVERY reply to the customer. The agent will show "typing..." for a natural delay (80 WPM). This tool is the ONLY way to communicate with the customer - NEVER reply directly without using this tool.',
         schema: z.object({
-          message: z.string().describe('Contenu du message à envoyer'),
-          useTyping: z
-            .boolean()
+          message: z.string().describe('Message content to send'),
+          quotedMessageId: z
+            .string()
             .optional()
-            .default(true)
-            .describe(
-              'Activer la simulation de frappe (défaut: true). Désactiver pour messages urgents.',
-            ),
+            .describe('Message ID to reply to (quoted message)'),
         }),
       },
     );
@@ -99,11 +89,11 @@ export class ChatTools {
    */
   private createSendToAdminGroupTool() {
     return tool(
-      async ({ message, useTyping }, config?: any) => {
+      async ({ message, replyToUser }, config?: any) => {
         try {
           // SECURITY: Only send to the configured managementGroupId from runtime context
-          const managementGroupId =
-            config?.context?.managementGroupId;
+          const managementGroupId = config?.context?.managementGroupId;
+          const chatId = config?.context?.chatId;
 
           if (!managementGroupId) {
             return JSON.stringify({
@@ -117,13 +107,31 @@ export class ChatTools {
             `Forwarding message to management group: ${managementGroupId}`,
           );
 
+          // Enrich message with contact number automatically
+          const enrichedMessage = `📱 Contact: ${chatId}\n\n${message}`;
+
           const script = this.scriptService.getScript('chat/sendTextMessage', {
             TO: managementGroupId,
-            MESSAGE: message,
-            USE_TYPING: String(useTyping !== false),
+            MESSAGE: enrichedMessage,
+            USE_TYPING: 'true',
           });
 
           const result = await this.connectorClient.executeScript(script);
+
+          if (chatId) {
+            const reply =
+              replyToUser?.trim() ||
+              "Merci, je vérifie auprès de l'équipe et je reviens vers vous.";
+            const replyScript = this.scriptService.getScript(
+              'chat/sendTextMessage',
+              {
+                TO: chatId,
+                MESSAGE: reply,
+                USE_TYPING: 'true',
+              },
+            );
+            await this.connectorClient.executeScript(replyScript);
+          }
 
           return JSON.stringify(result);
         } catch (error: any) {
@@ -136,18 +144,128 @@ export class ChatTools {
       {
         name: 'send_to_admin_group',
         description:
-          'Envoyer un message au groupe de gestion/admin. À utiliser UNIQUEMENT pour transférer des demandes qui nécessitent une intervention humaine (problèmes complexes, escalade, etc.). Ne PAS utiliser pour les réponses normales aux utilisateurs.',
+          'Send a message to the admin/management group and reply to the customer. Use ONLY to escalate requests that require human intervention.',
         schema: z.object({
           message: z
             .string()
             .describe(
-              "Message à transférer au groupe admin. Inclure le contexte et la raison du transfert. Ex: 'Client demande une annulation urgente de réservation #123. Besoin d\\'intervention manuelle.'",
+              "Message to forward to the admin group. Include context and the reason for escalation. Example: 'Customer requests urgent cancellation of booking #123. Manual intervention needed.'",
             ),
-          useTyping: z
-            .boolean()
+          replyToUser: z
+            .string()
             .optional()
-            .default(false)
-            .describe('Activer la simulation de frappe (défaut: false)'),
+            .describe(
+              'Short message sent to the customer to confirm it is being handled (optional).',
+            ),
+        }),
+      },
+    );
+  }
+
+  /**
+   * Notify an authorized group and reply to the current user
+   */
+  private createNotifyAuthorizedGroupTool() {
+    return tool(
+      async ({ groupId, message, replyToUser }, config?: any) => {
+        try {
+          const chatId = config?.context?.chatId;
+          const authorizedGroups = config?.context?.authorizedGroups || [];
+
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
+          if (!authorizedGroups || authorizedGroups.length === 0) {
+            return JSON.stringify({
+              success: false,
+              error: 'No authorized groups available for this user',
+            });
+          }
+
+          const targetGroup = authorizedGroups.find(
+            (group: any) => group.whatsappGroupId === groupId,
+          );
+
+          if (!targetGroup) {
+            return JSON.stringify({
+              success: false,
+              error: `Group not authorized: ${groupId}`,
+            });
+          }
+
+          // Enrich message with contact number automatically
+          const enrichedMessage = `📱 Contact: ${chatId}\n\n${message}`;
+
+          const groupScript = this.scriptService.getScript(
+            'chat/sendTextMessage',
+            {
+              TO: groupId,
+              MESSAGE: enrichedMessage,
+              USE_TYPING: 'true',
+            },
+          );
+
+          const groupResult = await this.connectorClient.executeScript(
+            groupScript,
+          );
+
+          const reply =
+            replyToUser?.trim() ||
+            "Merci, je vérifie auprès de l'équipe et je reviens vers vous.";
+
+          const replyScript = this.scriptService.getScript(
+            'chat/sendTextMessage',
+            {
+              TO: chatId,
+              MESSAGE: reply,
+              USE_TYPING: 'true',
+            },
+          );
+
+          const userResult = await this.connectorClient.executeScript(
+            replyScript,
+          );
+
+          return JSON.stringify({
+            success: true,
+            group: {
+              whatsappGroupId: targetGroup.whatsappGroupId,
+              usage: targetGroup.usage,
+              name: targetGroup.name,
+            },
+            groupResult,
+            userResult,
+          });
+        } catch (error: any) {
+          return JSON.stringify({
+            success: false,
+            error: error.message,
+          });
+        }
+      },
+      {
+        name: 'notify_authorized_group',
+        description:
+          'Send a message to an authorized group AFTER collecting all required information from the customer. The contact number is automatically added. IMPORTANT: Use your business context to identify the key information to collect BEFORE using this tool.',
+        schema: z.object({
+          groupId: z
+            .string()
+            .describe('Authorized group ID (format: xxxxx@g.us)'),
+          message: z
+            .string()
+            .describe(
+              'Full message to send to the group. MUST include: a clear summary of the request + ALL information collected per your business context. Structure it clearly so the team can act immediately.',
+            ),
+          replyToUser: z
+            .string()
+            .optional()
+            .describe(
+              "Short message sent to the customer (optional). Example: 'I am checking availability and will get back to you soon.'",
+            ),
         }),
       },
     );
@@ -178,15 +296,15 @@ export class ChatTools {
       {
         name: 'send_reaction',
         description:
-          'Envoyer une réaction emoji à un message. Utile pour donner un feedback rapide sans interrompre la conversation. Mettre "false" pour retirer une réaction.',
+          'Send an emoji reaction to a message. Useful for quick feedback without interrupting the conversation. Use "false" to remove a reaction.',
         schema: z.object({
           messageId: z
             .string()
-            .describe('ID du message à réagir (format: true_xxxxx@c.us_yyyy)'),
+            .describe('Message ID to react to (format: true_xxxxx@c.us_yyyy)'),
           reaction: z
             .string()
             .describe(
-              'Emoji de réaction (👍, ❤️, 😊, etc.) ou "false" pour retirer la réaction',
+              'Reaction emoji (👍, ❤️, 😊, etc.) or "false" to remove the reaction',
             ),
         }),
       },
@@ -198,10 +316,18 @@ export class ChatTools {
    */
   private createSendLocationTool() {
     return tool(
-      async ({ to, lat, lng, name, address, url }, config?: any) => {
+      async ({ lat, lng, name, address, url }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript('chat/sendLocation', {
-            TO: to,
+            TO: chatId,
             LAT: String(lat),
             LNG: String(lng),
             NAME: name || '',
@@ -222,25 +348,24 @@ export class ChatTools {
       {
         name: 'send_location',
         description:
-          "Envoyer une localisation géographique. Parfait pour partager l'adresse du magasin, points de retrait, lieux de livraison, etc.",
+          'Send a location to the current conversation. Great for sharing store address, pickup points, delivery locations, etc.',
         schema: z.object({
-          to: z.string().describe('ID du destinataire (numéro ou avec @c.us)'),
-          lat: z.number().describe('Latitude (ex: 48.8566 pour Paris)'),
-          lng: z.number().describe('Longitude (ex: 2.3522 pour Paris)'),
+          lat: z.number().describe('Latitude (e.g. 48.8566 for Paris)'),
+          lng: z.number().describe('Longitude (e.g. 2.3522 for Paris)'),
           name: z
             .string()
             .optional()
-            .describe('Nom du lieu (ex: "Notre Magasin Paris")'),
+            .describe('Place name (e.g. "Our Paris Store")'),
           address: z
             .string()
             .optional()
             .describe(
-              'Adresse complète (ex: "123 rue de la Paix, 75001 Paris")',
+              'Full address (e.g. "123 Rue de la Paix, 75001 Paris")',
             ),
           url: z
             .string()
             .optional()
-            .describe('URL associée (ex: lien Google Maps)'),
+            .describe('Related URL (e.g. Google Maps link)'),
         }),
       },
     );
@@ -272,19 +397,19 @@ export class ChatTools {
       {
         name: 'edit_message',
         description:
-          'Modifier un message précédemment envoyé. Utile pour corriger des erreurs ou mettre à jour des informations.',
+          'Edit a previously sent message. Useful to fix mistakes or update information.',
         schema: z.object({
           messageId: z
             .string()
             .describe(
-              'ID du message à modifier (format: true_xxxxx@c.us_yyyy)',
+              'Message ID to edit (format: true_xxxxx@c.us_yyyy)',
             ),
-          newText: z.string().describe('Nouveau contenu du message'),
+          newText: z.string().describe('New message content'),
           linkPreview: z
             .boolean()
             .optional()
             .default(true)
-            .describe('Activer la prévisualisation de liens'),
+            .describe('Enable link preview'),
         }),
       },
     );
@@ -295,8 +420,16 @@ export class ChatTools {
    */
   private createMarkIsUnreadTool() {
     return tool(
-      async ({ chatId }, config?: any) => {
+      async (_input, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript('chat/markIsUnread', {
             CHAT_ID: chatId,
           });
@@ -314,9 +447,8 @@ export class ChatTools {
       {
         name: 'mark_unread',
         description:
-          'Marquer une conversation comme non lue. Utile pour flagger les conversations qui nécessitent une intervention humaine ou un suivi ultérieur.',
+          'Mark the current conversation as unread. Useful to flag conversations that need human follow-up.',
         schema: z.object({
-          chatId: z.string().describe('ID de la conversation à marquer'),
         }),
       },
     );
@@ -327,8 +459,16 @@ export class ChatTools {
    */
   private createSetNotesTool() {
     return tool(
-      async ({ chatId, content }, config?: any) => {
+      async ({ content }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript('chat/setNotes', {
             CHAT_ID: chatId,
             CONTENT: content,
@@ -347,13 +487,12 @@ export class ChatTools {
       {
         name: 'set_notes',
         description:
-          "Définir des notes internes pour une conversation (mémoire de l'agent). IMPORTANT: Nécessite un compte WhatsApp Business. Utile pour stocker préférences clients, historique, contexte.",
+          'Set internal notes for the current conversation (agent memory). IMPORTANT: Requires a WhatsApp Business account. Useful for storing customer preferences, history, context.',
         schema: z.object({
-          chatId: z.string().describe('ID de la conversation'),
           content: z
             .string()
             .describe(
-              'Contenu des notes (préférences, historique, contexte, etc.)',
+              'Notes content (preferences, history, context, etc.)',
             ),
         }),
       },
@@ -365,15 +504,20 @@ export class ChatTools {
    */
   private createSendScheduledCallTool() {
     return tool(
-      async (
-        { to, title, description, callType, timestampMs },
-        config?: any,
-      ) => {
+      async ({ title, description, callType, timestampMs }, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript(
             'chat/sendScheduledCall',
             {
-              TO: to,
+              TO: chatId,
               TITLE: title,
               DESCRIPTION: description || '',
               CALL_TYPE: callType || 'voice',
@@ -394,22 +538,21 @@ export class ChatTools {
       {
         name: 'send_scheduled_call',
         description:
-          'Envoyer une invitation pour un appel planifié. Parfait pour prendre des RDV automatiquement, consultations, support téléphonique.',
+          'Send a scheduled call invite to the current conversation. Great for booking appointments, consultations, phone support.',
         schema: z.object({
-          to: z.string().describe('ID du destinataire'),
           title: z
             .string()
-            .describe('Titre de l\'appel (ex: "Consultation Support")'),
-          description: z.string().optional().describe("Description de l'appel"),
+            .describe('Call title (e.g. "Support Consultation")'),
+          description: z.string().optional().describe('Call description'),
           callType: z
             .enum(['voice', 'video'])
             .optional()
             .default('voice')
-            .describe("Type d'appel: voice ou video"),
+            .describe('Call type: voice or video'),
           timestampMs: z
             .number()
             .describe(
-              "Timestamp de l'appel en millisecondes depuis epoch (Date.now())",
+              'Call timestamp in milliseconds since epoch (Date.now())',
             ),
         }),
       },
@@ -440,11 +583,9 @@ export class ChatTools {
       {
         name: 'get_quoted_message',
         description:
-          'Récupérer le message cité/répondu dans une conversation. Utile pour comprendre le contexte des réponses.',
+          'Retrieve the quoted/replied message in a conversation. Useful to understand reply context.',
         schema: z.object({
-          messageId: z
-            .string()
-            .describe('ID du message qui contient une citation'),
+          messageId: z.string().describe('Message ID that contains a quote'),
         }),
       },
     );
@@ -455,8 +596,16 @@ export class ChatTools {
    */
   private createMarkIsReadTool() {
     return tool(
-      async ({ chatId }, config?: any) => {
+      async (_input, config?: any) => {
         try {
+          const chatId = config?.context?.chatId;
+          if (!chatId) {
+            return JSON.stringify({
+              success: false,
+              error: 'No chatId in runtime context',
+            });
+          }
+
           const script = this.scriptService.getScript('chat/markIsRead', {
             CHAT_ID: chatId,
           });
@@ -474,51 +623,11 @@ export class ChatTools {
       {
         name: 'mark_read',
         description:
-          "Marquer une conversation comme lue et envoyer l'événement SEEN. Utile après avoir traité des messages pour indiquer qu'ils ont été lus.",
+          'Mark the current conversation as read and send the SEEN event. Useful after handling messages to indicate they were read.',
         schema: z.object({
-          chatId: z
-            .string()
-            .describe('ID de la conversation à marquer comme lue'),
         }),
       },
     );
   }
 
-  /**
-   * Mark as composing (typing indicator)
-   */
-  private createMarkIsComposingTool() {
-    return tool(
-      async ({ chatId, duration }, config?: any) => {
-        try {
-          const script = this.scriptService.getScript('chat/markIsComposing', {
-            CHAT_ID: chatId,
-            DURATION: String(duration || 2000),
-          });
-
-          const result = await this.connectorClient.executeScript(script);
-
-          return JSON.stringify(result);
-        } catch (error: any) {
-          return JSON.stringify({
-            success: false,
-            error: error.message,
-          });
-        }
-      },
-      {
-        name: 'mark_composing',
-        description:
-          "Afficher l'indicateur \"en train d'écrire...\" dans une conversation. Utile pour rendre l'agent plus humain et naturel. Note: send_text_message le fait automatiquement.",
-        schema: z.object({
-          chatId: z.string().describe('ID de la conversation'),
-          duration: z
-            .number()
-            .optional()
-            .default(2000)
-            .describe('Durée en millisecondes (défaut: 2000ms)'),
-        }),
-      },
-    );
-  }
 }

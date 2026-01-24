@@ -14,6 +14,7 @@ interface Product {
   name: string
   description: string
   price: number
+  currency?: string
   image?: string
   approved?: boolean
 }
@@ -56,7 +57,8 @@ export default function OnboardingReviewProducts() {
           id: '1',
           name: 'T-shirt Premium',
           description: 'T-shirt en coton de qualité supérieure',
-          price: 15000,
+          price: 1500000,
+          currency: 'XAF',
           image: undefined,
           approved: false,
         },
@@ -64,7 +66,8 @@ export default function OnboardingReviewProducts() {
           id: '2',
           name: 'Jean Slim',
           description: 'Jean slim fit confortable',
-          price: 25000,
+          price: 2500000,
+          currency: 'XAF',
           image: undefined,
           approved: false,
         },
@@ -72,7 +75,8 @@ export default function OnboardingReviewProducts() {
           id: '3',
           name: 'Sneakers Sport',
           description: 'Chaussures de sport respirantes',
-          price: 35000,
+          price: 3500000,
+          currency: 'XAF',
           image: undefined,
           approved: false,
         },

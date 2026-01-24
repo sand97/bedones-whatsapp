@@ -108,13 +108,13 @@ export class IntentTools {
       {
         name: 'detect_intent',
         description:
-          "Détecter l'intention d'un message client (achat, prix, livraison, plainte, etc.). Utile pour mieux comprendre ce que le client veut.",
+          'Detect the intent of a customer message (purchase, price, delivery, complaint, etc.). Useful to better understand what the customer wants.',
         schema: z.object({
-          message: z.string().describe('Message du client à analyser'),
+          message: z.string().describe('Customer message to analyze'),
           context: z
             .string()
             .optional()
-            .describe('Contexte additionnel de la conversation'),
+            .describe('Additional conversation context'),
         }),
       },
     );

@@ -132,39 +132,62 @@ export class UserSyncService {
         });
       }
 
+      let clientInfoFailed = false;
+      let catalogFailed = false;
+
       // Step 1: Execute client info script (profile, business info, avatar)
-      await this.syncClientInfo(phoneNumber, user.id);
+      try {
+        await this.syncClientInfo(phoneNumber, user.id);
+      } catch (error: any) {
+        clientInfoFailed = true;
+        this.logger.error(
+          `⚠️ Client info sync failed for ${phoneNumber}: ${error.message}`,
+        );
+      }
 
       // Step 2: Execute catalog script (collections, products, images)
-      await this.syncCatalog(phoneNumber, user.id);
-
-      this.logger.log(
-        `✅ [END] User data synchronization completed for: ${phoneNumber}`,
-      );
-
-      // Step 3: Trigger initial AI evaluation for onboarding
-      // Only if thread doesn't exist or has no messages yet
-      const existingThread = await this.onboardingService.getThreadWithMessages(
-        user.id,
-      );
-      const hasMessages = existingThread && existingThread.messages.length > 0;
-
-      if (!hasMessages) {
-        this.logger.log(
-          `🤖 Triggering initial AI evaluation for user: ${user.id}`,
+      try {
+        await this.syncCatalog(phoneNumber, user.id);
+      } catch (error: any) {
+        catalogFailed = true;
+        this.logger.error(
+          `⚠️ Catalog sync failed for ${phoneNumber}: ${error.message}`,
         );
-        // This is done in the background to avoid blocking the sync completion
-        this.onboardingService
-          .performInitialEvaluation(user.id)
-          .catch((error) => {
-            this.logger.error(
-              `Failed to perform initial AI evaluation for user ${user.id}: ${error.message}`,
-              error.stack,
-            );
-          });
-      } else {
+      }
+
+      if (!clientInfoFailed && !catalogFailed) {
         this.logger.log(
-          `⏭️ Skipping AI evaluation for user ${user.id}: thread already exists with ${existingThread.messages.length} messages`,
+          `✅ [END] User data synchronization completed for: ${phoneNumber}`,
+        );
+
+        // Step 3: Trigger initial AI evaluation for onboarding
+        // Only if thread doesn't exist or has no messages yet
+        const existingThread =
+          await this.onboardingService.getThreadWithMessages(user.id);
+        const hasMessages =
+          existingThread && existingThread.messages.length > 0;
+
+        if (!hasMessages) {
+          this.logger.log(
+            `🤖 Triggering initial AI evaluation for user: ${user.id}`,
+          );
+          // This is done in the background to avoid blocking the sync completion
+          this.onboardingService
+            .performInitialEvaluation(user.id)
+            .catch((error) => {
+              this.logger.error(
+                `Failed to perform initial AI evaluation for user ${user.id}: ${error.message}`,
+                error.stack,
+              );
+            });
+        } else {
+          this.logger.log(
+            `⏭️ Skipping AI evaluation for user ${user.id}: thread already exists with ${existingThread.messages.length} messages`,
+          );
+        }
+      } else {
+        this.logger.warn(
+          `⚠️ User data synchronization completed with errors for: ${phoneNumber} (clientInfo=${clientInfoFailed ? 'failed' : 'ok'}, catalog=${catalogFailed ? 'failed' : 'ok'})`,
         );
       }
     } catch (error: any) {

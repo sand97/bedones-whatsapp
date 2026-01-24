@@ -8,8 +8,16 @@ import { ConnectorClientService } from '../connector/connector-client.service';
  */
 export function createWhatsAppTools(connectorClient: ConnectorClientService) {
   const sendMessageTool = tool(
-    async ({ chatId, message }) => {
+    async ({ message }, config?: any) => {
       try {
+        const chatId = config?.context?.chatId;
+        if (!chatId) {
+          return JSON.stringify({
+            success: false,
+            error: 'No chatId in runtime context',
+          });
+        }
+
         const result = await connectorClient.sendMessage(chatId, message);
         return JSON.stringify({
           success: true,
@@ -26,19 +34,24 @@ export function createWhatsAppTools(connectorClient: ConnectorClientService) {
     {
       name: 'send_whatsapp_message',
       description:
-        'Send a WhatsApp message to a specific chat. Use this when you need to reply to a user or send a message.',
+        'Send a WhatsApp message to the current chat. Use this when you need to reply to a user.',
       schema: z.object({
-        chatId: z
-          .string()
-          .describe('The WhatsApp chat ID (format: number@c.us or group@g.us)'),
         message: z.string().describe('The message content to send'),
       }),
     },
   );
 
   const getChatInfoTool = tool(
-    async ({ chatId }) => {
+    async (_input, config?: any) => {
       try {
+        const chatId = config?.context?.chatId;
+        if (!chatId) {
+          return JSON.stringify({
+            success: false,
+            error: 'No chatId in runtime context',
+          });
+        }
+
         const chat = await connectorClient.getChatById(chatId);
         return JSON.stringify({
           success: true,
@@ -63,18 +76,22 @@ export function createWhatsAppTools(connectorClient: ConnectorClientService) {
     {
       name: 'get_chat_info',
       description:
-        'Get information about a specific WhatsApp chat. Use this to check chat details, unread messages, etc.',
-      schema: z.object({
-        chatId: z
-          .string()
-          .describe('The WhatsApp chat ID (format: number@c.us or group@g.us)'),
-      }),
+        'Get information about the current WhatsApp chat. Use this to check chat details, unread messages, etc.',
+      schema: z.object({}),
     },
   );
 
   const getContactInfoTool = tool(
-    async ({ contactId }) => {
+    async (_input, config?: any) => {
       try {
+        const contactId = config?.context?.chatId;
+        if (!contactId) {
+          return JSON.stringify({
+            success: false,
+            error: 'No chatId in runtime context',
+          });
+        }
+
         const contact = await connectorClient.getContactById(contactId);
         return JSON.stringify({
           success: true,
@@ -101,12 +118,8 @@ export function createWhatsAppTools(connectorClient: ConnectorClientService) {
     {
       name: 'get_contact_info',
       description:
-        'Get information about a specific WhatsApp contact. Use this to check user details, phone number, etc.',
-      schema: z.object({
-        contactId: z
-          .string()
-          .describe('The WhatsApp contact ID (format: number@c.us)'),
-      }),
+        'Get information about the current WhatsApp contact. Use this to check user details, phone number, etc.',
+      schema: z.object({}),
     },
   );
 

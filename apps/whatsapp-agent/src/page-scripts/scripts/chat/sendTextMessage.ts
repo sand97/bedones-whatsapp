@@ -6,11 +6,12 @@
  * - TO: Recipient phone number (international format) or chat ID
  * - MESSAGE: Text content to send
  * - USE_TYPING: Whether to simulate typing (default: true)
+ * - QUOTED_MESSAGE_ID: Message ID to reply to (optional)
  *
  * Features:
  * - Verifies contact exists using queryExists
  * - Natural typing delay based on message length (80 WPM)
- * - Shows "typing..." indicator before sending
+ * - Uses WPP sendTextMessage delay option to simulate typing
  * - Delay capped between 500ms and 5000ms
  */
 
@@ -20,8 +21,17 @@
 (async () => {
   try {
     const to = '{{TO}}';
-    const message = '{{MESSAGE}}';
+    const rawMessage = '{{MESSAGE}}';
+    const message = rawMessage
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r');
     const useTyping = '{{USE_TYPING}}' !== 'false';
+    const quotedMessageId = '{{QUOTED_MESSAGE_ID}}';
+    const quotedMsg =
+      quotedMessageId && !quotedMessageId.includes('{{')
+        ? quotedMessageId
+        : null;
 
     if (!to || to.includes('{{')) {
       throw new Error('TO is required');
@@ -52,24 +62,31 @@
     }
 
     // Simulate natural typing if enabled
-    // ⚠️ This code generate error because
-    // window.WPP.chat.markIsComposing; // create exception
-    // if (useTyping) {
-    //   // Calculate delay: 80 WPM = 75ms per character
-    //   const baseDelay = message.length * 75;
-    //   const delay = Math.max(500, Math.min(5000, baseDelay));
-    //
-    //   console.log(`Simulating typing for ${delay}ms...`);
-    //
-    //   // Show "typing..." indicator
-    //   await window.WPP.chat.markIsComposing(chatId, delay);
-    //
-    //   // Wait for the calculated delay
-    //   await new Promise((resolve) => setTimeout(resolve, delay));
-    // }
+    let typingDelay;
+    if (useTyping) {
+      // Calculate delay: 80 WPM = 75ms per character
+      const baseDelay = message.length * 75;
+      typingDelay = Math.max(500, Math.min(5000, baseDelay));
 
-    // Send the message
-    const result = await window.WPP.chat.sendTextMessage(chatId, message);
+      console.log(`Simulating typing for ${typingDelay}ms...`);
+    }
+
+    const options = {};
+    if (typingDelay) {
+      options.delay = typingDelay;
+    }
+    if (quotedMsg) {
+      options.quotedMsg = quotedMsg;
+    }
+
+    const hasOptions = Object.keys(options).length > 0;
+
+    // Send the message (WPP handles typing delay when provided)
+    const result = await window.WPP.chat.sendTextMessage(
+      chatId,
+      message,
+      hasOptions ? options : undefined,
+    );
 
     console.log('Message sent successfully');
 

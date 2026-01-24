@@ -46,7 +46,17 @@ interface WPPInterface {
   };
   chat: {
     // Existing functions
-    getMessages(chatId: string, limit: number): Promise<any[]>;
+    getMessages(
+      chatId: string,
+      options?:
+        | number
+        | {
+            count?: number;
+            onlyUnread?: boolean;
+            direction?: 'before' | 'after';
+            id?: string;
+          },
+    ): Promise<any[]>;
     forwardMessage(
       to: string,
       originalChatId: string,
@@ -59,6 +69,7 @@ interface WPPInterface {
       content: string,
       options?: any,
     ): Promise<any>;
+    sendCatalogMessage(to: string, catalogOwnerId: string): Promise<any>;
     sendReactionToMessage(
       messageId: string,
       reaction: string | false | null,

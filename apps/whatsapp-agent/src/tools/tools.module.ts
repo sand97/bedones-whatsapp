@@ -7,6 +7,7 @@ import { Module } from '@nestjs/common';
 import { CatalogTools } from './catalog/catalog.tools';
 import { ChatTools } from './chat/chat.tools';
 import { CommunicationTools } from './communication/communication.tools';
+import { ProductSendService } from './communication/product-send.service';
 import { GroupTools } from './group/group.tools';
 import { IntentTools } from './intent/intent.tools';
 import { LabelsTools } from './labels/labels.tools';
@@ -21,6 +22,7 @@ import { MemoryTools } from './memory/memory.tools';
   ],
   providers: [
     CommunicationTools,
+    ProductSendService,
     CatalogTools,
     ChatTools,
     GroupTools,
@@ -30,6 +32,7 @@ import { MemoryTools } from './memory/memory.tools';
   ],
   exports: [
     CommunicationTools,
+    ProductSendService,
     CatalogTools,
     ChatTools,
     GroupTools,

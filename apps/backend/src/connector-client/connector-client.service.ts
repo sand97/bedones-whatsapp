@@ -45,11 +45,28 @@ export class ConnectorClientService {
     );
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/execute-script', {
-      script,
-    });
+    try {
+      const response = await instance.post('/whatsapp/execute-script', {
+        script,
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error: any) {
+      const status = error.response?.status;
+      const data = error.response?.data;
+
+      this.logger.error(
+        `[CONNECTOR] Script execution failed (${status || 'unknown'}): ${
+          data?.error || error.message
+        }`,
+      );
+
+      if (data) {
+        this.logger.debug(`[CONNECTOR] Error response:`, data);
+      }
+
+      throw new Error(data?.error || error.message);
+    }
   }
 
   /**

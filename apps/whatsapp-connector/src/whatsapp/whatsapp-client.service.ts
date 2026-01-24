@@ -11,6 +11,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 
+import {
+  MessageHistoryResult,
+  MessageHistoryService,
+} from './services/message-history.service';
 import { WebhookService } from './webhook.service';
 
 @Injectable()
@@ -25,6 +29,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly webhookService: WebhookService,
     private readonly httpService: HttpService,
+    private readonly messageHistoryService: MessageHistoryService,
   ) {
     // Set reference in webhook service to avoid circular dependency
     this.webhookService.setWhatsAppClientService(this);
@@ -219,10 +224,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
 
       // Enrich message with proper chatId and contact labels
       try {
-        // Get the real chatId (not @lid format)
-        // For individual chats, use the contact ID
-        // For group chats, use the chat ID
-        const chat = await message.getChat();
+        // Get the real contactId (not @lid format)
         const contactId = (await message?.getContact())?.id?._serialized;
 
         // Add contactId to message object (generic way, like labels)
@@ -296,13 +298,64 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn('pupPage not available');
           }
         }
+
+        // Get message history for context
+        // Fetch recent messages to provide conversation context to the agent
+        let messageHistory: MessageHistoryResult | null = null;
+        try {
+          if (this.isReady && this.client.pupPage) {
+            const chatId = message.from; // Use @lid format for WPP API
+            this.logger.log(
+              `🔍 [CONNECTOR] Fetching history for chatId: ${chatId}`,
+            );
+
+            messageHistory = await this.messageHistoryService.getMessageHistory(
+              this.client.pupPage,
+              chatId,
+              20,
+            );
+
+            if (messageHistory) {
+              this.logger.log(
+                `✅ [CONNECTOR] Retrieved ${messageHistory.totalFetched} messages (${messageHistory.hostMessageCount} from host, ${messageHistory.ourMessageCount} from us)`,
+              );
+              this.logger.log(
+                `📋 [CONNECTOR] First message preview: ${messageHistory.messages[0]?.body?.substring(0, 50) || 'N/A'}`,
+              );
+            } else {
+              this.logger.warn(
+                `⚠️ [CONNECTOR] messageHistory is null after fetch`,
+              );
+            }
+          } else {
+            this.logger.warn(
+              `⚠️ [CONNECTOR] Cannot fetch history - isReady: ${this.isReady}, pupPage: ${!!this.client.pupPage}`,
+            );
+          }
+        } catch (error: any) {
+          this.logger.error(
+            `❌ [CONNECTOR] Failed to get message history: ${error.message}`,
+          );
+          this.logger.error(`Stack: ${error.stack}`);
+          // Continue even if history retrieval fails
+        }
+
+        // Add message history to the message object
+        if (messageHistory) {
+          (message as any).messageHistory = messageHistory;
+          this.logger.log(
+            `✅ [CONNECTOR] Added ${messageHistory.messages.length} messages to message object`,
+          );
+        } else {
+          this.logger.warn(`⚠️ [CONNECTOR] No history to add to message`);
+        }
       } catch (error) {
         this.logger.error(
-          'Failed to get contact labels:',
+          'Failed to enrich message:',
           error.message,
           error.stack,
         );
-        // Continue even if label retrieval fails
+        // Continue even if enrichment fails
       }
 
       this.webhookService.sendEvent('message', args);
