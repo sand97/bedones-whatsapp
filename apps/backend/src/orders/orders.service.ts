@@ -1,3 +1,4 @@
+import { Order, OrderStatus } from '@app/generated/client';
 import {
   Injectable,
   NotFoundException,
@@ -5,7 +6,6 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { Order, OrderStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 

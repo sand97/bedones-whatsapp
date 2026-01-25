@@ -1,3 +1,4 @@
+import { Product, ProductMetadata } from '@app/generated/client';
 import {
   Injectable,
   NotFoundException,
@@ -5,7 +6,6 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { Product, ProductMetadata } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 

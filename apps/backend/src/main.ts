@@ -14,9 +14,15 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Augmenter la limite de taille des payloads pour les uploads d'images en base64
+  // Limite standard
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  // Limite étendue uniquement pour l'upload media
+  app.use(
+    '/message-metadata/upload-media',
+    express.json({ limit: '30mb' }),
+    express.urlencoded({ limit: '30mb', extended: true }),
+  );
 
   // Enable CORS
   app.enableCors({

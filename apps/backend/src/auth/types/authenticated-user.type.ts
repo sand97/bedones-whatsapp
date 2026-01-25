@@ -1,4 +1,4 @@
-import { UserStatus } from '@prisma/client';
+import { UserStatus } from '@app/generated/client';
 import { Request as ExpressRequest } from 'express';
 
 /**

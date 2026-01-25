@@ -2,7 +2,7 @@
  * Types pour le catalogue WhatsApp Business
  */
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@app/generated/client';
 
 export interface ImageUrl {
   key: 'requested' | 'full';

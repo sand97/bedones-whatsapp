@@ -465,6 +465,17 @@ export class WhatsAppAgentService implements OnModuleInit {
         messageId,
       );
 
+      // Inject metadata map if available (from queue processor)
+      const metadataMap = (message as any).metadataMap;
+      if (metadataMap) {
+        conversationHistory.forEach((msg) => {
+          const mid = (msg as any)?._serialized || (msg as any)?.id;
+          if (mid && metadataMap[mid]) {
+            (msg as any).metadata = metadataMap[mid];
+          }
+        });
+      }
+
       this.logger.log(
         `🔄 [AGENT] Built conversation history: ${conversationHistory.length} messages`,
       );

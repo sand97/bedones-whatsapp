@@ -2,6 +2,11 @@ import * as crypto from 'crypto';
 
 import { ConnectorClientService } from '@app/connector-client/connector-client.service';
 import {
+  WhatsAppAgent,
+  WhatsAppAgentStatus,
+  ConnectionStatus,
+} from '@app/generated/client';
+import {
   PageScriptService,
   ScriptVariables,
 } from '@app/page-scripts/page-script.service';
@@ -13,11 +18,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  WhatsAppAgent,
-  WhatsAppAgentStatus,
-  ConnectionStatus,
-} from '@prisma/client';
 
 import { CryptoService } from '../common/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';

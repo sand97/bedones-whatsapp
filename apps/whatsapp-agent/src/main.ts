@@ -5,9 +5,20 @@ import { AppModule } from '@app/app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Limite standard
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  // Limite étendue pour le webhook message (audio base64)
+  app.use(
+    '/webhook/message',
+    express.json({ limit: '30mb' }),
+    express.urlencoded({ limit: '30mb', extended: true }),
+  );
 
   // Enable CORS
   app.enableCors({

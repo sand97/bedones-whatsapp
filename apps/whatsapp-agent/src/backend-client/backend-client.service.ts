@@ -11,6 +11,12 @@ import {
   LogOperationRequest,
   LogOperationResponse,
   ToolExecution,
+  UploadMediaRequest,
+  UploadMediaResponse,
+  UpsertMessageMetadataRequest,
+  UpsertMessageMetadataResponse,
+  MessageMetadataListRequest,
+  MessageMetadataListResponse,
 } from './backend-api.types';
 
 @Injectable()
@@ -185,5 +191,57 @@ export class BackendClientService {
       );
       return { success: false };
     }
+  }
+
+  /**
+   * Upload media (base64 buffer) to backend to get a signed URL
+   */
+  async uploadMedia(payload: UploadMediaRequest): Promise<UploadMediaResponse> {
+    const url = `${this.baseUrl}/message-metadata/upload-media`;
+    this.logger.debug(`POST ${url} for message ${payload.messageId}`);
+
+    const response = await this.httpService.axiosRef.post<UploadMediaResponse>(
+      url,
+      payload,
+    );
+    return response.data;
+  }
+
+  /**
+   * Upsert message metadata (AUDIO/IMAGE)
+   */
+  async upsertMessageMetadata(
+    payload: UpsertMessageMetadataRequest,
+  ): Promise<UpsertMessageMetadataResponse> {
+    const url = `${this.baseUrl}/message-metadata/upsert`;
+    this.logger.debug(
+      `POST ${url} for message ${payload.messageId} (${payload.type})`,
+    );
+
+    const response =
+      await this.httpService.axiosRef.post<UpsertMessageMetadataResponse>(
+        url,
+        payload,
+      );
+    return response.data;
+  }
+
+  /**
+   * Fetch metadata for a list of message IDs (for context building)
+   */
+  async fetchMetadataList(
+    payload: MessageMetadataListRequest,
+  ): Promise<MessageMetadataListResponse> {
+    const url = `${this.baseUrl}/message-metadata/list`;
+    this.logger.debug(
+      `POST ${url} for ${payload.messageIds.length} messageIds`,
+    );
+
+    const response =
+      await this.httpService.axiosRef.post<MessageMetadataListResponse>(
+        url,
+        payload,
+      );
+    return response.data;
   }
 }

@@ -6,12 +6,13 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 // ============================================
@@ -81,6 +82,11 @@ enum SyncStatus {
   FAILED // Échec de la synchronisation
 }
 
+enum MessageMetadataType {
+  AUDIO
+  IMAGE
+}
+
 // ============================================
 // MODELS
 // ============================================
@@ -148,10 +154,10 @@ model WhatsAppAgent {
   metadata Json? // { containerId, vpsProvider, region, etc. }
 
   // Configuration IA
-  testPhoneNumbers   String[] @default([]) // Numéros de téléphone de test
-  testLabels         String[] @default([]) // Labels de test (l'IA répond uniquement à ces labels)
-  labelsToNotReply   String[] @default([]) // Labels à exclure (l'IA ne répond pas à ces labels)
-  productionEnabled  Boolean  @default(false) // Mode production activé
+  testPhoneNumbers  String[] @default([]) // Numéros de téléphone de test
+  testLabels        String[] @default([]) // Labels de test (l'IA répond uniquement à ces labels)
+  labelsToNotReply  String[] @default([]) // Labels à exclure (l'IA ne répond pas à ces labels)
+  productionEnabled Boolean  @default(false) // Mode production activé
 
   // Dates
   createdAt         DateTime  @default(now())
@@ -500,9 +506,9 @@ model Subscription {
 }
 
 model Group {
-  id              String  @id @unique @default(cuid())
+  id              String @id @unique @default(cuid())
   userId          String
-  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   whatsappGroupId String // ID WhatsApp du groupe (ex: "12345@g.us")
   name            String // Nom du groupe
   usage           String // Utilisation du groupe (ex: "Support client", "Ventes", "Notifications")
@@ -525,22 +531,22 @@ model AgentOperation {
   userId  String? // ID de l'utilisateur propriétaire de l'agent
 
   // Messages
-  userMessage    String @db.Text // Message initial de l'utilisateur
-  agentResponse  String @db.Text // Réponse finale de l'agent
-  systemPrompt   String @db.Text // System prompt utilisé
+  userMessage   String @db.Text // Message initial de l'utilisateur
+  agentResponse String @db.Text // Réponse finale de l'agent
+  systemPrompt  String @db.Text // System prompt utilisé
 
   // Metrics
-  totalTokens       Int? // Total tokens utilisés
-  promptTokens      Int? // Tokens du prompt
-  completionTokens  Int? // Tokens de la completion
-  durationMs        Int // Durée en millisecondes
-  modelName         String? // Nom du modèle utilisé (grok-beta, gemini, etc.)
+  totalTokens      Int? // Total tokens utilisés
+  promptTokens     Int? // Tokens du prompt
+  completionTokens Int? // Tokens de la completion
+  durationMs       Int // Durée en millisecondes
+  modelName        String? // Nom du modèle utilisé (grok-beta, gemini, etc.)
 
   // Tools execution
   toolsUsed Json? // Array des tools utilisés: [{ name, args, result, durationMs }]
 
   // Status
-  status String @default("success") // "success", "error", "rate_limited"
+  status String  @default("success") // "success", "error", "rate_limited"
   error  String? @db.Text // Message d'erreur si échec
 
   // Metadata
@@ -553,5 +559,17 @@ model AgentOperation {
   @@index([chatId])
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
+}
+
+model MessageMetadata {
+  id        String              @id @unique @default(cuid())
+  messageId String
+  type      MessageMetadataType
+  metadata  Json
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@unique([messageId, type])
   @@index([createdAt])
 }

@@ -2163,6 +2163,81 @@
           "webhooks"
         ]
       }
+    },
+    "/message-metadata/upsert": {
+      "post": {
+        "operationId": "MessageMetadataController_upsert",
+        "summary": "Upsert metadata for a message",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMessageMetadataDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "MessageMetadata"
+        ]
+      }
+    },
+    "/message-metadata/list": {
+      "post": {
+        "operationId": "MessageMetadataController_list",
+        "summary": "Get metadata for a list of messages",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageMetadataListDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "MessageMetadata"
+        ]
+      }
+    },
+    "/message-metadata/upload-media": {
+      "post": {
+        "operationId": "MessageMetadataController_uploadMedia",
+        "summary": "Upload media buffer and return URL",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadMediaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "MessageMetadata"
+        ]
+      }
     }
   },
   "info": {
@@ -3064,6 +3139,18 @@
         "properties": {}
       },
       "WhatsAppEventDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertMessageMetadataDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MessageMetadataListDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UploadMediaDto": {
         "type": "object",
         "properties": {}
       }

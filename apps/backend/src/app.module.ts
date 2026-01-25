@@ -5,7 +5,7 @@ import { PrismaModule } from '@app/prisma/prisma.module';
 import KeyvRedis from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 
@@ -14,6 +14,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { CommonModule } from './common/common.module';
 import aiConfig from './config/ai.config';
 import { ConnectorClientModule } from './connector-client/connector-client.module';
+import { MessageMetadataModule } from './message-metadata/message-metadata.module';
 import { MinioModule } from './minio/minio.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrdersModule } from './orders/orders.module';
@@ -63,6 +64,7 @@ import { WhatsAppAgentModule } from './whatsapp-agent/whatsapp-agent.module';
     SettingsModule,
     OrdersModule,
     WebhooksModule,
+    MessageMetadataModule,
   ],
   controllers: [],
   providers: [],

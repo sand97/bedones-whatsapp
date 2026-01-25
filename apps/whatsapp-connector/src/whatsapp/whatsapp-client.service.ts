@@ -349,6 +349,23 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
         } else {
           this.logger.warn(`⚠️ [CONNECTOR] No history to add to message`);
         }
+
+        // Télécharger le média si présent et l'attacher au payload
+        if (message.hasMedia) {
+          try {
+            const media = await message.downloadMedia(); // { data: base64, mimetype, filename }
+            if (media) {
+              (message as any).downloadedMedia = media;
+              this.logger.log(
+                `✅ [CONNECTOR] Media attached to message ${message.id?._serialized}`,
+              );
+            }
+          } catch (err: any) {
+            this.logger.error(
+              `❌ [CONNECTOR] Failed to download media for ${message.id?._serialized}: ${err.message}`,
+            );
+          }
+        }
       } catch (error) {
         this.logger.error(
           'Failed to enrich message:',

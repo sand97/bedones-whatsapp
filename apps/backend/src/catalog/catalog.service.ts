@@ -1,6 +1,6 @@
+import { Prisma } from '@app/generated/client';
 import { normalizeWhatsAppPrice } from '@apps/common';
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 
 import { MinioService } from '../minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';

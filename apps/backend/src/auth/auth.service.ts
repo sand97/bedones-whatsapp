@@ -1,5 +1,6 @@
 import { CryptoService } from '@app/common/crypto.service';
 import { ConnectorClientService } from '@app/connector-client';
+import { UserStatus, ConnectionStatus } from '@app/generated/client';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { UserSyncService } from '@app/whatsapp-agent/user-sync.service';
 import { WhatsAppAgentService } from '@app/whatsapp-agent/whatsapp-agent.service';
@@ -15,7 +16,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { UserStatus, ConnectionStatus } from '@prisma/client';
 
 import { OnboardingService } from '../onboarding/onboarding.service';
 

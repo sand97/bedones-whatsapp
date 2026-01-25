@@ -1,10 +1,14 @@
 import {
+  BusinessInfo,
+  DeliveryLocation,
+  PaymentMethod,
+} from '@app/generated/client';
+import {
   Injectable,
   Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { BusinessInfo, DeliveryLocation, PaymentMethod } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 

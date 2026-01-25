@@ -75,3 +75,42 @@ export interface LogOperationResponse {
   success: boolean;
   operationId?: string;
 }
+
+export interface UploadMediaRequest {
+  messageId: string;
+  chatId?: string;
+  userId?: string;
+  mediaBase64: string;
+  mimeType?: string;
+  filename?: string;
+  userPhoneNumber?: string;
+  contactPhoneNumber?: string;
+}
+
+export interface UploadMediaResponse {
+  success: boolean;
+  url: string;
+  objectKey: string;
+  size: number;
+}
+
+export interface UpsertMessageMetadataRequest {
+  messageId: string;
+  type: 'AUDIO' | 'IMAGE';
+  metadata: any;
+}
+
+export interface UpsertMessageMetadataResponse {
+  success: boolean;
+  record: any;
+}
+
+export interface MessageMetadataListRequest {
+  messageIds: string[];
+  type?: 'AUDIO' | 'IMAGE';
+}
+
+export interface MessageMetadataListResponse {
+  success: boolean;
+  data: Record<string, any[]>;
+}
