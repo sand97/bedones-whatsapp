@@ -67,8 +67,7 @@ export class LabelsTools {
         name: 'get_contact_labels',
         description:
           'Retrieve labels (tags) associated with the current WhatsApp contact',
-        schema: z.object({
-        }),
+        schema: z.object({}),
       },
     );
   }

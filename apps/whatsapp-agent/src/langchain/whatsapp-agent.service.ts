@@ -5,7 +5,6 @@ import {
 import { BackendClientService } from '@app/backend-client/backend-client.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
-import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { RateLimitService } from '@app/security/rate-limit.service';
 import { SanitizationService } from '@app/security/sanitization.service';
 import { CatalogTools } from '@app/tools/catalog/catalog.tools';
@@ -15,6 +14,7 @@ import { GroupTools } from '@app/tools/group/group.tools';
 import { IntentTools } from '@app/tools/intent/intent.tools';
 import { LabelsTools } from '@app/tools/labels/labels.tools';
 import { MemoryTools } from '@app/tools/memory/memory.tools';
+import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
