@@ -18,7 +18,7 @@ const { Text, Paragraph } = Typography
 
 function formatCatalogPrice(
   rawPrice?: number | null,
-  rawCurrency?: string | null,
+  rawCurrency?: string | null
 ) {
   if (rawPrice === null || rawPrice === undefined) return null
   if (!rawCurrency) return null

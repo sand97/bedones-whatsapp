@@ -5,6 +5,7 @@ import {
   IsArray,
   IsEnum,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -19,6 +20,7 @@ class UpsertMessageMetadataDto {
   @IsEnum(MessageMetadataType)
   type!: MessageMetadataType;
 
+  @IsObject()
   metadata: any;
 }
 
@@ -65,6 +67,12 @@ class UploadMediaDto {
   filename?: string;
 }
 
+class DeleteMediaDto {
+  @IsString()
+  @IsNotEmpty()
+  objectKey!: string;
+}
+
 @ApiTags('MessageMetadata')
 @Controller('message-metadata')
 export class MessageMetadataController {
@@ -92,5 +100,12 @@ export class MessageMetadataController {
   async uploadMedia(@Body() dto: UploadMediaDto) {
     const payload = await this.messageMetadata.uploadMedia(dto);
     return { success: true, ...payload };
+  }
+
+  @Post('delete-media')
+  @ApiOperation({ summary: 'Delete media from storage' })
+  async deleteMedia(@Body() dto: DeleteMediaDto) {
+    const result = await this.messageMetadata.deleteMedia(dto.objectKey);
+    return { success: result };
   }
 }

@@ -45,6 +45,17 @@ export class CatalogTools {
 
           const products = await this.connectorClient.executeScript(script);
 
+          // Log tool output (truncated) for debugging
+          const preview =
+            products && typeof products === 'object'
+              ? JSON.stringify(products).substring(0, 400)
+              : String(products).substring(0, 400);
+          console.debug(
+            `[tool:list_products] preview: ${preview} (count=${
+              products?.length ?? 'n/a'
+            })`,
+          );
+
           return JSON.stringify({
             success: true,
             products,

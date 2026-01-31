@@ -783,6 +783,27 @@
         ]
       }
     },
+    "/onboarding/ensure-initial-evaluation": {
+      "post": {
+        "operationId": "OnboardingController_ensureInitialEvaluation",
+        "summary": "Ensure initial AI evaluation job exists",
+        "description": "Crée et déclenche l'analyse initiale si aucune donnée n'est présente pour l'utilisateur.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Onboarding"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/auth/request-pairing": {
       "post": {
         "operationId": "AuthController_requestPairingCode",
@@ -898,6 +919,16 @@
         "summary": "Refresh QR code",
         "description": "Request a new QR code when the current one expires. This will restart the connector to generate a fresh QR code.",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshQrDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "QR code refreshed successfully",
@@ -2238,6 +2269,31 @@
           "MessageMetadata"
         ]
       }
+    },
+    "/message-metadata/delete-media": {
+      "post": {
+        "operationId": "MessageMetadataController_deleteMedia",
+        "summary": "Delete media from storage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMediaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "MessageMetadata"
+        ]
+      }
     }
   },
   "info": {
@@ -2615,6 +2671,25 @@
         },
         "required": [
           "phoneNumber"
+        ]
+      },
+      "RefreshQrDto": {
+        "type": "object",
+        "properties": {
+          "pairingToken": {
+            "type": "string",
+            "description": "Pairing token associated with the QR session",
+            "example": "token123"
+          },
+          "qrSessionToken": {
+            "type": "string",
+            "description": "JWT de session QR signé côté backend, contient le numéro et le pairing token",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        },
+        "required": [
+          "pairingToken",
+          "qrSessionToken"
         ]
       },
       "VerifyPairingDto": {
@@ -3151,6 +3226,10 @@
         "properties": {}
       },
       "UploadMediaDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DeleteMediaDto": {
         "type": "object",
         "properties": {}
       }

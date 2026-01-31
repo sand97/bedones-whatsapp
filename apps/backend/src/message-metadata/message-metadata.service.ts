@@ -45,6 +45,10 @@ export class MessageMetadataService {
       },
     });
 
+    this.logger.log(
+      `📝 Metadata saved for message ${messageId} (type=${type})`,
+    );
+
     return record;
   }
 
@@ -122,6 +126,20 @@ export class MessageMetadataService {
       objectKey,
       size: buffer.length,
     };
+  }
+
+  async deleteMedia(objectKey: string): Promise<boolean> {
+    if (!objectKey) {
+      this.logger.warn('No objectKey provided for deleteMedia');
+      return false;
+    }
+
+    const deleted = await this.minio.deleteFile(objectKey);
+    if (deleted) {
+      this.logger.log(`🗑️  Media deleted for objectKey ${objectKey}`);
+    }
+
+    return deleted;
   }
 
   private base64ToBuffer(data: string): Buffer | null {

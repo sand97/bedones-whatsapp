@@ -94,6 +94,14 @@ export interface UploadMediaResponse {
   size: number;
 }
 
+export interface DeleteMediaRequest {
+  objectKey: string;
+}
+
+export interface DeleteMediaResponse {
+  success: boolean;
+}
+
 export interface UpsertMessageMetadataRequest {
   messageId: string;
   type: 'AUDIO' | 'IMAGE';

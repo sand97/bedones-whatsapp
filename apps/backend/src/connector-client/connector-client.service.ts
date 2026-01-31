@@ -101,13 +101,12 @@ export class ConnectorClientService {
     };
     error?: string;
   }> {
-    this.logger.debug(
-      `[CONNECTOR] Checking authentication status on: ${connectorUrl}`,
-    );
-
     const script = this.pageScriptService.getIsAuthenticatedScript();
     const result = await this.executeScript(connectorUrl, script);
-
+    this.logger.debug(
+      `[CONNECTOR] Checking authentication status on: ${connectorUrl}`,
+      result,
+    );
     return result;
   }
 
@@ -188,6 +187,27 @@ export class ConnectorClientService {
 
     const instance = this.getAxiosInstance(connectorUrl);
     const response = await instance.post('/whatsapp/restart');
+
+    return response.data;
+  }
+
+  /**
+   * Clean and restart WhatsApp client from scratch
+   * Removes .wwebjs_cache and data directories to ensure fresh authentication
+   * Should ONLY be called when initiating new authentication (NOT during polling)
+   * @param connectorUrl The URL of the WhatsApp connector
+   */
+  async cleanAndRestartClient(connectorUrl: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    this.logger.log(
+      `[CONNECTOR] Cleaning and restarting client for fresh authentication: ${connectorUrl}`,
+    );
+
+    const instance = this.getAxiosInstance(connectorUrl);
+    const response = await instance.post('/whatsapp/clean-restart');
 
     return response.data;
   }

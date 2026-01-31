@@ -183,6 +183,40 @@ export class WhatsAppController {
     }
   }
 
+  @Post('clean-restart')
+  @ApiOperation({
+    summary: 'Nettoyer et redémarrer le client WhatsApp',
+    description:
+      'Supprime les dossiers .wwebjs_cache et data, puis redémarre le client pour repartir de zéro. À utiliser UNIQUEMENT lors de la première demande de connexion.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Client nettoyé et redémarré avec succès',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Erreur lors du nettoyage',
+  })
+  async cleanAndRestartClient() {
+    try {
+      await this.whatsappClientService.cleanAndRestartClient();
+
+      return {
+        success: true,
+        message:
+          'WhatsApp client cleaned and restarted successfully. Ready for new authentication.',
+      };
+    } catch (error: any) {
+      throw new HttpException(
+        {
+          success: false,
+          error: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get('webhooks')
   @ApiOperation({
     summary: 'Récupérer la liste des webhooks configurés',

@@ -17,6 +17,8 @@ import {
   UpsertMessageMetadataResponse,
   MessageMetadataListRequest,
   MessageMetadataListResponse,
+  DeleteMediaRequest,
+  DeleteMediaResponse,
 } from './backend-api.types';
 
 @Injectable()
@@ -242,6 +244,20 @@ export class BackendClientService {
         url,
         payload,
       );
+    return response.data;
+  }
+
+  /**
+   * Delete media from backend storage (MinIO)
+   */
+  async deleteMedia(payload: DeleteMediaRequest): Promise<DeleteMediaResponse> {
+    const url = `${this.baseUrl}/message-metadata/delete-media`;
+    this.logger.debug(`POST ${url} for objectKey ${payload.objectKey}`);
+
+    const response = await this.httpService.axiosRef.post<DeleteMediaResponse>(
+      url,
+      payload,
+    );
     return response.data;
   }
 }

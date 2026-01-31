@@ -9,6 +9,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Wid } from 'node_modules/@wppconnect/wa-js/dist/whatsapp';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 
 import {
@@ -24,6 +25,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   private isReady = false;
   private qrCode: string | null = null;
   private connectedUserId: string | null = null;
+  private wppInjected = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -125,17 +127,21 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(
         `Sending QR event to webhook - args type: ${Array.isArray(args) ? 'array' : typeof args}, length: ${args.length}`,
       );
+      this.ensureWPPInjected(false);
       this.webhookService.sendEvent('qr', args);
     });
 
     // Authenticated - événement déclenché lors du pairing réussi
     // Note: client.info n'est PAS encore disponible à ce stade
-    this.client.on('authenticated', () => {
+    this.client.on('authenticated', async () => {
       const timestamp = new Date().toISOString();
       this.logger.log(
         `[${timestamp}] ✅ WhatsApp client authenticated successfully`,
       );
-      this.logger.log('⏳ Waiting for "ready" event to retrieve user info...');
+      this.logger.log('⏳ Injecting WPP after authentication...');
+
+      // Inject WPP immediately after authentication (important if 'ready' is not triggered)
+      await this.ensureWPPInjected();
     });
 
     // Ready - traitement spécial pour le flag isReady
@@ -145,57 +151,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       this.isReady = true;
       this.qrCode = null;
       this.logger.log(`[${timestamp}] ✅ WhatsApp client is ready!`, args);
-      this.logger.log(
-        '📞 Attempting to retrieve phone number and notify backend...',
-      );
+      this.logger.log('📞 Attempting to inject WPP and retrieve user info...');
 
-      const page = this.client.pupPage; // Getter pour la Page Puppeteer (pas besoin d'await ici)
-      this.logger.log('Page puppeteer after ready', page);
-      if (!page) {
-        throw new Error('Puppeteer Page Not Found');
-      }
-      try {
-        // Bypass CSP by reading the script content and injecting it directly
-        const wppScriptPath = require.resolve('@wppconnect/wa-js');
-        const wppScript = fs.readFileSync(wppScriptPath, 'utf8');
-
-        this.logger.log('WPP script loaded from file, injecting...');
-
-        // Inject the script content directly to bypass CSP
-        await page.evaluate(wppScript);
-
-        this.logger.log('WPP is injected');
-
-        // Wait WA-JS load with timeout
-
-        await page.waitForFunction(() => window.WPP?.isReady, {
-          timeout: 15000,
-        });
-        this.logger.log('WPP is ready');
-
-        // Exposer nodeFetch pour contourner la CSP
-        await this.exposeNodeFetchToPage(page);
-        this.logger.log('nodeFetch exposed to browser context');
-
-        // Evaluating code: See https://playwright.dev/docs/evaluating/
-        const isAuthenticated = await page.evaluate(() =>
-          window.WPP.conn.isAuthenticated(),
-        );
-        const id = await page.evaluate(
-          () => window.WPP.conn?.getMyUserId()?._serialized || '',
-        );
-        this.logger.log('isAuthenticated', isAuthenticated);
-
-        // Store the connected user ID
-        this.connectedUserId = id;
-        this.logger.log(`Connected user ID: ${id}`);
-
-        // Notify backend of successful pairing
-        await this.notifyBackendConnected(id);
-      } catch (error) {
-        this.logger.error('Error injecting WPP script:', error);
-        this.logger.error('Error details:', error.stack);
-      }
+      // Inject WPP (will be skipped if already injected in 'authenticated' event)
+      await this.ensureWPPInjected();
     });
 
     // Auth failure
@@ -504,6 +463,89 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Ensure WPP (WhatsApp Web JS library) is injected in the page context
+   * This method is idempotent - it will only inject WPP once
+   * Call this in both 'authenticated' and 'ready' events to ensure WPP is available
+   */
+  private async ensureWPPInjected(sendBackEvent = true): Promise<void> {
+    // Don't inject twice
+    if (this.wppInjected && !sendBackEvent) {
+      this.logger.debug('WPP already injected, skipping');
+      return;
+    }
+
+    const page = this.client.pupPage;
+    if (!page) {
+      this.logger.warn('Puppeteer page not available, cannot inject WPP');
+      return;
+    }
+
+    try {
+      // Check if WPP is already available in the page (in case it was injected elsewhere)
+      const wppAlreadyExists = await page.evaluate(() => {
+        return typeof window.WPP !== 'undefined';
+      });
+
+      if (wppAlreadyExists) {
+        this.logger.log('WPP already exists in page context');
+      } else {
+        // Load and inject WPP script
+        this.logger.log('Loading WPP script from @wppconnect/wa-js...');
+        const wppScriptPath = require.resolve('@wppconnect/wa-js');
+        const wppScript = fs.readFileSync(wppScriptPath, 'utf8');
+
+        this.logger.log('Injecting WPP script into page context...');
+        await page.evaluate(wppScript);
+
+        this.logger.log('WPP script injected, waiting for WPP.isReady...');
+        // Wait for WPP to be ready
+        await page.waitForFunction(() => window.WPP?.isReady, {
+          timeout: 15000,
+        });
+
+        this.logger.log('✅ WPP is ready and available');
+
+        // Expose nodeFetch to bypass CSP
+        await this.exposeNodeFetchToPage(page);
+        this.logger.log('nodeFetch exposed to browser context');
+
+        this.wppInjected = true;
+      }
+
+      if (!sendBackEvent) {
+        return;
+      }
+      // Get authentication status and user ID
+      const isAuthenticated = await page.evaluate(() =>
+        window.WPP.conn.isAuthenticated(),
+      );
+      const id = await page.evaluate(() => window.WPP.conn?.getMyUserId());
+
+      this.logger.log(
+        `WPP injected - isAuthenticated: ${isAuthenticated}, userID: ${id}`,
+      );
+
+      // If authenticated, store user ID and notify backend
+      if (isAuthenticated && id) {
+        this.connectedUserId = id._serialized;
+        this.logger.log(`Connected user ID: ${id}`);
+        const profile = await page.evaluate(() => {
+          return {
+            pushname: window.WPP.profile.getMyProfileName(),
+            platform: window.WPP.conn.getPlatform(),
+          };
+        });
+
+        await this.notifyBackendConnected(id, profile);
+      }
+    } catch (error) {
+      this.logger.error('Error injecting WPP script:', error);
+      this.logger.error('Error details:', error.stack);
+      this.wppInjected = false;
+    }
+  }
+
+  /**
    * Execute une méthode du client WhatsApp de manière générique
    */
   async executeMethod(method: string, parameters: any[] = []): Promise<any> {
@@ -533,10 +575,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     if (!this.client) {
       throw new Error('WhatsApp client is not initialized');
     }
-
-    if (!this.isReady) {
-      throw new Error('WhatsApp client is not ready yet');
-    }
+    //
+    // if (!this.isReady) {
+    //   throw new Error('WhatsApp client is not ready yet - WPP not injected');
+    // }
 
     const page = this.client.pupPage;
     if (!page) {
@@ -546,7 +588,17 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.logger.debug('Executing page script in browser context');
 
     try {
+      // Verify WPP is available before executing script
+      const wppAvailable = await page.evaluate(() => {
+        return typeof window.WPP !== 'undefined' && window.WPP?.isReady;
+      });
+
+      if (!wppAvailable) {
+        await this.ensureWPPInjected(false);
+      }
+
       // Execute the script in the page context
+      console.log('script', script);
       return await page.evaluate(script);
     } catch (error) {
       this.logger.error('Error executing page script:', error);
@@ -680,6 +732,58 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Clean authentication data and restart the client from scratch
+   * This method removes .wwebjs_cache and data directories to ensure a fresh start
+   * Should ONLY be called when initiating a new authentication (NOT during polling)
+   */
+  async cleanAndRestartClient(): Promise<void> {
+    this.logger.log('🧹 Cleaning WhatsApp client data and restarting...');
+
+    try {
+      // First, destroy the current client
+      await this.destroy();
+
+      // Wait a bit to ensure cleanup is complete
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Remove .wwebjs_cache directory
+      const wwebjsCachePath = './.wwebjs_cache';
+      if (fs.existsSync(wwebjsCachePath)) {
+        this.logger.log(`Removing ${wwebjsCachePath} directory...`);
+        fs.rmSync(wwebjsCachePath, { recursive: true, force: true });
+        this.logger.log(`✅ ${wwebjsCachePath} removed`);
+      }
+
+      // Remove data directory
+      const dataPath = './data';
+      if (fs.existsSync(dataPath)) {
+        this.logger.log(`Removing ${dataPath} directory...`);
+        fs.rmSync(dataPath, { recursive: true, force: true });
+        this.logger.log(`✅ ${dataPath} removed`);
+      }
+
+      // Reset WPP injection flag
+      this.wppInjected = false;
+
+      // Wait a bit before re-initializing
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Re-initialize the client (will trigger new QR code generation)
+      await this.initialize();
+
+      this.logger.log(
+        '✅ WhatsApp client cleaned and restarted successfully, ready for fresh authentication',
+      );
+    } catch (error) {
+      this.logger.error(
+        '❌ Failed to clean and restart WhatsApp client:',
+        error,
+      );
+      throw new Error('Failed to clean and restart WhatsApp client');
+    }
+  }
+
+  /**
    * Retourne l'instance du client (à utiliser avec précaution)
    */
   getClient(): Client {
@@ -722,18 +826,20 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   /**
    * Notify backend that WhatsApp is connected
    */
-  private async notifyBackendConnected(id: string): Promise<void> {
+  private async notifyBackendConnected(
+    id: Wid,
+    profile: {
+      pushname: string;
+      platform: any;
+    },
+  ): Promise<void> {
     try {
-      this.logger.log(
-        'Gathering WhatsApp connection information...',
-        this.client.info,
-      );
+      this.logger.log('Gathering WhatsApp connection information...');
 
       // Get phone number and profile info
       // wid.user contient le numéro sans le '+', on l'ajoute
-      const rawPhoneNumber = this.client.info?.wid?.user || '';
+      const rawPhoneNumber = id.user || '';
       const phoneNumber = rawPhoneNumber ? `+${rawPhoneNumber}` : '';
-      let profile: any = {};
 
       if (!phoneNumber) {
         this.logger.warn(
@@ -744,32 +850,17 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log(`Phone number retrieved: ${phoneNumber}`);
 
-      try {
-        profile = {
-          pushname: this.client.info?.pushname || '',
-          platform: this.client.info?.platform || '',
-        };
-      } catch (error) {
-        this.logger.warn('Could not fetch profile:', error);
-      }
-
       const connectionData = {
         phoneNumber,
         profile: profile,
-        id,
+        id: id.user,
       };
 
       // Send custom event "pairing_success" to agent webhooks with all info
       this.logger.log(
         `🎉 Sending pairing_success event to webhooks for ${phoneNumber}`,
       );
-      this.logger.debug(
-        `Connection data: ${JSON.stringify({
-          phoneNumber: connectionData.phoneNumber,
-          hasProfile: !!connectionData.profile,
-          id: connectionData.id,
-        })}`,
-      );
+      this.logger.debug(`Connection data: ${JSON.stringify(connectionData)}`);
       await this.webhookService.sendEvent('pairing_success', connectionData);
 
       this.logger.log('✅ Pairing success event sent to webhooks successfully');

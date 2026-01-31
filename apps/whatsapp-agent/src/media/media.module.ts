@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { BackendClientModule } from '../backend-client/backend-client.module';
+
 import { AudioTranscriptionService } from './audio-transcription.service';
 
 @Module({

@@ -216,13 +216,24 @@ export class WhatsAppAgentService implements OnModuleInit {
         contextSchema,
         wrapToolCall: async (request, handler) => {
           const chatId = request.runtime.context?.chatId;
+          const toolName = request.toolCall.name;
           if (chatId) {
-            this.logger.log(
-              `🛠️ [${chatId}] Executing tool: ${request.toolCall.name}`,
-            );
+            this.logger.log(`🛠️ [${chatId}] Executing tool: ${toolName}`);
           }
           try {
-            return await handler(request);
+            const result = await handler(request);
+            let preview: string;
+            try {
+              preview = String(result).substring(0, 400);
+            } catch {
+              preview = '[unserializable tool result]';
+            }
+            if (chatId) {
+              this.logger.debug(
+                `🛠️ [${chatId}] Tool result (${toolName}): ${preview}`,
+              );
+            }
+            return result;
           } catch (error: any) {
             this.logger.error(
               `Tool execution failed: ${request.toolCall.name}`,
@@ -246,6 +257,8 @@ export class WhatsAppAgentService implements OnModuleInit {
       tools,
       middleware,
       contextSchema,
+      // Use stable routing behavior (v1) to avoid branch null destination errors seen with v2
+      version: 'v1',
     }) as ReturnType<typeof createAgent>;
 
     this.logger.log('✅ WhatsApp Agent created successfully with all tools');
@@ -367,7 +380,12 @@ export class WhatsAppAgentService implements OnModuleInit {
         return;
       }
 
-      const userMessage = message?.body || '';
+      // Prefer transcript if present (audio), otherwise body
+      const userMessage =
+        message?.body ||
+        (message as any)?.transcript ||
+        (message as any)?.metadata?.transcript ||
+        '';
       const messageId = message?.id?._serialized || message?.id || '';
       // chatId is the conversation ID (contact or group)
       // contactId is the real contact ID (not @lid), added by connector
@@ -386,6 +404,34 @@ export class WhatsAppAgentService implements OnModuleInit {
         );
       } else {
         this.logger.warn(`⚠️ [AGENT] No messageHistory in received message!`);
+      }
+
+      // Fetch metadata (e.g., transcripts) for history + current message
+      const historyIds =
+        message.messageHistory?.messages?.map((m) => m.id).filter(Boolean) ||
+        [];
+      const idsToFetch = [...historyIds, messageId].filter(Boolean);
+      let metadataMap: Record<string, any[]> | undefined;
+
+      if (idsToFetch.length > 0) {
+        try {
+          const metadataRes = await this.backendClient.fetchMetadataList({
+            messageIds: idsToFetch,
+          });
+          metadataMap = metadataRes.data;
+          (message as any).metadataMap = metadataMap;
+
+          // Attach metadata to messageHistory messages for easier use later
+          message.messageHistory?.messages?.forEach((m) => {
+            if (m.id && metadataMap?.[m.id]) {
+              (m as any).metadata = metadataMap[m.id];
+            }
+          });
+        } catch (error: any) {
+          this.logger.warn(
+            `Failed to fetch metadata list: ${error.message || error}`,
+          );
+        }
       }
 
       const sanitized = this.sanitizationService.sanitizeUserInput(userMessage);
@@ -465,17 +511,6 @@ export class WhatsAppAgentService implements OnModuleInit {
         messageId,
       );
 
-      // Inject metadata map if available (from queue processor)
-      const metadataMap = (message as any).metadataMap;
-      if (metadataMap) {
-        conversationHistory.forEach((msg) => {
-          const mid = (msg as any)?._serialized || (msg as any)?.id;
-          if (mid && metadataMap[mid]) {
-            (msg as any).metadata = metadataMap[mid];
-          }
-        });
-      }
-
       this.logger.log(
         `🔄 [AGENT] Built conversation history: ${conversationHistory.length} messages`,
       );
@@ -549,7 +584,7 @@ export class WhatsAppAgentService implements OnModuleInit {
     });
 
     // Log current message
-    this.logger.log(`CONTACT: ${currentMessage}`);
+    this.logger.log(`CONTACT: ${currentMessage || '[Message sans texte]'}`);
     this.logger.log('======================\n');
   }
 
@@ -586,10 +621,16 @@ export class WhatsAppAgentService implements OnModuleInit {
         }
         return true;
       })
-      .map((msg) => ({
-        role: msg.fromMe ? 'assistant' : 'user',
-        content: msg.body || '[Message sans texte]',
-      }));
+      .map((msg) => {
+        const records = (msg as any).metadata as any[];
+        const audioMeta = records?.find((r) => r.type === 'AUDIO');
+        const transcript = audioMeta?.metadata?.transcript;
+
+        return {
+          role: msg.fromMe ? 'assistant' : 'user',
+          content: transcript || msg.body || '[Message sans texte]',
+        };
+      });
 
     return history;
   }
@@ -682,7 +723,23 @@ export class WhatsAppAgentService implements OnModuleInit {
       callbackHandler.metrics.status = 'error';
       callbackHandler.metrics.error = error.message;
 
-      throw error;
+      // Fallback minimal response to avoid failing webhook
+      const fallback =
+        "Désolé, je n'ai pas pu générer la réponse. Je vérifie et je reviens vers vous.";
+      try {
+        await this.connectorClient.sendMessage(chatId, fallback);
+      } catch (sendErr: any) {
+        this.logger.warn(
+          `Failed to send fallback message: ${sendErr.message || sendErr}`,
+        );
+      }
+
+      callbackHandler.metrics.agentResponse = fallback;
+
+      return {
+        response: fallback,
+        metrics: callbackHandler.getMetrics(),
+      };
     }
   }
 

@@ -379,6 +379,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/onboarding/ensure-initial-evaluation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ensure initial AI evaluation job exists
+         * @description Crée et déclenche l'analyse initiale si aucune donnée n'est présente pour l'utilisateur.
+         */
+        post: operations["OnboardingController_ensureInitialEvaluation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/request-pairing": {
         parameters: {
             query?: never;
@@ -825,6 +845,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/message-metadata/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upsert metadata for a message */
+        post: operations["MessageMetadataController_upsert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/message-metadata/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get metadata for a list of messages */
+        post: operations["MessageMetadataController_list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/message-metadata/upload-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload media buffer and return URL */
+        post: operations["MessageMetadataController_uploadMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/message-metadata/delete-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete media from storage */
+        post: operations["MessageMetadataController_deleteMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1053,6 +1141,18 @@ export interface components {
              * @enum {string}
              */
             deviceType?: "mobile" | "desktop";
+        };
+        RefreshQrDto: {
+            /**
+             * @description Pairing token associated with the QR session
+             * @example token123
+             */
+            pairingToken: string;
+            /**
+             * @description JWT de session QR signé côté backend, contient le numéro et le pairing token
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            qrSessionToken: string;
         };
         VerifyPairingDto: {
             /**
@@ -1447,6 +1547,10 @@ export interface components {
         };
         WhatsAppConnectedDto: Record<string, never>;
         WhatsAppEventDto: Record<string, never>;
+        UpsertMessageMetadataDto: Record<string, never>;
+        MessageMetadataListDto: Record<string, never>;
+        UploadMediaDto: Record<string, never>;
+        DeleteMediaDto: Record<string, never>;
     };
     responses: never;
     parameters: never;
@@ -2060,6 +2164,23 @@ export interface operations {
             };
         };
     };
+    OnboardingController_ensureInitialEvaluation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AuthController_requestPairingCode: {
         parameters: {
             query?: never;
@@ -2148,7 +2269,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshQrDto"];
+            };
+        };
         responses: {
             /** @description QR code refreshed successfully */
             201: {
@@ -3388,6 +3513,90 @@ export interface operations {
         responses: {
             /** @description Event traité avec succès */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MessageMetadataController_upsert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertMessageMetadataDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MessageMetadataController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageMetadataListDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MessageMetadataController_uploadMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadMediaDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MessageMetadataController_deleteMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteMediaDto"];
+            };
+        };
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

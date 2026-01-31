@@ -180,11 +180,32 @@ export class WebhookController {
           language: transcription.language,
           confidence: transcription.confidence,
           mediaUrl: upload.url,
+          objectKey: upload.objectKey,
         },
       });
+
+      // Inject transcript into the live message so downstream agent sees it
       (message as any).transcript = transcription.transcript;
+
+      // Delete media from MinIO once transcription is safely stored
+      if (upload.objectKey) {
+        try {
+          await this.backendClient.deleteMedia({ objectKey: upload.objectKey });
+        } catch (error: any) {
+          this.logger.warn(
+            `Unable to delete media ${upload.objectKey}: ${error.message}`,
+          );
+        }
+      }
+
       (message as any).mediaUrl = upload.url;
       (message as any).mediaKind = 'audio';
+    } else {
+      this.logger.warn(
+        `STT failed or empty transcript for message ${message?.id?._serialized}`,
+      );
+      // Do not continue to agent pipeline when no transcription is available
+      return;
     }
 
     // Passe directement dans le pipeline agent (synchrone)

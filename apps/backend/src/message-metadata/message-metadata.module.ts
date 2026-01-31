@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 
-import { PrismaModule } from '../prisma/prisma.module';
 import { MinioModule } from '../minio/minio.module';
-import { MessageMetadataService } from './message-metadata.service';
+import { PrismaModule } from '../prisma/prisma.module';
+
 import { MessageMetadataController } from './message-metadata.controller';
+import { MessageMetadataService } from './message-metadata.service';
 
 @Module({
   imports: [PrismaModule, MinioModule],

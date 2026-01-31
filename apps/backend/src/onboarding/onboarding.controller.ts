@@ -76,4 +76,18 @@ export class OnboardingController {
   async completeOnboarding(@Request() req: any) {
     return await this.onboardingService.completeOnboarding(req.user.id);
   }
+
+  /**
+   * Ensure an initial AI analysis job exists (idempotent)
+   */
+  @Post('ensure-initial-evaluation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Ensure initial AI evaluation job exists',
+    description:
+      "Crée et déclenche l'analyse initiale si aucune donnée n'est présente pour l'utilisateur.",
+  })
+  async ensureInitialEvaluation(@Request() req: any) {
+    return await this.onboardingService.ensureInitialEvaluation(req.user.id);
+  }
 }

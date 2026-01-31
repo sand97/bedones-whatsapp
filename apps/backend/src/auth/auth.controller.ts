@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 import { AuthService } from './auth.service';
 import { ConfirmPairingDto } from './dto/confirm-pairing.dto';
+import { RefreshQrDto } from './dto/refresh-qr.dto';
 import { RequestPairingDto } from './dto/request-pairing.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { VerifyPairingDto } from './dto/verify-pairing.dto';
@@ -117,8 +118,11 @@ export class AuthController {
     status: 400,
     description: 'Bad request - Invalid pairing token',
   })
-  async refreshQRCode(@Body() body: { pairingToken: string }) {
-    return this.authService.refreshCodeQR(body.pairingToken);
+  async refreshQRCode(@Body() body: RefreshQrDto) {
+    return this.authService.refreshCodeQR(
+      body.pairingToken,
+      body.qrSessionToken,
+    );
   }
 
   @Post('verify-pairing')

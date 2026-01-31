@@ -48,6 +48,7 @@ export class AuthService {
   ): Promise<{
     code?: string;
     pairingToken: string;
+    qrSessionToken?: string;
     message: string;
     scenario: 'pairing' | 'otp' | 'qr';
   }> {
@@ -138,8 +139,13 @@ export class AuthService {
         this.logger.log(
           `Desktop device detected, returning QR scenario for: ${phoneNumber}`,
         );
+        const qrSessionToken = await this.generateQrSessionToken(
+          phoneNumber,
+          pairingToken,
+        );
         return {
           pairingToken,
+          qrSessionToken,
           message: 'Veuillez scanner le code QR avec WhatsApp',
           scenario: 'qr',
         };
@@ -149,6 +155,25 @@ export class AuthService {
       // Get connector URL
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
+
+      // Clean and restart connector to ensure fresh state
+      // This removes .wwebjs_cache and data directories and restarts the client
+      this.logger.log(
+        `Cleaning and restarting connector for fresh authentication: ${connectorUrl}`,
+      );
+
+      try {
+        await this.connectorClientService.cleanAndRestartClient(connectorUrl);
+        this.logger.log(`Connector cleaned and restarted successfully`);
+
+        // Wait for connector to be ready after restart
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      } catch (error) {
+        this.logger.error(
+          `Failed to clean and restart connector, continuing anyway`,
+          error,
+        );
+      }
 
       this.logger.log(`Pairing code request on: ${connectorUrl}`);
 
@@ -636,9 +661,14 @@ export class AuthService {
    * This method provisions an agent for the user and returns the QR code
    */
   async requestCodeQR(phoneNumber: string): Promise<{
-    qrCode: string;
+    qrCode?: string;
     pairingToken: string;
+    qrSessionToken?: string;
     message: string;
+    scenario?: 'connected';
+    accessToken?: string;
+    redirectTo?: string;
+    user?: any;
   }> {
     try {
       // Check if user exists
@@ -682,6 +712,25 @@ export class AuthService {
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
 
+      // Clean and restart connector to ensure fresh state
+      // This removes .wwebjs_cache and data directories and restarts the client
+      this.logger.log(
+        `Cleaning and restarting connector for fresh authentication: ${connectorUrl}`,
+      );
+
+      try {
+        await this.connectorClientService.cleanAndRestartClient(connectorUrl);
+        this.logger.log(`Connector cleaned and restarted successfully`);
+
+        // Wait for connector to be ready after restart
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      } catch (error) {
+        this.logger.error(
+          `Failed to clean and restart connector, continuing anyway`,
+          error,
+        );
+      }
+
       this.logger.log(`Requesting QR code from: ${connectorUrl}`);
 
       // Request QR code from connector with retry logic
@@ -721,6 +770,11 @@ export class AuthService {
         `Stored QR session mapping for ${phoneNumber} -> ${pairingToken}`,
       );
 
+      const qrSessionToken = await this.generateQrSessionToken(
+        phoneNumber,
+        pairingToken,
+      );
+
       // Schedule cleanup after 5 minutes if user hasn't connected
       // The cleanup will check if user is still in PAIRING status
       setTimeout(
@@ -755,6 +809,7 @@ export class AuthService {
       return {
         qrCode,
         pairingToken,
+        qrSessionToken,
         message: 'Scannez le code QR avec WhatsApp',
       };
     } catch (error) {
@@ -764,20 +819,32 @@ export class AuthService {
   }
 
   /**
-   * Refresh QR code when it expires
-   * This will restart the connector to generate a new QR code
+   * Check authentication status during QR code flow
+   * This endpoint is polled by the frontend to detect when user scans QR and authenticates
+   * It does NOT generate new QR codes - that's done by requestCodeQR
+   *
+   * Returns:
+   * - scenario: 'connected' with JWT if user is authenticated and paired
+   * - message only if still waiting for authentication
    */
-  async refreshCodeQR(pairingToken: string): Promise<{
-    qrCode: string;
-    pairingToken: string;
+  async refreshCodeQR(
+    pairingToken: string,
+    qrSessionToken: string,
+  ): Promise<{
+    qrCode?: string;
+    pairingToken?: string;
+    qrSessionToken?: string;
     message: string;
+    scenario?: 'connected';
+    accessToken?: string;
+    redirectTo?: string;
+    user?: any;
   }> {
     try {
       // Find user with this pairing token
       const user = await this.prisma.user.findFirst({
         where: {
           pairingToken,
-          status: UserStatus.PAIRING,
           pairingTokenExpiresAt: { gte: new Date() }, // Token must not be expired
         },
       });
@@ -788,7 +855,14 @@ export class AuthService {
         );
       }
 
-      this.logger.log(`Refreshing QR code for user: ${user.phoneNumber}`);
+      // Validate QR session token to ensure it was issued for this user/token
+      await this.verifyQrSessionToken(
+        qrSessionToken,
+        pairingToken,
+        user.phoneNumber,
+      );
+
+      this.logger.log(`Checking authentication status for user: ${user.phoneNumber}`);
 
       // Get the WhatsApp agent for this user
       const agent = await this.whatsappAgentService.getAgentForUser(user.id);
@@ -800,51 +874,184 @@ export class AuthService {
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
 
-      this.logger.log(
-        `Restarting connector to generate new QR code: ${connectorUrl}`,
+      // Check if connector is already authenticated
+      const authResult =
+        await this.connectorClientService.isAuthenticated(connectorUrl);
+      const isAuthenticated = !!(
+        authResult.success &&
+        authResult.result?.success &&
+        authResult.result?.isAuthenticated
       );
 
-      // Restart the connector to force new QR code generation
-      await this.connectorClientService.restartClient(connectorUrl);
+      if (isAuthenticated) {
+        this.logger.log(
+          `Connector already authenticated for ${user.phoneNumber}, checking pairing status`,
+        );
 
-      // Wait a bit for the client to restart and generate a new QR code
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+        // Check if user is PAIRED (webhook was called)
+        if (
+          user.status === UserStatus.PAIRED ||
+          user.status === UserStatus.ACTIVE ||
+          user.status === UserStatus.ONBOARDING
+        ) {
+          this.logger.log(
+            `User ${user.phoneNumber} is already paired, connecting directly`,
+          );
 
-      // Request new QR code from connector with retry logic
-      let qrCode: string | null = null;
-      const maxRetries = 10;
-      const retryDelay = 1000;
+          // Check onboarding status to determine redirect
+          const thread = await this.onboardingService.getThreadWithMessages(
+            user.id,
+          );
+          const onboardingComplete = thread && thread.score >= 80;
 
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          const result =
-            await this.connectorClientService.getQRCode(connectorUrl);
+          // Determine redirect path and user status
+          let redirectTo = '/context';
+          let userStatus: UserStatus = UserStatus.ONBOARDING;
 
-          if (result.success && result.qrCode) {
-            qrCode = result.qrCode;
-            break;
+          if (onboardingComplete) {
+            redirectTo = '/dashboard';
+            userStatus = UserStatus.ACTIVE;
+          } else if (user.status === UserStatus.PAIRED) {
+            // First login after pairing -> onboarding
+            userStatus = UserStatus.ONBOARDING;
+          } else {
+            // Keep existing status
+            userStatus = user.status;
           }
-        } catch {
-          if (i < maxRetries - 1) {
-            await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          }
+
+          // Update user status and clear pairing token
+          const updatedUser = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              status: userStatus,
+              lastLoginAt: new Date(),
+              pairingToken: null,
+              pairingTokenExpiresAt: null,
+            },
+          });
+
+          // Update agent connection status
+          await this.prisma.whatsAppAgent.update({
+            where: { id: agent.id },
+            data: {
+              connectionStatus: ConnectionStatus.CONNECTED,
+            },
+          });
+
+          // Generate JWT token
+          const accessToken = this.generateJwtToken(user.id);
+
+          this.logger.log(
+            `User ${user.phoneNumber} connected successfully, redirect to: ${redirectTo}`,
+          );
+
+          return {
+            scenario: 'connected',
+            accessToken,
+            redirectTo,
+            message: 'Connexion réussie',
+            user: {
+              id: updatedUser.id,
+              phoneNumber: updatedUser.phoneNumber,
+              status: updatedUser.status,
+              whatsappProfile: updatedUser.whatsappProfile,
+              lastLoginAt: updatedUser.lastLoginAt,
+            },
+          };
+        } else {
+          // User is authenticated but not yet PAIRED (webhook not called yet)
+          // This is normal during the pairing flow - we wait for webhook
+          this.logger.log(
+            `User ${user.phoneNumber} is authenticated but status is ${user.status}, waiting for webhook`,
+          );
+          // Return waiting message - frontend keeps displaying the QR code
+          return {
+            message: 'En attente de la confirmation de connexion...',
+          };
         }
       }
 
-      if (!qrCode) {
-        throw new Error('Failed to generate new QR code after restart');
+      // User is not authenticated yet - waiting for QR scan
+      // Get the current QR code (which may be a new one if the previous expired)
+      // WhatsApp Web JS automatically generates new QR codes without restarting
+      this.logger.log(
+        `User ${user.phoneNumber} not yet authenticated, fetching current QR code`,
+      );
+
+      try {
+        const qrResult = await this.connectorClientService.getQRCode(connectorUrl);
+
+        if (qrResult.success && qrResult.qrCode) {
+          this.logger.log(
+            `Current QR code retrieved for user: ${user.phoneNumber}`,
+          );
+
+          return {
+            qrCode: qrResult.qrCode,
+            message: 'En attente du scan du code QR...',
+          };
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to get QR code for ${user.phoneNumber}, may be connecting`,
+          error,
+        );
       }
 
-      this.logger.log(`New QR code generated for user: ${user.phoneNumber}`);
-
+      // If QR code is not available (e.g., during connection process)
       return {
-        qrCode,
-        pairingToken, // Return the same pairing token
-        message: 'Nouveau code QR généré avec succès',
+        message: 'En attente du scan du code QR...',
       };
     } catch (error) {
       this.logger.error(`Error refreshing QR code`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Generate a short-lived JWT used only for QR refresh validation
+   */
+  private async generateQrSessionToken(
+    phoneNumber: string,
+    pairingToken: string,
+  ): Promise<string> {
+    const secret =
+      this.configService.get<string>('QR_JWT_SECRET') ||
+      this.configService.get<string>('JWT_SECRET');
+    return this.jwtService.sign(
+      { phoneNumber, pairingToken },
+      { secret, expiresIn: '10m' },
+    );
+  }
+
+  /**
+   * Verify QR session token and ensure it matches the current user + pairingToken
+   */
+  private async verifyQrSessionToken(
+    token: string,
+    pairingToken: string,
+    phoneNumber: string,
+  ): Promise<void> {
+    try {
+      const secret =
+        this.configService.get<string>('QR_JWT_SECRET') ||
+        this.configService.get<string>('JWT_SECRET');
+      const payload = this.jwtService.verify(token, { secret }) as {
+        phoneNumber: string;
+        pairingToken: string;
+      };
+
+      if (
+        payload.phoneNumber !== phoneNumber ||
+        payload.pairingToken !== pairingToken
+      ) {
+        throw new UnauthorizedException('QR session token mismatch');
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid QR session token');
     }
   }
 }

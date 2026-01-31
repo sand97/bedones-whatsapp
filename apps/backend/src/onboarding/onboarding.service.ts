@@ -28,8 +28,8 @@ import {
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
-  private readonly primaryModel: ChatXAI | null = null;
-  private readonly fallbackModel: ChatGoogleGenerativeAI | null = null;
+  private primaryModel: ChatGoogleGenerativeAI | ChatXAI | null = null;
+  private fallbackModel: ChatGoogleGenerativeAI | ChatXAI | null = null;
   private readonly agent: ReturnType<typeof createAgent> | null = null;
   private activeControllers: Map<string, AbortController> = new Map();
 
@@ -47,32 +47,67 @@ export class OnboardingService {
     const geminiApiKey = this.configService.get<string>('ai.gemini.apiKey');
     const geminiModelName = this.configService.get<string>('ai.gemini.model');
 
-    // Create primary model (Grok via xAI)
-    if (xaiApiKey) {
-      this.primaryModel = new ChatXAI({
-        apiKey: xaiApiKey,
-        model: xaiModelName,
-        temperature: 0.7,
-        maxRetries: 0, // Fail fast to trigger fallback
-      });
+    // Instantiate available models
+    const grokModel =
+      xaiApiKey && xaiModelName
+        ? new ChatXAI({
+            apiKey: xaiApiKey,
+            model: xaiModelName,
+            temperature: 0.7,
+            maxRetries: 0, // Fail fast to trigger fallback
+          })
+        : null;
+    if (grokModel) {
       this.logger.log(`✅ Grok model initialized: ${xaiModelName}`);
     } else {
       this.logger.warn('⚠️ No xAI API key provided (XAI_API_KEY)');
     }
 
-    // Create fallback model (Gemini)
-    if (geminiApiKey) {
-      this.fallbackModel = new ChatGoogleGenerativeAI({
-        apiKey: geminiApiKey,
-        model: geminiModelName || 'gemini-2.5-pro',
-        temperature: 0.7,
-        maxRetries: 2,
-      });
+    const geminiModel =
+      geminiApiKey && (geminiModelName || 'gemini-2.5-pro')
+        ? new ChatGoogleGenerativeAI({
+            apiKey: geminiApiKey,
+            model: geminiModelName || 'gemini-2.5-pro',
+            temperature: 0.7,
+            maxRetries: 2,
+          })
+        : null;
+    if (geminiModel) {
       this.logger.log(
         `✅ Gemini model initialized: ${geminiModelName || 'gemini-2.5-pro'}`,
       );
     } else {
       this.logger.warn('⚠️ No Gemini API key provided (GEMINI_API_KEY)');
+    }
+
+    // Choose primary / fallback based on env prefs
+    const primaryPref =
+      this.configService.get<string>('PRIMARY_MODEL')?.toLowerCase() ||
+      'gemini';
+    const fallbackPref =
+      this.configService.get<string>('FALLBACK_MODEL')?.toLowerCase() || 'grok';
+
+    const pickModel = (name: string) => {
+      if (name === 'grok' || name === 'xai') return grokModel;
+      if (name === 'gemini') return geminiModel;
+      return null;
+    };
+
+    this.primaryModel =
+      pickModel(primaryPref) || geminiModel || grokModel || null;
+
+    // Avoid same instance for fallback; pick alternative available
+    const fallbackCandidate =
+      pickModel(fallbackPref) ||
+      (this.primaryModel === geminiModel ? grokModel : geminiModel);
+    this.fallbackModel =
+      fallbackCandidate === this.primaryModel ? null : fallbackCandidate;
+
+    if (!this.primaryModel && !this.fallbackModel) {
+      this.logger.error(
+        '❌ No AI model configured - agent will not be created',
+      );
+      return; // Don't create agent if no models configured
     }
 
     if (!this.primaryModel && !this.fallbackModel) {
@@ -103,19 +138,32 @@ export class OnboardingService {
         runLimit: 6,
         exitBehavior: 'end',
       }),
-      // Tool execution tracking middleware
+      // Tool execution tracking middleware (logs tool name + params)
       createMiddleware({
         name: 'ToolTracking',
         contextSchema,
         wrapToolCall: async (request, handler) => {
           const userId = request.runtime.context?.userId;
+          const argsPreview = (() => {
+            try {
+              const serialized = JSON.stringify(request.toolCall.args);
+              return serialized.length > 500
+                ? serialized.slice(0, 500) + '...'
+                : serialized;
+            } catch {
+              return '[unserializable args]';
+            }
+          })();
+
           if (userId) {
             this.onboardingGateway.emitToolExecuting(
               userId,
               request.toolCall.name,
             );
           }
-          this.logger.log(`🛠️ Executing tool: ${request.toolCall.name}`);
+          this.logger.log(
+            `🛠️ Executing tool: ${request.toolCall.name} | user=${userId ?? 'unknown'} | args=${argsPreview}`,
+          );
           try {
             return await handler(request);
           } catch (error) {
@@ -413,6 +461,37 @@ export class OnboardingService {
       this.logger.error(`Failed initial evaluation for user: ${userId}`, error);
       throw error;
     }
+  }
+
+  /**
+   * Ensure an initial evaluation job exists; create and launch it if missing.
+   */
+  async ensureInitialEvaluation(userId: string): Promise<{
+    started: boolean;
+    status: 'running' | 'done';
+  }> {
+    // If already processing, just acknowledge
+    if (this.isProcessingActive(userId)) {
+      return { started: false, status: 'running' };
+    }
+
+    const thread = await this.createThreadIfNotExists(userId);
+    const messagesCount = await this.prisma.threadMessage.count({
+      where: { threadId: thread.id },
+    });
+
+    if (messagesCount === 0) {
+      // Launch initial evaluation
+      this.performInitialEvaluation(userId).catch((error) => {
+        this.logger.error(
+          `Failed to start initial evaluation for user ${userId}`,
+          error,
+        );
+      });
+      return { started: true, status: 'running' };
+    }
+
+    return { started: false, status: 'done' };
   }
 
   /**

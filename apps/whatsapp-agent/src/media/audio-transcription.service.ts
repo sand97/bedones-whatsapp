@@ -79,7 +79,9 @@ export class AudioTranscriptionService {
       const text = candidates?.[0]?.content?.parts?.[0]?.text?.trim?.() || '';
 
       if (!text) {
-        this.logger.warn(`Gemini STT empty transcript (model=${this.model})`);
+        this.logger.warn(
+          `Gemini STT empty transcript (model=${this.model}, mime=${mimeType})`,
+        );
         return null;
       }
 

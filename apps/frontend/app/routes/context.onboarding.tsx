@@ -64,6 +64,8 @@ export default function ContextOnboardingPage() {
   )
   const [showActivationModal, setShowActivationModal] = useState(false)
   const [hasShownModal, setHasShownModal] = useState(false)
+  const [hasRequestedInitialAnalysis, setHasRequestedInitialAnalysis] =
+    useState(false)
   const socketRef = useRef<Socket | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messagesEndRef = useRef<any>(null)
@@ -287,6 +289,24 @@ export default function ContextOnboardingPage() {
       socket.disconnect()
     }
   }, [])
+
+  // When no messages after initial load, request initial evaluation job
+  useEffect(() => {
+    if (isLoading) return
+    if (hasRequestedInitialAnalysis) return
+    if (messages.length > 0) return
+
+    const ensureJob = async () => {
+      try {
+        await apiClient.post('/onboarding/ensure-initial-evaluation')
+        setHasRequestedInitialAnalysis(true)
+      } catch (error) {
+        console.error('Failed to ensure initial evaluation:', error)
+      }
+    }
+
+    ensureJob()
+  }, [isLoading, messages.length, hasRequestedInitialAnalysis])
 
   const handleCancel = () => {
     if (socketRef.current && isSubmitting) {

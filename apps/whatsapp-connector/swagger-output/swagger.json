@@ -291,6 +291,25 @@
         ]
       }
     },
+    "/whatsapp/clean-restart": {
+      "post": {
+        "operationId": "WhatsAppController_cleanAndRestartClient",
+        "summary": "Nettoyer et redémarrer le client WhatsApp",
+        "description": "Supprime les dossiers .wwebjs_cache et data, puis redémarre le client pour repartir de zéro. À utiliser UNIQUEMENT lors de la première demande de connexion.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Client nettoyé et redémarré avec succès"
+          },
+          "500": {
+            "description": "Erreur lors du nettoyage"
+          }
+        },
+        "tags": [
+          "WhatsApp"
+        ]
+      }
+    },
     "/whatsapp/webhooks": {
       "get": {
         "operationId": "WhatsAppController_getWebhooks",

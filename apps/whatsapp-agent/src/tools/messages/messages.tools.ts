@@ -138,9 +138,7 @@ export class MessagesTools {
           messageId: z
             .string()
             .optional()
-            .describe(
-              'Reference message ID for directional fetching',
-            ),
+            .describe('Reference message ID for directional fetching'),
           onlyUnread: z
             .boolean()
             .optional()
@@ -406,8 +404,7 @@ export class MessagesTools {
         name: 'list_intentions',
         description:
           'List all scheduled intentions for the current conversation. Useful to see pending reminders.',
-        schema: z.object({
-        }),
+        schema: z.object({}),
       },
     );
   }

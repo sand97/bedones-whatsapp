@@ -6,10 +6,10 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && nest build",
+    "build": "CHOKIDAR_USEPOLLING=1 prisma generate && nest build",
     "start": "nest start",
-    "start:dev": "prisma generate && nest start --watch",
-    "start:debug": "prisma generate && nest start --debug --watch",
+    "start:dev": "CHOKIDAR_USEPOLLING=1 prisma generate && nest start --watch",
+    "start:debug": "CHOKIDAR_USEPOLLING=1 prisma generate && nest start --debug --watch",
     "start:prod": "node dist/main",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -26,6 +26,7 @@
     "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
+    "express": "^4.19.2",
     "@apps/common": "workspace:*",
     "@hubspot/api-client": "^13.3.0",
     "@keyv/redis": "^5.1.2",

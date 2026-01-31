@@ -13,7 +13,6 @@ import PhoneInput, { type PhoneNumber } from 'antd-phone-input'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { io, Socket } from 'socket.io-client'
 
 const LAST_PHONE_KEY = 'whatsapp-agent-last-phone'
 
@@ -47,12 +46,14 @@ export default function LoginPage() {
   )
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [pairingToken, setPairingToken] = useState<string | null>(null)
+  const [qrSessionToken, setQrSessionToken] = useState<string | null>(null)
   const [isQrMode, setIsQrMode] = useState(false)
   const [isMobile] = useState(isMobileDevice())
-  const socketRef = useRef<Socket | null>(null)
-  const [lastQrTimestamp, setLastQrTimestamp] = useState<string | null>(null)
-  const [isQrExpired, setIsQrExpired] = useState(false)
-  const [isRefreshingQr, setIsRefreshingQr] = useState(false)
+  const [currentPhoneNumber, setCurrentPhoneNumber] = useState<string | null>(
+    null
+  )
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [isPolling, setIsPolling] = useState(false)
 
   // Récupérer la feature sélectionnée depuis la config
   const selectedFeature = selectedFeatureKey
@@ -61,187 +62,92 @@ export default function LoginPage() {
         .find(f => `${f.title}` === selectedFeatureKey)
     : null
 
-  // WebSocket connection for QR code updates and connection status
+  // Polling for QR code status and authentication check
   useEffect(() => {
-    if (!pairingToken) return
+    if (!pairingToken || !qrSessionToken || !isQrMode) return
 
-    // Connect to auth WebSocket namespace
-    const socket = io(
-      `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth`,
-      {
-        auth: {
+    const checkQRStatus = async () => {
+      setIsPolling(true)
+      try {
+        const response = await apiClient.post('/auth/refresh-qr', {
           pairingToken,
-        },
-        transports: ['websocket'],
-      }
-    )
-
-    socketRef.current = socket
-
-    // Listen for QR code updates
-    socket.on(
-      'auth:qr-update',
-      (data: {
-        qrCode: string
-        timestamp: string
-        expectedRefreshInterval: number
-      }) => {
-        console.log('🔐 Received QR code update:', {
-          timestamp: data.timestamp,
-          qrCodeLength: data.qrCode.length,
-          expectedRefreshInterval: data.expectedRefreshInterval,
-        })
-        setQrCode(data.qrCode)
-        setLastQrTimestamp(data.timestamp)
-        setIsQrExpired(false) // Reset expiration when we receive a new QR code
-      }
-    )
-
-    // Listen for successful connection
-    socket.on(
-      'auth:connected',
-      async (data: { success: boolean; timestamp: string }) => {
-        console.log('Connection successful:', data)
-        notification.success({
-          message: 'Connexion réussie',
-          description: 'Vous allez être redirigé...',
+          qrSessionToken,
         })
 
-        // Get redirect URL from backend
-        try {
-          const response = await apiClient.post('/auth/confirm-pairing', {
-            pairingToken,
-          })
+        if (response.status === 201 || response.status === 200) {
+          // Scenario 1: User is already connected
+          if (response.data.scenario === 'connected') {
+            console.log('✅ User is already connected')
+            notification.success({
+              message: 'Connexion réussie',
+              description: 'Vous allez être redirigé...',
+            })
 
-          setTimeout(() => {
-            let contextScore = response.data.user?.contextScore
-            let redirectTo = response.data.redirectTo
+            // Stop polling
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
 
+            // Login and redirect
             if (response.data.accessToken) {
               login(response.data.accessToken, response.data.user)
 
-              apiClient
-                .get('/auth/me')
-                .then(meResponse => {
-                  if (meResponse.data) {
-                    login(response.data.accessToken, meResponse.data)
-                    contextScore = meResponse.data.contextScore
-                  }
-                })
-                .catch(meError => {
-                  console.warn('Failed to refresh user after login:', meError)
-                })
-                .finally(() => {
-                  if (typeof contextScore === 'number') {
-                    redirectTo = contextScore < 80 ? '/context' : '/dashboard'
-                  }
-                  navigate(redirectTo || '/context')
-                })
-            } else {
-              navigate(redirectTo || '/context')
+              setTimeout(() => {
+                navigate(response.data.redirectTo || '/context')
+              }, 1000)
             }
-          }, 1000)
-        } catch (error) {
-          console.error('Error confirming pairing:', error)
-          navigate('/context')
+            return
+          }
+
+          // Scenario 2: New QR code received
+          if (response.data.qrCode) {
+            console.log('🔄 Received new QR code')
+            setQrCode(response.data.qrCode)
+
+            // Update qrSessionToken if provided
+            if (response.data.qrSessionToken) {
+              setQrSessionToken(response.data.qrSessionToken)
+            }
+          }
+
+          // Scenario 3: Waiting for connection
+          if (!response.data.qrCode && !response.data.scenario) {
+            console.log('⏳ Waiting for connection confirmation...')
+          }
         }
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { message?: string } } }
+        console.error('Error checking QR status:', err)
+
+        // Only show error if it's not a token expiration
+        if (!err.response?.data?.message?.includes('expired')) {
+          console.error('QR status check error:', err.response?.data?.message)
+        }
+      } finally {
+        setIsPolling(false)
       }
-    )
+    }
 
-    // Listen for connection errors
-    socket.on('auth:error', (data: { error: string; timestamp: string }) => {
-      console.error('Connection error:', data)
-      notification.error({
-        message: 'Erreur de connexion',
-        description: data.error,
-      })
-    })
+    // Initial check
+    checkQRStatus()
 
-    // Handle connection errors
-    socket.on('connect_error', error => {
-      console.error('WebSocket connection error:', error)
-      notification.error({
-        message: 'Erreur de connexion',
-        description: 'Impossible de se connecter au serveur WebSocket',
-      })
-    })
+    // Start polling every 5 seconds
+    pollingIntervalRef.current = setInterval(checkQRStatus, 5000)
 
     // Cleanup on unmount
     return () => {
-      socket.disconnect()
-    }
-  }, [pairingToken, navigate, notification, login])
-
-  // Monitor QR code expiration
-  useEffect(() => {
-    if (!lastQrTimestamp || !isQrMode) return
-
-    // Expected refresh interval is 25 seconds (from backend)
-    // We add 50% buffer (37.5 seconds total) before considering it expired
-    const EXPECTED_REFRESH_MS = 25000
-    const EXPIRATION_BUFFER = EXPECTED_REFRESH_MS * 1.5
-
-    const checkExpiration = () => {
-      const lastUpdate = new Date(lastQrTimestamp).getTime()
-      const now = Date.now()
-      const timeSinceLastUpdate = now - lastUpdate
-
-      if (timeSinceLastUpdate > EXPIRATION_BUFFER) {
-        console.warn(
-          '⏰ QR code has expired (no refresh for',
-          timeSinceLastUpdate / 1000,
-          'seconds)'
-        )
-        setIsQrExpired(true)
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-
-    // Check immediately
-    checkExpiration()
-
-    // Then check every 5 seconds
-    const interval = setInterval(checkExpiration, 5000)
-
-    return () => clearInterval(interval)
-  }, [lastQrTimestamp, isQrMode])
-
-  const handleRefreshQRCode = async () => {
-    if (!pairingToken) return
-
-    setIsRefreshingQr(true)
-    setIsQrExpired(false)
-
-    try {
-      const response = await apiClient.post('/auth/refresh-qr', {
-        pairingToken,
-      })
-
-      if (response.status === 201 || response.status === 200) {
-        setQrCode(response.data.qrCode)
-        setLastQrTimestamp(new Date().toISOString())
-
-        notification.success({
-          message: 'Code QR rafraîchi',
-          description: response.data.message,
-        })
-      }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } }
-      notification.error({
-        message: 'Erreur',
-        description:
-          err.response?.data?.message ||
-          'Une erreur est survenue lors du rafraîchissement du code QR',
-      })
-      setIsQrExpired(true)
-    } finally {
-      setIsRefreshingQr(false)
-    }
-  }
+  }, [pairingToken, qrSessionToken, isQrMode, navigate, notification, login])
 
   const handleContinue = async (values: FormValues) => {
     const { phone } = values
     const fullPhoneNumber = `+${phone.countryCode}${phone.areaCode}${phone.phoneNumber}`
+    setCurrentPhoneNumber(fullPhoneNumber)
 
     if (!phone.phoneNumber) {
       notification.error({
@@ -311,16 +217,43 @@ export default function LoginPage() {
           })
 
           if (qrResponse.status === 201 || qrResponse.status === 200) {
-            setQrCode(qrResponse.data.qrCode)
-            setPairingToken(qrResponse.data.pairingToken)
-            setLastQrTimestamp(new Date().toISOString())
-            setIsQrMode(true)
-            setIsQrExpired(false)
+            // User is already connected
+            if (qrResponse.data.scenario === 'connected') {
+              notification.success({
+                message: 'Connexion réussie',
+                description: 'Vous êtes déjà connecté',
+              })
 
-            notification.success({
-              message: 'Code QR généré',
-              description: 'Scannez le code QR avec votre WhatsApp',
-            })
+              if (qrResponse.data.accessToken) {
+                login(qrResponse.data.accessToken, qrResponse.data.user)
+
+                setTimeout(() => {
+                  navigate(qrResponse.data.redirectTo || '/context')
+                }, 1000)
+              }
+              return
+            }
+
+            // Set up QR code display
+            setPairingToken(qrResponse.data.pairingToken)
+            setQrSessionToken(qrResponse.data.qrSessionToken)
+            setIsQrMode(true)
+
+            // If QR code is provided, display it
+            if (qrResponse.data.qrCode) {
+              setQrCode(qrResponse.data.qrCode)
+
+              notification.success({
+                message: 'Code QR généré',
+                description: 'Scannez le code QR avec votre WhatsApp',
+              })
+            } else {
+              // No QR code yet, polling will fetch it
+              notification.info({
+                message: 'Vérification en cours',
+                description: qrResponse.data.message || 'Veuillez patienter...',
+              })
+            }
           }
           return
         }
@@ -387,37 +320,31 @@ export default function LoginPage() {
                 <QRCodeSVG value={qrCode} size={256} level='M' />
               </div>
 
-              {/* Loading or expired indicator */}
-              {isQrExpired ? (
-                <div className='flex flex-col items-center gap-4 mt-4'>
-                  <p className='text-base text-red-600'>
-                    ⏰ Le code QR a expiré
-                  </p>
-                  <Button
-                    type='primary'
-                    onClick={handleRefreshQRCode}
-                    loading={isRefreshingQr}
-                    className='bg-primary-green border-black border hover:bg-primary-hover'
-                  >
-                    Demander un nouveau QR code
-                  </Button>
-                </div>
-              ) : (
-                <div className='flex items-center gap-3 text-text-muted'>
-                  <Spin />
-                  <span>En attente de la connexion...</span>
-                </div>
-              )}
+              {/* Loading indicator during polling */}
+              <div className='flex items-center gap-3 text-text-muted'>
+                {isPolling && <Spin />}
+                <span>
+                  {isPolling
+                    ? 'Vérification en cours...'
+                    : 'En attente de la connexion...'}
+                </span>
+              </div>
 
               {/* Bouton retour */}
               <Button
                 type='text'
                 onClick={() => {
+                  // Stop polling
+                  if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current)
+                    pollingIntervalRef.current = null
+                  }
+
                   setIsQrMode(false)
                   setQrCode(null)
                   setPairingToken(null)
-                  setLastQrTimestamp(null)
-                  setIsQrExpired(false)
+                  setQrSessionToken(null)
+                  setIsPolling(false)
                 }}
                 className='mt-6'
               >

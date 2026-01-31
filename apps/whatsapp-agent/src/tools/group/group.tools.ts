@@ -59,16 +59,12 @@ export class GroupTools {
         description:
           'Send a WhatsApp group invite to the current conversation. Great for inviting customers to support groups, communities, VIP groups, etc.',
         schema: z.object({
-          inviteCode: z
-            .string()
-            .describe('Group invite code (from WhatsApp)'),
+          inviteCode: z.string().describe('Group invite code (from WhatsApp)'),
           groupId: z.string().describe('Group ID (format: xxxxx@g.us)'),
           expiration: z
             .number()
             .optional()
-            .describe(
-              'Invite expiration timestamp (in milliseconds)',
-            ),
+            .describe('Invite expiration timestamp (in milliseconds)'),
         }),
       },
     );
