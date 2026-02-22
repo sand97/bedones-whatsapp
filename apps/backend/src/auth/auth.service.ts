@@ -862,7 +862,9 @@ export class AuthService {
         user.phoneNumber,
       );
 
-      this.logger.log(`Checking authentication status for user: ${user.phoneNumber}`);
+      this.logger.log(
+        `Checking authentication status for user: ${user.phoneNumber}`,
+      );
 
       // Get the WhatsApp agent for this user
       const agent = await this.whatsappAgentService.getAgentForUser(user.id);
@@ -979,7 +981,8 @@ export class AuthService {
       );
 
       try {
-        const qrResult = await this.connectorClientService.getQRCode(connectorUrl);
+        const qrResult =
+          await this.connectorClientService.getQRCode(connectorUrl);
 
         if (qrResult.success && qrResult.qrCode) {
           this.logger.log(

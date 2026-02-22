@@ -33,3 +33,6 @@ temp/
 
 # LangGraph API
 .langgraph_api
+/apps/whatsapp-agent/test-images/
+/apps/whatsapp-agent/cropped-images/
+cropped-images/

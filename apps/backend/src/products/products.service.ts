@@ -254,4 +254,78 @@ export class ProductsService {
       where: { id: metadataId },
     });
   }
+
+  /**
+   * Search products by keywords
+   * Searches in product name, description, and retailer_id
+   */
+  async searchByKeywords(
+    userId: string,
+    keywords: string[],
+    retailerId?: string,
+  ): Promise<{ products: Product[]; matchedKeywords: string[] }> {
+    this.logger.log(
+      `Searching products for user ${userId} with keywords: ${keywords.join(', ')}`,
+    );
+
+    // Normalize keywords (lowercase, trim)
+    const normalizedKeywords = keywords.map((k) => k.toLowerCase().trim());
+
+    // Build OR conditions for each keyword
+    const orConditions = normalizedKeywords.map((keyword) => ({
+      OR: [
+        { name: { contains: keyword, mode: 'insensitive' as const } },
+        {
+          description: { contains: keyword, mode: 'insensitive' as const },
+        },
+        { retailer_id: { contains: keyword, mode: 'insensitive' as const } },
+        { category: { contains: keyword, mode: 'insensitive' as const } },
+      ],
+    }));
+
+    // If retailer_id is provided, prioritize exact matches
+    const products = await this.prisma.product.findMany({
+      where: {
+        user_id: userId,
+        OR: orConditions,
+      },
+      include: {
+        metadata: true,
+        images: true,
+        collection: true,
+      },
+      orderBy: retailerId
+        ? [
+            {
+              // Exact retailer_id match first
+              retailer_id: { sort: 'asc', nulls: 'last' as const },
+            },
+            { created_at: 'desc' },
+          ]
+        : [{ created_at: 'desc' }],
+      take: 20, // Limit results
+    });
+
+    // Find which keywords matched
+    const matchedKeywords = new Set<string>();
+    products.forEach((product) => {
+      const searchableText =
+        `${product.name} ${product.description || ''} ${product.retailer_id || ''} ${product.category || ''}`.toLowerCase();
+
+      normalizedKeywords.forEach((keyword) => {
+        if (searchableText.includes(keyword)) {
+          matchedKeywords.add(keyword);
+        }
+      });
+    });
+
+    this.logger.log(
+      `Found ${products.length} products matching keywords: ${Array.from(matchedKeywords).join(', ')}`,
+    );
+
+    return {
+      products,
+      matchedKeywords: Array.from(matchedKeywords),
+    };
+  }
 }

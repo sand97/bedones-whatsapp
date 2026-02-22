@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 import { AddMetadataDto } from './dto/add-metadata.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { SearchByKeywordsDto } from './dto/search-by-keywords.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
@@ -126,6 +127,26 @@ export class ProductsController {
       addMetadataDto.key,
       addMetadataDto.value,
       addMetadataDto.isVisible,
+    );
+  }
+
+  @Post('search-by-keywords')
+  @ApiOperation({
+    summary: 'Search products by keywords (OCR results)',
+    description:
+      'Search products by keywords extracted from OCR. Returns matching products and which keywords matched.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Products found successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @HttpCode(HttpStatus.OK)
+  async searchByKeywords(@Body() searchDto: SearchByKeywordsDto) {
+    return this.productsService.searchByKeywords(
+      searchDto.user_id,
+      searchDto.keywords,
+      searchDto.retailer_id,
     );
   }
 }

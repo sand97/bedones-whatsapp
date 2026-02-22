@@ -1,0 +1,24 @@
+services:
+  image-cropper:
+    build:
+      context: ./apps/whatsapp-agent/services/image-cropper
+      dockerfile: Dockerfile
+    ports:
+      - "8011:8011"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8011
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
