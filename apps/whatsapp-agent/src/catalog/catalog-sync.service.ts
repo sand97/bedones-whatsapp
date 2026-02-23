@@ -2,10 +2,11 @@ import * as crypto from 'crypto';
 
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { Prisma } from '@app/generated/client';
+import { ImageIndexingQueueService } from '@app/image-processing/image-indexing-queue.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { normalizeWhatsAppPrice } from '@apps/common';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { EmbeddingsService } from './embeddings.service';
@@ -46,6 +47,8 @@ export class CatalogSyncService {
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
     private readonly scriptService: PageScriptService,
+    @Inject(forwardRef(() => ImageIndexingQueueService))
+    private readonly imageIndexingQueueService: ImageIndexingQueueService,
   ) {}
 
   /**
@@ -153,6 +156,50 @@ export class CatalogSyncService {
         success: false,
         message: error.message,
       };
+    }
+  }
+
+  /**
+   * Trigger catalog sync in background and return immediately.
+   * Used by backend internal orchestration endpoints.
+   */
+  triggerManualSyncInBackground(): {
+    success: boolean;
+    message: string;
+    imageSyncQueued: boolean;
+  } {
+    if (this.isSyncing) {
+      return {
+        success: false,
+        message: 'Sync already in progress',
+        imageSyncQueued: false,
+      };
+    }
+
+    void this.syncCatalogAndQueueImages().catch(async (error: any) => {
+      const errorMessage = error?.message || String(error);
+      this.logger.error(
+        `Background catalog+image sync failed: ${errorMessage}`,
+      );
+
+      await this.imageIndexingQueueService
+        .markCatalogImageSyncFailed(errorMessage)
+        .catch(() => undefined);
+    });
+
+    return {
+      success: true,
+      message: 'Catalog and image indexing pipeline started in background',
+      imageSyncQueued: true,
+    };
+  }
+
+  private async syncCatalogAndQueueImages(): Promise<void> {
+    await this.syncCatalog();
+    const queueResult = await this.imageIndexingQueueService.enqueueCatalogImageSync();
+
+    if (!queueResult.queued) {
+      this.logger.warn(`Image indexing queue skipped: ${queueResult.message}`);
     }
   }
 

@@ -122,3 +122,112 @@ export interface MessageMetadataListResponse {
   success: boolean;
   data: Record<string, any[]>;
 }
+
+export interface InternalProductImage {
+  id: string;
+  product_id: string;
+  url: string;
+  original_url?: string | null;
+  normalized_url?: string | null;
+  image_type: string;
+  image_index: number;
+}
+
+export interface InternalProductSample {
+  id: string;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  retailer_id?: string | null;
+  price?: number | null;
+  images: InternalProductImage[];
+}
+
+export interface InternalProductMatch {
+  id: string;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  retailer_id?: string | null;
+  price?: number | null;
+  coverImageDescription?: string | null;
+}
+
+export interface InternalProductForImageIndexing {
+  id: string;
+  name: string;
+  description?: string | null;
+  retailer_id?: string | null;
+  price?: number | null;
+  category?: string | null;
+  coverImageDescription?: string | null;
+  coverImageUrl?: string | null;
+  coverImageCreatedAt?: string | null;
+  updatedAt: string;
+  indexDescriptionAt?: string | null;
+  indexImageAt?: string | null;
+}
+
+export interface InternalProductImageIndexingUpdate {
+  productId: string;
+  coverImageDescription?: string;
+  indexDescriptionAt?: string;
+  indexImageAt?: string;
+}
+
+export interface InternalAgentCore {
+  id: string;
+  userId?: string | null;
+  ipAddress: string;
+  port: number;
+  connectorPort: number;
+  status: string;
+  connectionStatus: string;
+  syncStatus: string;
+  syncProgress?: unknown;
+  lastCatalogSyncedAt?: string | null;
+  syncImageStatus: 'PENDING' | 'SYNCING' | 'DONE' | 'FAILED';
+  lastImageSyncDate?: string | null;
+  lastImageSyncError?: string | null;
+  customDescriptionPrompt?: string | null;
+  promptGeneratedAt?: string | null;
+  promptBasedOnProductsCount?: number | null;
+  metadata?: unknown;
+  testPhoneNumbers: string[];
+  testLabels: string[];
+  labelsToNotReply: string[];
+  productionEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastHealthCheckAt?: string | null;
+}
+
+export interface InternalManagementGroupResponse {
+  managementGroupId: string | null;
+  name: string | null;
+  usage: string | null;
+}
+
+export interface InternalAgentSnapshotResponse {
+  agent: InternalAgentCore;
+  managementGroup: InternalManagementGroupResponse;
+}
+
+export interface InternalAgentUpdatePayload {
+  customDescriptionPrompt?: string;
+  promptBasedOnProductsCount?: number;
+  syncImageStatus?: 'SYNCING' | 'DONE' | 'FAILED';
+  syncImageError?: string;
+}
+
+export interface InternalCustomPromptResponse {
+  id: string;
+  customDescriptionPrompt?: string | null;
+  promptGeneratedAt?: string | null;
+  promptBasedOnProductsCount?: number | null;
+}
+
+export interface InternalImageSyncStatusUpdate {
+  status: 'SYNCING' | 'DONE' | 'FAILED';
+  error?: string;
+}

@@ -5,27 +5,12 @@ import { PrismaModule } from '@app/prisma/prisma.module';
 import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { BullModule } from '@nestjs/bull';
 import { Module, forwardRef } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { QueueService } from './queue.service';
 import { ScheduledMessageProcessor } from './scheduled-message.processor';
 
 @Module({
   imports: [
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        redis: configService.get<string>('REDIS_URL'),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-        },
-      }),
-      inject: [ConfigService],
-    }),
     BullModule.registerQueue({
       name: 'scheduled-messages',
     }),

@@ -81,7 +81,7 @@ export class ImageProcessingController {
     }
 
     const text = await this.ocrService.extractText(file.buffer);
-    const keywords = this.ocrService.extractKeywords(text);
+    const keywords = this.extractWords(text);
 
     return {
       text,
@@ -156,7 +156,7 @@ export class ImageProcessingController {
 
     // Step 1: Extract text from image
     const ocrText = await this.ocrService.extractText(file.buffer);
-    const keywords = this.ocrService.extractKeywords(ocrText);
+    const keywords = this.extractWords(ocrText);
 
     // Step 2: Search products in backend
     const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:3000';
@@ -449,7 +449,7 @@ export class ImageProcessingController {
     const searchLimit = limit ? parseInt(limit, 10) : 5;
     const scoreThreshold = threshold ? parseFloat(threshold) : 0.7;
 
-    const results = await this.qdrantService.searchSimilar(
+    const results = await this.qdrantService.searchSimilarImages(
       embedding,
       searchLimit,
       scoreThreshold,
@@ -996,5 +996,16 @@ export class ImageProcessingController {
         `Failed to crop image with OpenCV: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
+  }
+
+  private extractWords(text: string): string[] {
+    if (!text) {
+      return [];
+    }
+
+    return text
+      .split(/[^a-zA-Z0-9_-]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
   }
 }

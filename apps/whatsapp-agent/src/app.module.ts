@@ -1,6 +1,7 @@
 import { HealthModule } from '@app/health/health.module';
+import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { AppStartupModule } from './app-startup/app-startup.module';
@@ -19,6 +20,20 @@ import { WebhookModule } from './webhook/webhook.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        redis: configService.get<string>('REDIS_URL'),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+        },
+      }),
     }),
     ScheduleModule.forRoot(),
     PrismaModule,

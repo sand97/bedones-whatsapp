@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import axios from 'axios';
+import FormData from 'form-data';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import sharp from 'sharp';
@@ -141,6 +143,45 @@ export class SmartCropService {
     } catch (error) {
       this.logger.error('Failed to crop image:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Crop image via OpenCV service.
+   * Falls back to the original image buffer when the service is unavailable.
+   */
+  async cropOpenCV(imageBuffer: Buffer): Promise<Buffer> {
+    const imageCropperUrl =
+      this.configService.get<string>('IMAGE_CROPPER_URL') ||
+      'http://localhost:8011';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', imageBuffer, {
+        filename: 'input.jpg',
+        contentType: 'image/jpeg',
+      });
+
+      const response = await axios.post<{
+        success: boolean;
+        image_base64?: string;
+      }>(`${imageCropperUrl}/crop/opencv`, formData, {
+        headers: formData.getHeaders(),
+        timeout: 30000,
+      });
+
+      const base64Image = response.data?.image_base64;
+      if (!base64Image) {
+        this.logger.warn('OpenCV crop service returned no image. Using original.');
+        return imageBuffer;
+      }
+
+      return Buffer.from(base64Image, 'base64');
+    } catch (error: any) {
+      this.logger.warn(
+        `OpenCV crop failed, using original image: ${error?.message || error}`,
+      );
+      return imageBuffer;
     }
   }
 

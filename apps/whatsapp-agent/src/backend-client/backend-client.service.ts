@@ -19,12 +19,24 @@ import {
   MessageMetadataListResponse,
   DeleteMediaRequest,
   DeleteMediaResponse,
+  InternalProductSample,
+  InternalProductMatch,
+  InternalProductForImageIndexing,
+  InternalProductImageIndexingUpdate,
+  InternalAgentSnapshotResponse,
+  InternalAgentUpdatePayload,
+  InternalCustomPromptResponse,
+  InternalManagementGroupResponse,
+  InternalImageSyncStatusUpdate,
 } from './backend-api.types';
 
 @Injectable()
 export class BackendClientService {
   private readonly logger = new Logger(BackendClientService.name);
   private readonly baseUrl: string;
+  private readonly agentBackendToken?: string;
+  private agentSnapshotCache: InternalAgentSnapshotResponse | null = null;
+  private agentSnapshotPromise: Promise<InternalAgentSnapshotResponse> | null = null;
 
   constructor(
     private readonly httpService: HttpService,
@@ -35,7 +47,41 @@ export class BackendClientService {
       throw new Error('Missing BACKEND_URL');
     }
     this.baseUrl = baseUrl;
+    this.agentBackendToken = this.configService.get<string>('AGENT_BACKEND_TOKEN');
     this.logger.log(`Backend URL configured: ${this.baseUrl}`);
+  }
+
+  private getInternalAuthHeaders() {
+    if (!this.agentBackendToken) {
+      throw new Error('Missing AGENT_BACKEND_TOKEN');
+    }
+
+    return {
+      Authorization: `Bearer ${this.agentBackendToken}`,
+    };
+  }
+
+  private async internalGet<T>(
+    path: string,
+    params?: Record<string, unknown>,
+  ): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await this.httpService.axiosRef.get<T>(url, {
+      params,
+      headers: this.getInternalAuthHeaders(),
+    });
+    return response.data;
+  }
+
+  private async internalPatch<T>(
+    path: string,
+    payload: object,
+  ): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await this.httpService.axiosRef.patch<T>(url, payload, {
+      headers: this.getInternalAuthHeaders(),
+    });
+    return response.data;
   }
 
   /**
@@ -259,5 +305,147 @@ export class BackendClientService {
       payload,
     );
     return response.data;
+  }
+
+  async getSampleProducts(
+    max = 20,
+    perCollection = 3,
+  ): Promise<InternalProductSample[]> {
+    return this.internalGet<InternalProductSample[]>(
+      '/agent-internal/products/sample',
+      { max, perCollection },
+    );
+  }
+
+  async getProductByRetailerId(
+    retailerId: string,
+  ): Promise<InternalProductMatch | null> {
+    const encodedRetailerId = encodeURIComponent(retailerId);
+    return this.internalGet<InternalProductMatch | null>(
+      `/agent-internal/products/by-retailer-id/${encodedRetailerId}`,
+    );
+  }
+
+  async searchProductsByKeywords(params: {
+    keywords: string[];
+    retailerId?: string;
+  }): Promise<{
+    products: InternalProductMatch[];
+    matchedKeywords: string[];
+  }> {
+    return this.internalGet<{
+      products: InternalProductMatch[];
+      matchedKeywords: string[];
+    }>('/agent-internal/products/search-by-keywords', {
+      keywords: params.keywords.join(','),
+      retailer_id: params.retailerId,
+    });
+  }
+
+  async getAgentSnapshot(
+    forceRefresh = false,
+  ): Promise<InternalAgentSnapshotResponse> {
+    if (!forceRefresh && this.agentSnapshotCache) {
+      return this.agentSnapshotCache;
+    }
+
+    if (!forceRefresh && this.agentSnapshotPromise) {
+      return this.agentSnapshotPromise;
+    }
+
+    this.agentSnapshotPromise = this.internalGet<InternalAgentSnapshotResponse>(
+      '/agent-internal/agents/me',
+    );
+
+    try {
+      const snapshot = await this.agentSnapshotPromise;
+      this.agentSnapshotCache = snapshot;
+      return snapshot;
+    } finally {
+      this.agentSnapshotPromise = null;
+    }
+  }
+
+  invalidateAgentSnapshotCache() {
+    this.agentSnapshotCache = null;
+  }
+
+  private async updateAgentSnapshot(
+    payload: InternalAgentUpdatePayload,
+  ): Promise<InternalAgentSnapshotResponse> {
+    const snapshot = await this.internalPatch<InternalAgentSnapshotResponse>(
+      '/agent-internal/agents/me',
+      payload,
+    );
+
+    this.agentSnapshotCache = snapshot;
+    return snapshot;
+  }
+
+  async getAgentCustomPrompt(): Promise<InternalCustomPromptResponse | null> {
+    const snapshot = await this.getAgentSnapshot();
+
+    return {
+      id: snapshot.agent.id,
+      customDescriptionPrompt: snapshot.agent.customDescriptionPrompt,
+      promptGeneratedAt: snapshot.agent.promptGeneratedAt,
+      promptBasedOnProductsCount: snapshot.agent.promptBasedOnProductsCount,
+    };
+  }
+
+  async updateAgentCustomPrompt(payload: {
+    customDescriptionPrompt: string;
+    promptBasedOnProductsCount?: number;
+  }): Promise<InternalCustomPromptResponse> {
+    const snapshot = await this.updateAgentSnapshot({
+      customDescriptionPrompt: payload.customDescriptionPrompt,
+      promptBasedOnProductsCount: payload.promptBasedOnProductsCount,
+    });
+
+    return {
+      id: snapshot.agent.id,
+      customDescriptionPrompt: snapshot.agent.customDescriptionPrompt,
+      promptGeneratedAt: snapshot.agent.promptGeneratedAt,
+      promptBasedOnProductsCount: snapshot.agent.promptBasedOnProductsCount,
+    };
+  }
+
+  async getManagementGroup(): Promise<InternalManagementGroupResponse> {
+    const snapshot = await this.getAgentSnapshot();
+    return snapshot.managementGroup;
+  }
+
+  async getProductsForImageIndexing(): Promise<InternalProductForImageIndexing[]> {
+    return this.internalGet<InternalProductForImageIndexing[]>(
+      '/agent-internal/products/for-image-indexing',
+    );
+  }
+
+  async batchUpdateProductImageIndexing(
+    updates: InternalProductImageIndexingUpdate[],
+  ): Promise<{ updated: number; ignored: number }> {
+    return this.internalPatch<{ updated: number; ignored: number }>(
+      '/agent-internal/products/cover-image-descriptions',
+      { updates },
+    );
+  }
+
+  async updateAgentImageSyncStatus(payload: InternalImageSyncStatusUpdate) {
+    const snapshot = await this.updateAgentSnapshot({
+      syncImageStatus: payload.status,
+      syncImageError: payload.error,
+    });
+
+    return {
+      id: snapshot.agent.id,
+      syncImageStatus: snapshot.agent.syncImageStatus,
+      lastImageSyncDate: snapshot.agent.lastImageSyncDate,
+      lastImageSyncError: snapshot.agent.lastImageSyncError,
+    } satisfies {
+      id: string;
+      syncImageStatus: string;
+      lastImageSyncDate?: string | null;
+      lastImageSyncError?: string | null;
+    };
   }
 }
