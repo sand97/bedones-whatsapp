@@ -20,5 +20,36 @@ services:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
+  redis_backend:
+    image: redis:5
+    ports:
+      - "6379:6379"
+    command: [ "redis-server", "--bind", "redis_backend", "--port", "6379" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -h redis ping | grep 'PONG' || exit 1" ]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - red_data_backend:/var/lib/redis
+
+
+  redis_agent:
+    image: redis:5
+    ports:
+      - "6380:6380"
+    command: [ "redis-server", "--bind", "redis_agent", "--port", "6380" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -h redis ping | grep 'PONG' || exit 1" ]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - red_data_agent:/var/lib/redis
+
+
 volumes:
   qdrant_data:
+  red_data_backend: { }
+  red_data_agent: { }
+

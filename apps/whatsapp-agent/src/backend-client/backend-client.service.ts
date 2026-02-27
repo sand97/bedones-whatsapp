@@ -36,7 +36,8 @@ export class BackendClientService {
   private readonly baseUrl: string;
   private readonly agentBackendToken?: string;
   private agentSnapshotCache: InternalAgentSnapshotResponse | null = null;
-  private agentSnapshotPromise: Promise<InternalAgentSnapshotResponse> | null = null;
+  private agentSnapshotPromise: Promise<InternalAgentSnapshotResponse> | null =
+    null;
 
   constructor(
     private readonly httpService: HttpService,
@@ -47,7 +48,9 @@ export class BackendClientService {
       throw new Error('Missing BACKEND_URL');
     }
     this.baseUrl = baseUrl;
-    this.agentBackendToken = this.configService.get<string>('AGENT_BACKEND_TOKEN');
+    this.agentBackendToken = this.configService.get<string>(
+      'AGENT_BACKEND_TOKEN',
+    );
     this.logger.log(`Backend URL configured: ${this.baseUrl}`);
   }
 
@@ -73,10 +76,7 @@ export class BackendClientService {
     return response.data;
   }
 
-  private async internalPatch<T>(
-    path: string,
-    payload: object,
-  ): Promise<T> {
+  private async internalPatch<T>(path: string, payload: object): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const response = await this.httpService.axiosRef.patch<T>(url, payload, {
       headers: this.getInternalAuthHeaders(),
@@ -415,7 +415,9 @@ export class BackendClientService {
     return snapshot.managementGroup;
   }
 
-  async getProductsForImageIndexing(): Promise<InternalProductForImageIndexing[]> {
+  async getProductsForImageIndexing(): Promise<
+    InternalProductForImageIndexing[]
+  > {
     return this.internalGet<InternalProductForImageIndexing[]>(
       '/agent-internal/products/for-image-indexing',
     );

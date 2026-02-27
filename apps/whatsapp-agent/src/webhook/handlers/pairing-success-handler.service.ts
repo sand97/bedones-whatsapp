@@ -30,7 +30,9 @@ export class PairingSuccessHandlerService {
         this.backendClient.verifyPairingSuccess(phoneNumber, whatsappProfile),
       );
 
-      this.logger.log(`Backend notified of successful pairing for ${phoneNumber}`);
+      this.logger.log(
+        `Backend notified of successful pairing for ${phoneNumber}`,
+      );
 
       await this.catalogSyncService.triggerManualSync().catch((error) => {
         this.logger.error(

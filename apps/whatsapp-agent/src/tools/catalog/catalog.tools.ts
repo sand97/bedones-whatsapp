@@ -1,5 +1,7 @@
 import { CatalogSearchService } from '@app/catalog/catalog-search.service';
+import { EmbeddingsService } from '@app/catalog-shared/embeddings.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
+import { QdrantService } from '@app/image-processing/qdrant.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { tool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -16,6 +18,8 @@ export class CatalogTools {
     private readonly connectorClient: ConnectorClientService,
     private readonly catalogSearch: CatalogSearchService,
     private readonly scriptService: PageScriptService,
+    private readonly embeddingsService: EmbeddingsService,
+    private readonly qdrantService: QdrantService,
   ) {}
 
   /**
@@ -84,22 +88,26 @@ export class CatalogTools {
 
   /**
    * Search products with intelligent routing:
-   * - Uses semantic search if embeddings are available (best results)
-   * - Falls back to direct WhatsApp search if embeddings not ready
+   * - Uses vector search (Qdrant) if available (best results, free)
+   * - Falls back to direct WhatsApp search if Qdrant not configured
    */
   private createSearchProductsTool() {
     return tool(
-      async ({ query, limit }, config?: any) => {
+      async ({ query, limit, scoreThreshold }, config?: any) => {
         try {
           // Use intelligent search service with automatic fallback
-          const result = await this.catalogSearch.searchProducts(query, limit);
+          const result = await this.catalogSearch.searchProducts(
+            query,
+            limit,
+            scoreThreshold,
+          );
 
           return JSON.stringify({
             success: result.success,
             products: result.products,
             query,
             count: result.products.length,
-            method: result.method, // 'semantic' or 'direct_whatsapp'
+            method: result.method, // 'vector_search' or 'direct_whatsapp'
             error: result.error,
           });
         } catch (error: any) {
@@ -112,14 +120,25 @@ export class CatalogTools {
       {
         name: 'search_products',
         description:
-          'Search products intelligently. Uses semantic search if available (understands synonyms and context), otherwise searches directly in WhatsApp.',
+          'Search products intelligently using vector search (understands synonyms, context, and semantic meaning). ' +
+          'Automatically falls back to direct WhatsApp search if vector search is not available. ' +
+          'Use this to find products based on natural language descriptions or multiple keywords.',
         schema: z.object({
           query: z
             .string()
             .describe(
-              'Natural language query (e.g. "elegant evening dress", "comfortable shoes")',
+              'Natural language search query (e.g. "elegant evening dress", "smartphone with good camera", "red shoes for running")',
             ),
-          limit: z.number().default(10).describe('Maximum number of results'),
+          limit: z
+            .number()
+            .default(10)
+            .describe('Maximum number of results to return'),
+          scoreThreshold: z
+            .number()
+            .default(0.7)
+            .describe(
+              'Minimum similarity score for vector search (0-1). Higher = more strict matching. Default: 0.7',
+            ),
         }),
       },
     );

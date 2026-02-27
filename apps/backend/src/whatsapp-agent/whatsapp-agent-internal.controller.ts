@@ -47,11 +47,11 @@ export class WhatsAppAgentInternalController {
   @ApiOperation({
     summary: "Mettre à jour l'état interne de l'agent",
     description:
-      "Endpoint interne backend unique pour les mises à jour venant du whatsapp-agent. Toutes les propriétés sont optionnelles (prompt, statut de sync image, erreur sync).",
+      'Endpoint interne backend unique pour les mises à jour venant du whatsapp-agent. Toutes les propriétés sont optionnelles (prompt, statut de sync image, erreur sync).',
   })
   @ApiResponse({
     status: 200,
-    description: "Snapshot agent mis à jour et retourné",
+    description: 'Snapshot agent mis à jour et retourné',
   })
   @ApiResponse({
     status: 401,

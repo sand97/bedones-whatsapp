@@ -199,7 +199,7 @@ export class ImageProcessingController {
   @ApiOperation({
     summary: 'Create Qdrant collection',
     description:
-      'Create a Qdrant collection for storing image embeddings (CLIP vectors)',
+      'Create a Qdrant collection for storing image embeddings',
   })
   @ApiResponse({
     status: 200,
@@ -221,7 +221,7 @@ export class ImageProcessingController {
     collectionName: string;
     vectorSize: number;
   }> {
-    const size = vectorSize || 512; // CLIP default
+    const size = vectorSize || 3072; // Gemini image embedding default
     const name =
       collectionName || process.env.QDRANT_COLLECTION_NAME || 'product-images';
 
@@ -253,7 +253,7 @@ export class ImageProcessingController {
   @ApiOperation({
     summary: 'Check image processing services status',
     description:
-      'Check if OCR, CLIP embeddings, and Qdrant services are available',
+      'Check if OCR, Gemini image embeddings, and Qdrant services are available',
   })
   @ApiResponse({
     status: 200,
@@ -268,10 +268,10 @@ export class ImageProcessingController {
       },
       clip: {
         available: this.imageEmbeddings.isReady(),
-        service: 'CLIP (Xenova/clip-vit-base-patch32)',
+        service: 'Gemini image embeddings',
         status: this.imageEmbeddings.isReady()
-          ? 'Model loaded and ready'
-          : 'Model failed to load - check logs',
+          ? 'Ready (Gemini Vision + text embeddings)'
+          : 'Unavailable (check GEMINI_API_KEY)',
       },
       qdrant: {
         available: this.qdrantService.isConfigured(),
@@ -281,7 +281,7 @@ export class ImageProcessingController {
           : 'Not configured (missing QDRANT_API_URL or QDRANT_API_KEY)',
       },
       recommendation: !this.imageEmbeddings.isReady()
-        ? 'CLIP model not available. Use OCR-based search (/test/ocr-search) which works without CLIP.'
+        ? 'Gemini image embeddings unavailable. Configure GEMINI_API_KEY.'
         : 'All services operational',
     };
   }
@@ -291,7 +291,7 @@ export class ImageProcessingController {
   @ApiOperation({
     summary: 'Index test-images folder in Qdrant',
     description:
-      'Generate CLIP embeddings for all images in test-images folder and index them in Qdrant',
+      'Generate image embeddings for all images in test-images folder and index them in Qdrant',
   })
   @ApiResponse({
     status: 200,
@@ -312,7 +312,7 @@ export class ImageProcessingController {
   }> {
     if (!this.imageEmbeddings.isReady()) {
       throw new BadRequestException(
-        '❌ Image embeddings service is not ready. CLIP model failed to load. Check server logs for details. OCR features are still available.',
+        '❌ Gemini image embeddings are unavailable (check GEMINI_API_KEY).',
       );
     }
 
@@ -370,7 +370,7 @@ export class ImageProcessingController {
   @ApiOperation({
     summary: 'Search similar images in Qdrant',
     description:
-      'Upload an image and find similar products using CLIP embeddings',
+      'Upload an image and find similar products using image embeddings',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -438,7 +438,7 @@ export class ImageProcessingController {
 
     if (!this.imageEmbeddings.isReady()) {
       throw new BadRequestException(
-        '❌ Image embeddings service is not ready. CLIP model failed to load. Check server logs for details. OCR features are still available via /test/ocr-extract or /test/ocr-search.',
+        '❌ Gemini image embeddings are unavailable (check GEMINI_API_KEY).',
       );
     }
 
@@ -492,8 +492,7 @@ export class ImageProcessingController {
         },
         save: {
           type: 'string',
-          description:
-            'Save cropped image to disk (true/false, default: true)',
+          description: 'Save cropped image to disk (true/false, default: true)',
           example: 'true',
         },
       },
@@ -617,9 +616,7 @@ export class ImageProcessingController {
     },
   })
   @UseInterceptors(FileInterceptor('image'))
-  async cropWithGemini(
-    @UploadedFile() file: Express.Multer.File,
-  ): Promise<{
+  async cropWithGemini(@UploadedFile() file: Express.Multer.File): Promise<{
     success: boolean;
     method: string;
     width: number;
@@ -680,7 +677,11 @@ export class ImageProcessingController {
 
       const result = await response.json();
       let text = result.candidates[0].content.parts[0].text;
-      text = text.trim().replace(/```json/g, '').replace(/```/g, '').trim();
+      text = text
+        .trim()
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
       const bbox = JSON.parse(text);
 
       // Get image dimensions
@@ -713,10 +714,7 @@ export class ImageProcessingController {
       );
       const xMax = Math.max(
         xMin + 1,
-        Math.min(
-          Math.floor((bbox[3] / 1000) * metadata.width),
-          metadata.width,
-        ),
+        Math.min(Math.floor((bbox[3] / 1000) * metadata.width), metadata.width),
       );
 
       // Crop image
@@ -921,9 +919,7 @@ export class ImageProcessingController {
     },
   })
   @UseInterceptors(FileInterceptor('image'))
-  async cropWithOpenCV(
-    @UploadedFile() file: Express.Multer.File,
-  ): Promise<{
+  async cropWithOpenCV(@UploadedFile() file: Express.Multer.File): Promise<{
     success: boolean;
     method: string;
     width: number;

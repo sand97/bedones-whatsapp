@@ -93,7 +93,18 @@ export class CatalogController {
     );
 
     if (!result.success) {
+      this.logger.error(
+        `❌ Upload failed for product ${productId}, index ${imageIndex}: ${result.error}`,
+      );
       throw new BadRequestException(result.error || 'Upload failed');
+    }
+
+    this.logger.log(
+      `✅ Image uploaded successfully: product=${productId}, index=${imageIndex}`,
+    );
+    this.logger.log(`   URL Minio: ${result.url}`);
+    if (originalUrl) {
+      this.logger.log(`   URL WhatsApp: ${originalUrl}`);
     }
 
     return {

@@ -53,6 +53,7 @@ export interface CatalogCollection {
 
 export interface CatalogData {
   collections: CatalogCollection[];
+  uncategorizedProducts?: CatalogProduct[];
 }
 
 export interface BusinessHoursConfig {

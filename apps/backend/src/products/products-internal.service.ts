@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 
-import { ProductsService } from './products.service';
 import { ProductImageIndexingUpdateDto } from './dto/batch-update-product-image-indexing.dto';
+import { ProductsService } from './products.service';
 
 @Injectable()
 export class ProductsInternalService {
@@ -161,6 +161,22 @@ export class ProductsInternalService {
         product.images[0] ||
         null;
 
+      const images = product.images.map((image) => ({
+        id: image.id,
+        url: image.url,
+        imageIndex: image.image_index,
+        createdAt: image.created_at,
+      }));
+
+      const latestImageCreatedAt =
+        product.images.length > 0
+          ? product.images.reduce(
+              (latest, current) =>
+                current.created_at > latest ? current.created_at : latest,
+              product.images[0].created_at,
+            )
+          : null;
+
       return {
         id: product.id,
         name: product.name,
@@ -168,9 +184,10 @@ export class ProductsInternalService {
         retailer_id: product.retailer_id,
         price: product.price,
         category: product.category,
+        images,
         coverImageDescription: product.coverImageDescription,
         coverImageUrl: coverImage?.url || null,
-        coverImageCreatedAt: coverImage?.created_at || null,
+        coverImageCreatedAt: latestImageCreatedAt || coverImage?.created_at || null,
         indexDescriptionAt: product.indexDescriptionAt,
         indexImageAt: product.indexImageAt,
         updatedAt: product.updated_at,
@@ -189,7 +206,9 @@ export class ProductsInternalService {
       };
     }
 
-    const productIds = Array.from(new Set(updates.map((item) => item.productId)));
+    const productIds = Array.from(
+      new Set(updates.map((item) => item.productId)),
+    );
 
     const ownedProducts = await this.prisma.product.findMany({
       where: {
@@ -235,7 +254,10 @@ export class ProductsInternalService {
         patch.indexImageAt = new Date(update.indexImageAt);
       }
 
-      if (!update.indexDescriptionAt && update.coverImageDescription !== undefined) {
+      if (
+        !update.indexDescriptionAt &&
+        update.coverImageDescription !== undefined
+      ) {
         patch.indexDescriptionAt = now;
       }
 

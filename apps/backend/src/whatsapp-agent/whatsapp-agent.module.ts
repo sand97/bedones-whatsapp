@@ -9,12 +9,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { UserSyncService } from './user-sync.service';
 import { WhatsAppAgentClientService } from './whatsapp-agent-client.service';
+import { WhatsAppAgentInternalController } from './whatsapp-agent-internal.controller';
+import { WhatsAppAgentInternalService } from './whatsapp-agent-internal.service';
 import {
   WhatsAppAgentController,
   AgentController,
 } from './whatsapp-agent.controller';
-import { WhatsAppAgentInternalController } from './whatsapp-agent-internal.controller';
-import { WhatsAppAgentInternalService } from './whatsapp-agent-internal.service';
 import { WhatsAppAgentService } from './whatsapp-agent.service';
 
 @Module({

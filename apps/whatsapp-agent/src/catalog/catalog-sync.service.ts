@@ -1,15 +1,15 @@
 import * as crypto from 'crypto';
 
+import { EmbeddingsService } from '@app/catalog-shared/embeddings.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { Prisma } from '@app/generated/client';
 import { ImageIndexingQueueService } from '@app/image-processing/image-indexing-queue.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { PrismaService } from '@app/prisma/prisma.service';
 import { normalizeWhatsAppPrice } from '@apps/common';
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-
-import { EmbeddingsService } from './embeddings.service';
 
 interface WhatsAppProduct {
   id: string;
@@ -41,17 +41,37 @@ export class CatalogSyncService {
   private readonly logger = new Logger(CatalogSyncService.name);
   private isSyncing = false;
   private lastSyncTime: Date | null = null;
+  private readonly syncOptimizationEnabled: boolean;
 
   constructor(
     private readonly connectorClient: ConnectorClientService,
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
     private readonly scriptService: PageScriptService,
-    @Inject(forwardRef(() => ImageIndexingQueueService))
     private readonly imageIndexingQueueService: ImageIndexingQueueService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    // Par défaut, l'optimisation est DÉSACTIVÉE (toujours synchroniser)
+    // Mettre ENABLE_CATALOG_SYNC_OPTIMIZATION=true pour activer l'optimisation (skip si unchanged)
+    this.syncOptimizationEnabled =
+      this.configService.get<string>('ENABLE_CATALOG_SYNC_OPTIMIZATION') ===
+      'true';
+
+    if (this.syncOptimizationEnabled) {
+      this.logger.log(
+        '⚡ Catalog sync optimization enabled (will skip unchanged catalogs)',
+      );
+    } else {
+      this.logger.log(
+        '🔄 Catalog sync optimization disabled (will always sync)',
+      );
+    }
+  }
 
   /**
+   * @deprecated This method is no longer used. The agent no longer interacts with
+   * the connector for catalog syncing. Authentication is handled by the backend.
+   *
    * Check if connector is authenticated
    */
   private async checkAuthentication(): Promise<boolean> {
@@ -76,6 +96,9 @@ export class CatalogSyncService {
   }
 
   /**
+   * @deprecated This method is no longer used. Signature-based optimization is deprecated
+   * as the agent no longer fetches products from WhatsApp. Products are managed by the backend.
+   *
    * Generate catalog signature (two-level hash for optimization)
    * - quickHash: Hash of product IDs only (fast, detects add/remove)
    * - fullHash: Hash of full metadata (detects price/description changes)
@@ -196,7 +219,8 @@ export class CatalogSyncService {
 
   private async syncCatalogAndQueueImages(): Promise<void> {
     await this.syncCatalog();
-    const queueResult = await this.imageIndexingQueueService.enqueueCatalogImageSync();
+    const queueResult =
+      await this.imageIndexingQueueService.enqueueCatalogImageSync();
 
     if (!queueResult.queued) {
       this.logger.warn(`Image indexing queue skipped: ${queueResult.message}`);
@@ -216,7 +240,10 @@ export class CatalogSyncService {
 
   /**
    * Main sync function - runs in background
-   * Optimized with authentication check and signature comparison
+   *
+   * IMPORTANT: This service NO LONGER fetches products from WhatsApp connector.
+   * The backend already syncs products from connector and stores them in the database.
+   * This service only triggers Qdrant indexing of products already in the backend.
    */
   private async syncCatalog(): Promise<void> {
     if (this.isSyncing) {
@@ -228,92 +255,31 @@ export class CatalogSyncService {
     const startTime = Date.now();
 
     try {
-      this.logger.log('🔄 Starting catalog sync...');
+      this.logger.log('🔄 Starting catalog indexing to Qdrant...');
 
-      // Step 1: Verify authentication
-      const isAuthenticated = await this.checkAuthentication();
-      if (!isAuthenticated) {
-        this.logger.warn('⚠️ Connector not authenticated, skipping sync');
-        return;
-      }
+      // Step 1: Queue Qdrant indexing (text + images)
+      // The backend has already synced products from WhatsApp connector
+      // We just need to index them in Qdrant for vector search
+      this.logger.log('🚀 Queueing text/image indexing to Qdrant...');
 
-      // Step 2: Fetch all products from WhatsApp via connector
-      const products = await this.fetchProductsFromWhatsApp();
-      this.logger.log(`📦 Fetched ${products.length} products from WhatsApp`);
+      const queueResult =
+        await this.imageIndexingQueueService.enqueueCatalogImageSync();
 
-      if (products.length === 0) {
-        this.logger.warn('No products found in WhatsApp catalog');
-        return;
-      }
-
-      // Step 3: Generate signature
-      const newSignature = this.generateCatalogSignature(products);
-      this.logger.debug(
-        `Generated signature: quickHash=${newSignature.quickHash.substring(0, 8)}..., fullHash=${newSignature.fullHash.substring(0, 8)}...`,
-      );
-
-      // Step 4: Compare with previous signature
-      const lastSync = await this.prisma.catalogSyncMetadata.findUnique({
-        where: { id: 'singleton' },
-      });
-
-      if (lastSync) {
-        // Quick check first (fast)
-        if (lastSync.quickHash === newSignature.quickHash) {
-          // IDs haven't changed, check full hash
-          if (lastSync.fullHash === newSignature.fullHash) {
-            this.logger.log(
-              '✅ Catalog unchanged (identical signature), skipping sync',
-            );
-            return;
-          } else {
-            this.logger.log(
-              '🔄 Catalog metadata changed (prices, descriptions, images)',
-            );
-          }
-        } else {
-          this.logger.log(
-            '🔄 Catalog structure changed (products added/removed)',
-          );
-        }
+      if (queueResult.queued) {
+        this.logger.log('✅ Qdrant indexing job queued successfully');
       } else {
-        this.logger.log('🆕 First sync - no previous signature found');
+        this.logger.warn(`⚠️ Qdrant indexing not queued: ${queueResult.message}`);
       }
-
-      // Step 5: Sync needed - Generate embeddings and store
-      if (this.embeddings.isAvailable()) {
-        await this.generateAndStoreEmbeddings(products);
-      } else {
-        await this.storeProductsWithoutEmbeddings(products);
-      }
-
-      // Step 6: Save new signature
-      await this.prisma.catalogSyncMetadata.upsert({
-        where: { id: 'singleton' },
-        create: {
-          id: 'singleton',
-          quickHash: newSignature.quickHash,
-          fullHash: newSignature.fullHash,
-          productsCount: newSignature.productsCount,
-          lastSyncedAt: newSignature.lastSyncedAt,
-        },
-        update: {
-          quickHash: newSignature.quickHash,
-          fullHash: newSignature.fullHash,
-          productsCount: newSignature.productsCount,
-          lastSyncedAt: newSignature.lastSyncedAt,
-        },
-      });
 
       this.lastSyncTime = new Date();
       const duration = Date.now() - startTime;
 
       this.logger.log(
-        `✅ Catalog sync completed in ${(duration / 1000).toFixed(1)}s`,
+        `✅ Catalog indexing queued in ${(duration / 1000).toFixed(1)}s`,
       );
     } catch (error) {
       this.logger.error(
-        `❌ Catalog sync failed: ${error.message}`,
+        `❌ Catalog indexing failed: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -323,6 +289,10 @@ export class CatalogSyncService {
   }
 
   /**
+   * @deprecated This method is no longer used. Products are fetched by the backend
+   * from the WhatsApp connector and stored in the database. The agent now retrieves
+   * products from the backend via backendClient.getProductsForImageIndexing().
+   *
    * Fetch all products from WhatsApp via connector
    */
   private async fetchProductsFromWhatsApp(): Promise<WhatsAppProduct[]> {
@@ -341,6 +311,10 @@ export class CatalogSyncService {
   }
 
   /**
+   * @deprecated This function is deprecated. Embeddings are now stored ONLY in Qdrant.
+   * Text/image indexing is handled by the image-indexing queue service.
+   * Database storage of embeddings is no longer used.
+   *
    * Generate embeddings and store products in DB
    */
   private async generateAndStoreEmbeddings(
@@ -399,6 +373,10 @@ export class CatalogSyncService {
   }
 
   /**
+   * @deprecated This function is deprecated. Products are now indexed ONLY in Qdrant.
+   * Text/image indexing is handled by the image-indexing queue service.
+   * Database storage of products without embeddings is no longer used.
+   *
    * Store products without embeddings (fallback)
    */
   private async storeProductsWithoutEmbeddings(

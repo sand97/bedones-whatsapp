@@ -18,6 +18,7 @@ export class QdrantService implements OnModuleInit {
   private readonly textCollectionName: string;
   private readonly imageVectorSize: number;
   private readonly textVectorSize: number;
+  private readonly autoRecreateOnDimensionMismatch: boolean;
 
   constructor(private readonly configService: ConfigService) {
     const url = this.configService.get<string>('QDRANT_API_URL');
@@ -39,7 +40,8 @@ export class QdrantService implements OnModuleInit {
       'product-images';
 
     this.textCollectionName =
-      this.configService.get<string>('QDRANT_TEXT_COLLECTION') || 'product-text';
+      this.configService.get<string>('QDRANT_TEXT_COLLECTION') ||
+      'product-text';
 
     this.imageVectorSize = Number.parseInt(
       this.configService.get<string>('QDRANT_IMAGE_VECTOR_SIZE', '512'),
@@ -50,6 +52,12 @@ export class QdrantService implements OnModuleInit {
       this.configService.get<string>('QDRANT_TEXT_VECTOR_SIZE', '768'),
       10,
     );
+
+    this.autoRecreateOnDimensionMismatch =
+      this.configService.get<string>(
+        'QDRANT_AUTO_RECREATE_ON_DIMENSION_MISMATCH',
+        'true',
+      ) !== 'false';
   }
 
   async onModuleInit() {
@@ -76,7 +84,10 @@ export class QdrantService implements OnModuleInit {
     await this.ensureCollection(this.textCollectionName, this.textVectorSize);
   }
 
-  async createCollection(collectionName?: string, vectorSize = 512): Promise<void> {
+  async createCollection(
+    collectionName?: string,
+    vectorSize = 512,
+  ): Promise<void> {
     if (!this.isConfigured()) {
       throw new Error('Qdrant is not configured');
     }
@@ -104,14 +115,34 @@ export class QdrantService implements OnModuleInit {
 
   async indexProductImage(
     productId: string,
-    clipEmbedding: number[],
+    imageEmbedding: number[],
     metadata: Record<string, unknown> = {},
   ): Promise<void> {
-    await this.upsert(this.imageCollectionName, productId, clipEmbedding, {
+    await this.indexProductImageVariant(
+      productId,
+      'cover',
+      imageEmbedding,
+      metadata,
+    );
+  }
+
+  async indexProductImageVariant(
+    productId: string,
+    imageId: string,
+    imageEmbedding: number[],
+    metadata: Record<string, unknown> = {},
+  ): Promise<void> {
+    await this.upsert(
+      this.imageCollectionName,
+      this.toImagePointKey(productId, imageId),
+      imageEmbedding,
+      {
       product_id: productId,
+      image_id: imageId,
       ...metadata,
       indexed_at: new Date().toISOString(),
-    });
+      },
+    );
   }
 
   async indexProductText(
@@ -128,14 +159,22 @@ export class QdrantService implements OnModuleInit {
 
   async indexProductAcrossCollections(data: {
     productId: string;
-    clipEmbedding: number[];
+    imageEmbedding: number[];
     textEmbedding: number[];
     imagePayload: Record<string, unknown>;
     textPayload: Record<string, unknown>;
   }): Promise<void> {
     await Promise.all([
-      this.indexProductImage(data.productId, data.clipEmbedding, data.imagePayload),
-      this.indexProductText(data.productId, data.textEmbedding, data.textPayload),
+      this.indexProductImage(
+        data.productId,
+        data.imageEmbedding,
+        data.imagePayload,
+      ),
+      this.indexProductText(
+        data.productId,
+        data.textEmbedding,
+        data.textPayload,
+      ),
     ]);
   }
 
@@ -170,16 +209,18 @@ export class QdrantService implements OnModuleInit {
       throw new Error('Qdrant is not configured');
     }
 
-    const pointId = this.toPointId(productId);
-
     await Promise.all([
       this.client.delete(this.imageCollectionName, {
         wait: true,
-        points: [pointId],
+        filter: {
+          must: [{ key: 'product_id', match: { value: productId } }],
+        },
       }),
       this.client.delete(this.textCollectionName, {
         wait: true,
-        points: [pointId],
+        filter: {
+          must: [{ key: 'product_id', match: { value: productId } }],
+        },
       }),
     ]);
   }
@@ -225,14 +266,43 @@ export class QdrantService implements OnModuleInit {
     });
   }
 
-  private async ensureCollection(name: string, vectorSize: number): Promise<void> {
-    const collections = await this.client.getCollections();
-    const exists = collections.collections.some((collection) => collection.name === name);
+  private async ensureCollection(
+    name: string,
+    vectorSize: number,
+  ): Promise<void> {
+    try {
+      const info = await this.client.getCollection(name);
+      const currentSize = this.extractCollectionVectorSize(info);
 
-    if (exists) {
+      if (currentSize === vectorSize) {
+        return;
+      }
+
+      this.logger.warn(
+        `Collection "${name}" dimension mismatch detected at startup (current=${currentSize}, configured=${vectorSize}). Keeping existing dimension and relying on runtime auto-recovery.`,
+      );
       return;
-    }
+    } catch (error) {
+      if (!this.isCollectionNotFoundError(error)) {
+        throw error;
+      }
 
+      await this.client.createCollection(name, {
+        vectors: {
+          size: vectorSize,
+          distance: 'Cosine',
+        },
+      });
+
+      this.logger.log(`Created Qdrant collection "${name}" (${vectorSize} dims)`);
+    }
+  }
+
+  private async recreateCollection(
+    name: string,
+    vectorSize: number,
+  ): Promise<void> {
+    await this.client.deleteCollection(name);
     await this.client.createCollection(name, {
       vectors: {
         size: vectorSize,
@@ -240,7 +310,9 @@ export class QdrantService implements OnModuleInit {
       },
     });
 
-    this.logger.log(`Created Qdrant collection "${name}" (${vectorSize} dims)`);
+    this.logger.log(
+      `Recreated Qdrant collection "${name}" (${vectorSize} dims)`,
+    );
   }
 
   private async upsert(
@@ -253,24 +325,108 @@ export class QdrantService implements OnModuleInit {
       throw new Error('Qdrant is not configured');
     }
 
-    await this.client.upsert(collectionName, {
-      wait: true,
-      points: [
-        {
-          id: this.toPointId(productId),
-          vector,
-          payload,
-        },
-      ],
-    });
+    const pointId = this.toPointId(productId);
+
+    try {
+      await this.client.upsert(collectionName, {
+        wait: true,
+        points: [
+          {
+            id: pointId,
+            vector,
+            payload,
+          },
+        ],
+      });
+    } catch (error) {
+      const dims = this.extractDimensionMismatch(error);
+
+      if (
+        dims &&
+        this.autoRecreateOnDimensionMismatch &&
+        dims.actual === vector.length
+      ) {
+        this.logger.warn(
+          `Qdrant rejected upsert in "${collectionName}" (expected=${dims.expected}, got=${dims.actual}). Recreating collection and retrying.`,
+        );
+
+        await this.recreateCollection(collectionName, dims.actual);
+
+        await this.client.upsert(collectionName, {
+          wait: true,
+          points: [
+            {
+              id: pointId,
+              vector,
+              payload,
+            },
+          ],
+        });
+        return;
+      }
+
+      throw error;
+    }
   }
 
   private toPointId(rawProductId: string): string {
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawProductId)) {
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        rawProductId,
+      )
+    ) {
       return rawProductId;
     }
 
     const hash = createHash('sha1').update(rawProductId).digest('hex');
     return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+  }
+
+  private toImagePointKey(productId: string, imageId: string): string {
+    return `${productId}::image::${imageId}`;
+  }
+
+  private extractCollectionVectorSize(info: unknown): number {
+    const config = (info as { config?: unknown }).config as
+      | { params?: { vectors?: unknown } }
+      | undefined;
+    const vectors = config?.params?.vectors;
+
+    if (typeof vectors === 'object' && vectors !== null && 'size' in vectors) {
+      const size = Number((vectors as { size?: unknown }).size);
+      if (!Number.isNaN(size)) {
+        return size;
+      }
+    }
+
+    throw new Error('Unable to determine Qdrant collection vector size');
+  }
+
+  private extractDimensionMismatch(error: unknown): {
+    expected: number;
+    actual: number;
+  } | null {
+    const apiError = error as {
+      message?: unknown;
+      data?: { status?: { error?: unknown } };
+    };
+    const message = String(apiError?.message || error);
+    const details = String(apiError?.data?.status?.error || '');
+    const raw = `${message} ${details}`;
+    const match = raw.match(/expected dim:\s*(\d+),\s*got\s*(\d+)/i);
+
+    if (!match) {
+      return null;
+    }
+
+    return {
+      expected: Number.parseInt(match[1], 10),
+      actual: Number.parseInt(match[2], 10),
+    };
+  }
+
+  private isCollectionNotFoundError(error: unknown): boolean {
+    const message = String((error as { message?: unknown })?.message || error);
+    return /not found/i.test(message);
   }
 }

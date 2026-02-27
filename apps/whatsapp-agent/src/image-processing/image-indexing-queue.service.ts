@@ -28,7 +28,9 @@ export class ImageIndexingQueueService {
       'delayed',
     ]);
 
-    const hasRunningJob = jobs.some((job) => job.name === IMAGE_INDEXING_SYNC_JOB);
+    const hasRunningJob = jobs.some(
+      (job) => job.name === IMAGE_INDEXING_SYNC_JOB,
+    );
 
     if (hasRunningJob) {
       return {
@@ -43,17 +45,13 @@ export class ImageIndexingQueueService {
       IMAGE_INDEXING_SYNC_JOB,
       {},
       {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
+        attempts: 1, // Pas de retry automatique, on va gérer manuellement
         removeOnComplete: true,
         removeOnFail: false,
       },
     );
 
-    this.logger.log('Queued catalog image indexing job');
+    this.logger.log('✅ Queued catalog image+text indexing job (no retries)');
 
     return {
       queued: true,

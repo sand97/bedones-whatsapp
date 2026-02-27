@@ -33,15 +33,33 @@ export class ConnectorClientService {
 
   /**
    * Send a WhatsApp message
+   * @param chatId - Chat ID to send the message to
+   * @param content - Message content
+   * @param messageToReplyTo - Optional message ID to reply to
    */
-  async sendMessage(chatId: string, content: string): Promise<any> {
-    this.logger.debug(`[CONNECTOR] Sending message to ${chatId}`);
+  async sendMessage(
+    chatId: string,
+    content: string,
+    messageToReplyTo?: string,
+  ): Promise<any> {
+    this.logger.debug(
+      `[CONNECTOR] Sending message to ${chatId}${messageToReplyTo ? ` (replying to ${messageToReplyTo})` : ''}`,
+    );
 
-    const response = await this.axiosInstance.post('/whatsapp/send-message', {
+    const payload: any = {
       sessionName: this.sessionName,
       to: chatId,
       message: content,
-    });
+    };
+
+    if (messageToReplyTo) {
+      payload.quotedMessageId = messageToReplyTo;
+    }
+
+    const response = await this.axiosInstance.post(
+      '/whatsapp/send-message',
+      payload,
+    );
 
     return response.data;
   }

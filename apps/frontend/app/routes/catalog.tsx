@@ -3,19 +3,29 @@ import {
   SyncOutlined,
   LeftOutlined,
   RightOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons'
 import { DashboardHeader } from '@app/components/layout'
 import {
   catalogApi,
   type CatalogData,
   type Product,
-  type ImageSyncStatus,
 } from '@app/lib/api/catalog'
-import { Typography, Empty, Button, message, Spin, Alert } from 'antd'
+import { Typography, Empty, Button, message, Spin, Tooltip } from 'antd'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 
 const { Text, Paragraph } = Typography
+
+function HiddenProductOverlay() {
+  return (
+    <div className='absolute text-white inset-0 bg-black/50 rounded-t-lg flex items-center justify-center'>
+      <Tooltip title='Produit masqué dans le catalogue'>
+        <EyeInvisibleOutlined style={{ fontSize: '32px' }} />
+      </Tooltip>
+    </div>
+  )
+}
 
 function formatCatalogPrice(
   rawPrice?: number | null,
@@ -30,7 +40,6 @@ function formatCatalogPrice(
   const numericPrice = Number(rawPrice)
   if (!Number.isFinite(numericPrice)) return null
 
-  const majorAmount = numericPrice / 100
   const currencyUpper = currencyLabel.toUpperCase()
   const currencyForIntl = currencyUpper === 'FCFA' ? 'XAF' : currencyUpper
 
@@ -38,11 +47,11 @@ function formatCatalogPrice(
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: currencyForIntl,
-    }).format(majorAmount)
+    }).format(numericPrice)
   } catch {
     const formatted = new Intl.NumberFormat('fr-FR', {
       maximumFractionDigits: 2,
-    }).format(majorAmount)
+    }).format(numericPrice)
     return `${formatted} ${currencyUpper}`
   }
 }
@@ -57,7 +66,13 @@ export function meta() {
   ]
 }
 
-function ImageCarousel({ images }: { images: Array<{ url: string }> }) {
+function ImageCarousel({
+  images,
+  isHidden,
+}: {
+  images: Array<{ url: string }>
+  isHidden?: boolean
+}) {
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true })
   const [hovering, setHovering] = useState(false)
 
@@ -71,19 +86,23 @@ function ImageCarousel({ images }: { images: Array<{ url: string }> }) {
 
   if (!images || images.length === 0) {
     return (
-      <div className='w-full h-48 bg-gradient-to-br from-blue-600 to-pink-500 rounded-t-lg flex items-center justify-center'>
-        <ShopOutlined className='text-5xl text-white' />
+      <div className='w-full h-48 bg-gray-200 rounded-t-lg flex items-center justify-center relative'>
+        <ShopOutlined className='text-5xl text-gray-400' />
+        {isHidden && <HiddenProductOverlay />}
       </div>
     )
   }
 
   if (images.length === 1) {
     return (
-      <img
-        src={images[0].url}
-        alt='Product'
-        className='w-full h-48 object-cover rounded-t-lg'
-      />
+      <div className='relative'>
+        <img
+          src={images[0].url}
+          alt='Product'
+          className='w-full h-48 object-cover rounded-t-lg'
+        />
+        {isHidden && <HiddenProductOverlay />}
+      </div>
     )
   }
 
@@ -107,18 +126,20 @@ function ImageCarousel({ images }: { images: Array<{ url: string }> }) {
         </div>
       </div>
 
+      {isHidden && <HiddenProductOverlay />}
+
       {hovering && images.length > 1 && (
         <>
           <Button
             onClick={scrollPrev}
-            className='!absolute left-2 top-1/2 !-translate-y-1/2 shadow-lg'
+            className='!absolute left-2 top-1/2 !-translate-y-1/2 shadow-lg !z-10'
             variant='outlined'
             icon={<LeftOutlined />}
             shape='circle'
           />
           <Button
             onClick={scrollNext}
-            className='!absolute right-2 top-1/2 !-translate-y-1/2 shadow-lg'
+            className='!absolute right-2 top-1/2 !-translate-y-1/2 shadow-lg !z-10'
             variant='outlined'
             icon={<RightOutlined />}
             shape='circle'
@@ -134,7 +155,7 @@ function ProductCard({ product }: { product: Product }) {
 
   return (
     <div className='bg-white rounded-lg  overflow-hidden shadow-card flex flex-col h-full'>
-      <ImageCarousel images={product.images} />
+      <ImageCarousel images={product.images} isHidden={product.is_hidden} />
 
       <div className='p-4 flex flex-col flex-1'>
         <Text strong className='block mb-2 text-base'>
@@ -183,9 +204,6 @@ export default function CatalogPage() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [catalogData, setCatalogData] = useState<CatalogData | null>(null)
-  const [syncStatus, setSyncStatus] =
-    useState<ImageSyncStatus['syncImageStatus']>('PENDING')
-  const [lastSyncError, setLastSyncError] = useState<string | null>(null)
 
   // Load catalog data
   const loadCatalog = async () => {
@@ -205,47 +223,9 @@ export default function CatalogPage() {
     }
   }
 
-  const loadImageSyncStatus = async () => {
-    try {
-      const status = await catalogApi.getImageSyncStatus()
-      setSyncStatus(status.syncImageStatus)
-      setLastSyncError(status.lastImageSyncError ?? null)
-    } catch {
-      // no-op: status is non-blocking for catalog rendering
-    }
-  }
-
   useEffect(() => {
     loadCatalog()
-    loadImageSyncStatus()
   }, [])
-
-  useEffect(() => {
-    if (syncStatus !== 'SYNCING') {
-      return
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const status = await catalogApi.getImageSyncStatus()
-        setSyncStatus(status.syncImageStatus)
-        setLastSyncError(status.lastImageSyncError ?? null)
-
-        if (status.syncImageStatus === 'DONE') {
-          message.success({
-            content: 'Synchronisation des images terminée',
-            key: 'image-sync-status',
-            duration: 3,
-          })
-          await loadCatalog()
-        }
-      } catch {
-        // ignore polling errors; next tick will retry
-      }
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [syncStatus])
 
   const handleForceSync = async () => {
     try {
@@ -260,8 +240,10 @@ export default function CatalogPage() {
           key: 'sync',
           duration: 3,
         })
-        setSyncStatus('SYNCING')
-        setLastSyncError(null)
+        // Recharger le catalogue après un délai
+        setTimeout(() => {
+          loadCatalog()
+        }, 2000)
       } else {
         message.error({
           content: result.error || 'Échec de la synchronisation',
@@ -334,66 +316,30 @@ export default function CatalogPage() {
         }
       />
       <div className='flex flex-col gap-6 w-full py-6 px-6'>
-        {syncStatus === 'SYNCING' && (
-          <Alert
-            message='Synchronisation des images en cours'
-            description='Indexation des images produits pour la recherche visuelle.'
-            type='info'
-            showIcon
-            className='mb-4'
-            action={
-              <Button
-                size='small'
-                type='text'
-                icon={<SyncOutlined spin />}
-                onClick={loadImageSyncStatus}
-              >
-                Rafraîchir
-              </Button>
-            }
-          />
-        )}
-
-        {syncStatus === 'FAILED' && (
-          <Alert
-            message='Échec de la synchronisation des images'
-            description={
-              lastSyncError ||
-              "Certaines images n'ont pas pu être indexées. Vous pouvez relancer la synchronisation."
-            }
-            type='error'
-            showIcon
-            className='mb-4'
-            action={
-              <Button size='small' danger onClick={handleForceSync}>
-                Réessayer
-              </Button>
-            }
-          />
-        )}
-
         {hasContent ? (
           <>
             {/* Collections and their products */}
-            {catalogData?.collections.map((collection, index) => (
-              <div key={index} className='flex flex-col gap-4'>
-                {/* Collection Header */}
-                <div>
-                  <Text className='text-lg block'>{collection.name}</Text>
-                  <Text type='secondary' className='text-sm'>
-                    {collection.products.length} produit
-                    {collection.products.length > 1 ? 's' : ''}
-                  </Text>
-                </div>
+            {catalogData?.collections
+              .filter(collection => collection.products.length > 0)
+              .map((collection, index) => (
+                <div key={index} className='flex flex-col gap-4'>
+                  {/* Collection Header */}
+                  <div>
+                    <Text className='text-lg block'>{collection.name}</Text>
+                    <Text type='secondary' className='text-sm'>
+                      {collection.products.length} produit
+                      {collection.products.length > 1 ? 's' : ''}
+                    </Text>
+                  </div>
 
-                {/* Products Grid */}
-                <div className='grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4'>
-                  {collection.products.map((product, productIndex) => (
-                    <ProductCard key={productIndex} product={product} />
-                  ))}
+                  {/* Products Grid */}
+                  <div className='grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4'>
+                    {collection.products.map((product, productIndex) => (
+                      <ProductCard key={productIndex} product={product} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
             {/* Uncategorized Products */}
             {catalogData && catalogData.uncategorizedProducts.length > 0 && (

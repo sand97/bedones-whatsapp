@@ -1,10 +1,8 @@
+import { EmbeddingsService } from '@app/catalog-shared/embeddings.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
-import { Prisma } from '@app/generated/client';
+import { QdrantService } from '@app/image-processing/qdrant.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
-import { PrismaService } from '@app/prisma/prisma.service';
 import { Injectable, Logger } from '@nestjs/common';
-
-import { EmbeddingsService } from './embeddings.service';
 
 export interface ProductSearchResult {
   id: string;
@@ -14,26 +12,12 @@ export interface ProductSearchResult {
   currency?: string;
   availability?: string;
   collectionName?: string;
-  similarity?: number; // Only present for semantic search
-}
-
-interface WhatsAppProduct {
-  id: string;
-  name: string;
-  description?: string;
-  price?: number;
-  currency?: string;
-  availability?: string;
-  retailerId?: string;
-  maxAvailable?: number;
-  imageHashesForWhatsapp?: string[];
-  collectionId?: string;
-  collectionName?: string;
+  similarity?: number; // Only present for vector search
 }
 
 /**
  * Service for searching products with intelligent fallback
- * - Primary: Semantic search using local embeddings (fast, intelligent)
+ * - Primary: Vector search using Qdrant (fast, intelligent, free)
  * - Fallback: Direct WhatsApp search (slower, exact match)
  */
 @Injectable()
@@ -41,34 +25,35 @@ export class CatalogSearchService {
   private readonly logger = new Logger(CatalogSearchService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
+    private readonly qdrantService: QdrantService,
     private readonly connectorClient: ConnectorClientService,
     private readonly pageScriptService: PageScriptService,
   ) {}
 
   /**
    * Search products with intelligent routing
-   * Uses semantic search if available, otherwise falls back to WhatsApp direct search
+   * Uses vector search (Qdrant) if available, otherwise falls back to WhatsApp direct search
    */
   async searchProducts(
     query: string,
     limit: number = 10,
+    scoreThreshold: number = 0.7,
   ): Promise<{
     success: boolean;
     products: ProductSearchResult[];
-    method: 'semantic' | 'direct_whatsapp';
+    method: 'vector_search' | 'direct_whatsapp';
     error?: string;
   }> {
     try {
-      // Try semantic search first if embeddings are available
-      if (await this.hasEmbeddingsInDB()) {
-        return await this.searchSemantic(query, limit);
+      // Try vector search first if Qdrant is configured and embeddings service is available
+      if (this.qdrantService.isConfigured() && this.embeddings.isAvailable()) {
+        return await this.searchVector(query, limit, scoreThreshold);
       }
 
       // Fallback to direct WhatsApp search
       this.logger.debug(
-        'Embeddings not available, falling back to direct WhatsApp search',
+        'Qdrant not configured, falling back to direct WhatsApp search',
       );
       return await this.searchDirectWhatsApp(query, limit);
     } catch (error) {
@@ -76,70 +61,59 @@ export class CatalogSearchService {
       return {
         success: false,
         products: [],
-        method: 'semantic',
+        method: 'vector_search',
         error: error.message,
       };
     }
   }
 
   /**
-   * Semantic search using local embeddings
+   * Vector search using Qdrant
    */
-  private async searchSemantic(
+  private async searchVector(
     query: string,
     limit: number,
+    scoreThreshold: number,
   ): Promise<{
     success: boolean;
     products: ProductSearchResult[];
-    method: 'semantic';
+    method: 'vector_search';
   }> {
-    this.logger.debug(`🧠 Semantic search for: "${query}"`);
+    this.logger.debug(`🔍 Vector search for: "${query}"`);
 
     // Generate embedding for the query
     const queryEmbedding = await this.embeddings.embedText(query);
 
-    // Fetch all products with embeddings from DB
-    const productsInDB = await this.prisma.catalogProduct.findMany({
-      where: {
-        embedding: {
-          not: Prisma.JsonNull,
-        },
-      },
-    });
-
-    // Calculate similarities and rank
-    const items = productsInDB.map((product) => ({
-      embedding: product.embedding as number[],
-      data: product,
-    }));
-
-    const results = this.embeddings.findTopK(queryEmbedding, items, limit);
+    // Search in Qdrant text collection
+    const searchResults = await this.qdrantService.searchSimilarText(
+      queryEmbedding,
+      limit,
+      scoreThreshold,
+    );
 
     // Map to ProductSearchResult
-    const products: ProductSearchResult[] = results.map((result) => ({
-      id: result.data.id,
-      name: result.data.name,
-      description: result.data.description || undefined,
-      price: result.data.price || undefined,
-      currency: result.data.currency || undefined,
-      availability: result.data.availability || undefined,
-      collectionName: result.data.collectionName || undefined,
-      similarity: result.similarity,
+    const products: ProductSearchResult[] = searchResults.map((hit) => ({
+      id: hit.productId,
+      name: (hit.metadata.name as string) || '',
+      description: (hit.metadata.description as string) || undefined,
+      price: (hit.metadata.price as number) || undefined,
+      currency: (hit.metadata.currency as string) || undefined,
+      availability: (hit.metadata.availability as string) || undefined,
+      collectionName: (hit.metadata.collectionName as string) || undefined,
+      similarity: hit.score,
     }));
 
-    this.logger.debug(
-      `✅ Found ${products.length} results via semantic search`,
-    );
+    this.logger.debug(`✅ Found ${products.length} results via vector search`);
 
     return {
       success: true,
       products,
-      method: 'semantic',
+      method: 'vector_search',
     };
   }
 
   /**
-   * Direct WhatsApp search (fallback when embeddings not available)
+   * Direct WhatsApp search (fallback when vector search not available)
    */
   private async searchDirectWhatsApp(
     query: string,
@@ -171,20 +145,5 @@ export class CatalogSearchService {
       products: products || [],
       method: 'direct_whatsapp',
     };
-  }
-
-  /**
-   * Check if we have embeddings in the database
-   */
-  private async hasEmbeddingsInDB(): Promise<boolean> {
-    const count = await this.prisma.catalogProduct.count({
-      where: {
-        embedding: {
-          not: Prisma.JsonNull,
-        },
-      },
-    });
-
-    return count > 0;
   }
 }

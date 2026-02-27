@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import axios from 'axios';
-import FormData from 'form-data';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import FormData from 'form-data';
 import sharp from 'sharp';
 
 type LayoutItem = {
@@ -39,9 +39,7 @@ export class SmartCropService {
     this.paddleOcrUrl =
       this.configService.get<string>('PADDLEOCR_URL') ||
       'http://localhost:8010';
-    const timeoutValue = this.configService.get<string>(
-      'PADDLEOCR_TIMEOUT_MS',
-    );
+    const timeoutValue = this.configService.get<string>('PADDLEOCR_TIMEOUT_MS');
     const parsedTimeout = timeoutValue ? Number(timeoutValue) : NaN;
     this.paddleOcrTimeoutMs = Number.isFinite(parsedTimeout)
       ? parsedTimeout
@@ -172,7 +170,9 @@ export class SmartCropService {
 
       const base64Image = response.data?.image_base64;
       if (!base64Image) {
-        this.logger.warn('OpenCV crop service returned no image. Using original.');
+        this.logger.warn(
+          'OpenCV crop service returned no image. Using original.',
+        );
         return imageBuffer;
       }
 
@@ -191,7 +191,10 @@ export class SmartCropService {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.paddleOcrTimeoutMs);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.paddleOcrTimeoutMs,
+    );
 
     try {
       const response = await fetch(`${this.paddleOcrUrl}/layout`, {
@@ -236,7 +239,9 @@ export class SmartCropService {
     paddingRatio: number,
   ): CropBox | null {
     const normalized = items
-      .map((item) => this.toCropBox(item, imageWidth, imageHeight, paddingRatio))
+      .map((item) =>
+        this.toCropBox(item, imageWidth, imageHeight, paddingRatio),
+      )
       .filter((value): value is CropBox => Boolean(value));
 
     if (!normalized.length) {

@@ -1,8 +1,8 @@
 import { WhatsAppAgentService } from '@app/langchain/whatsapp-agent.service';
 import { PrismaService } from '@app/prisma/prisma.service';
-import { Process, Processor } from '@nestjs/bull';
-import { Logger } from '@nestjs/common';
-import type { Job } from 'bull';
+import { InjectQueue } from '@nestjs/bull';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import type { Job, Queue } from 'bull';
 
 /**
  * Processor for scheduled messages and intentions
@@ -15,17 +15,39 @@ import type { Job } from 'bull';
  * 4. L'agent exécute l'action appropriée (actionIfTrue ou actionIfFalse)
  * 5. Marque l'intention comme COMPLETED ou OBSOLETE
  */
-@Processor('scheduled-messages')
-export class ScheduledMessageProcessor {
+@Injectable()
+export class ScheduledMessageProcessor implements OnModuleInit {
   private readonly logger = new Logger(ScheduledMessageProcessor.name);
 
   constructor(
+    @InjectQueue('scheduled-messages')
+    private readonly scheduledMessagesQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly agentService: WhatsAppAgentService,
   ) {}
 
-  @Process('send-reminder')
-  async handleScheduledMessage(job: Job) {
+  onModuleInit(): void {
+    const handlers = (this.scheduledMessagesQueue as any).handlers as
+      | Record<string, unknown>
+      | undefined;
+
+    if (handlers?.['send-reminder']) {
+      this.logger.warn(
+        'Bull handler "send-reminder" already registered, skipping duplicate registration',
+      );
+      return;
+    }
+
+    this.logger.log(
+      'Registering Bull handler "send-reminder" on queue "scheduled-messages"',
+    );
+
+    this.scheduledMessagesQueue.process('send-reminder', async (job: Job) => {
+      await this.handleScheduledMessage(job);
+    });
+  }
+
+  private async handleScheduledMessage(job: Job) {
     const { chatId, scheduledFor, intentionId } = job.data;
 
     try {

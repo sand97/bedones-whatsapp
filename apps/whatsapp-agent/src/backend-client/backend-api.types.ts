@@ -160,6 +160,12 @@ export interface InternalProductForImageIndexing {
   retailer_id?: string | null;
   price?: number | null;
   category?: string | null;
+  images: Array<{
+    id: string;
+    url: string;
+    imageIndex: number;
+    createdAt?: string | null;
+  }>;
   coverImageDescription?: string | null;
   coverImageUrl?: string | null;
   coverImageCreatedAt?: string | null;
@@ -211,6 +217,7 @@ export interface InternalManagementGroupResponse {
 export interface InternalAgentSnapshotResponse {
   agent: InternalAgentCore;
   managementGroup: InternalManagementGroupResponse;
+  businessContext?: string | null;
 }
 
 export interface InternalAgentUpdatePayload {

@@ -5,6 +5,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 
 import { ContactResolverService } from '../contact/contact-resolver.service';
+
 import { AdminGroupMessagingService } from './admin-group-messaging.service';
 /**
  * Chat tools for the WhatsApp agent
@@ -26,14 +27,14 @@ export class ChatTools {
    */
   createTools() {
     return [
-      this.createReplyToMessageTool(), // SECURED: Reply to current conversation only
       this.createSendToAdminGroupTool(), // SECURED: Send to admin group only
-      this.createNotifyAuthorizedGroupTool(), // SECURED: Send to authorized group + reply to user
       this.createSendReactionTool(),
       this.createSendLocationTool(),
       this.createSetNotesTool(),
       this.createSendScheduledCallTool(),
-      this.createGetQuotedMessageTool(),
+      this.createEditMessageTool(),
+      this.createMarkIsUnreadTool(),
+      this.createMarkIsReadTool(),
     ];
   }
 
@@ -109,7 +110,9 @@ export class ChatTools {
             });
           }
 
-          this.logger.log(`Forwarding message to management group: ${managementGroupId}`);
+          this.logger.log(
+            `Forwarding message to management group: ${managementGroupId}`,
+          );
 
           const result =
             await this.adminGroupMessagingService.sendToManagementGroup({

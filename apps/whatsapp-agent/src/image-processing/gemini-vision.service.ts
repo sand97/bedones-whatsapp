@@ -1,5 +1,5 @@
 import { BackendClientService } from '@app/backend-client/backend-client.service';
-import { PromptGeneratorService } from '@app/catalog/prompt-generator.service';
+import { PromptGeneratorService } from '@app/catalog-shared/prompt-generator.service';
 import { HumanMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { Injectable, Logger } from '@nestjs/common';
@@ -24,7 +24,7 @@ export class GeminiVisionService {
       apiKey,
       model:
         this.configService.get<string>('GEMINI_VISION_MODEL') ||
-        'gemini-3.0-flash',
+        'gemini-3-flash-preview',
       temperature: 0.1,
       maxRetries: 2,
     });

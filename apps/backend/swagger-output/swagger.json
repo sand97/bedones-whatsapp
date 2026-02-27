@@ -356,6 +356,27 @@
         ]
       }
     },
+    "/catalog/image-sync-status": {
+      "get": {
+        "operationId": "CatalogController_getImageSyncStatus",
+        "summary": "Get image sync status",
+        "description": "Endpoint frontend (dashboard catalogue) pour afficher l'état de la synchronisation asynchrone des images (SYNCING/DONE/FAILED) après un force-sync.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Image sync status retrieved successfully"
+          }
+        },
+        "tags": [
+          "Catalog"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/catalog": {
       "get": {
         "operationId": "CatalogController_getCatalog",
@@ -707,6 +728,62 @@
         },
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/agent-internal/agents/me": {
+      "get": {
+        "operationId": "WhatsAppAgentInternalController_getAgentSnapshot",
+        "summary": "Lire l'état interne complet de l'agent",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent pour récupérer l'objet WhatsAppAgent complet (cache local côté agent) et le groupe de gestion associé.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Snapshot complet de l'agent retourné"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "whatsapp-agents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "WhatsAppAgentInternalController_updateAgentSnapshot",
+        "summary": "Mettre à jour l'état interne de l'agent",
+        "description": "Endpoint interne backend unique pour les mises à jour venant du whatsapp-agent. Toutes les propriétés sont optionnelles (prompt, statut de sync image, erreur sync).",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentInternalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot agent mis à jour et retourné"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "whatsapp-agents"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
         ]
       }
     },
@@ -1530,6 +1607,211 @@
           },
           "404": {
             "description": "Product not found"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/products/search-by-keywords": {
+      "post": {
+        "operationId": "ProductsController_searchByKeywords",
+        "summary": "Search products by keywords (OCR results)",
+        "description": "Search products by keywords extracted from OCR. Returns matching products and which keywords matched.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchByKeywordsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Products found successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/agent-internal/products/sample": {
+      "get": {
+        "operationId": "ProductsInternalController_getSampleProducts",
+        "summary": "Récupérer un échantillon de produits",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent pour récupérer un échantillon représentatif du catalogue (génération/mise à jour du prompt de description image). Non destiné au frontend.",
+        "parameters": [
+          {
+            "name": "max",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "perCollection",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Échantillon de produits de l'agent retourné"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/agent-internal/products/by-retailer-id/{retailerId}": {
+      "get": {
+        "operationId": "ProductsInternalController_getProductByRetailerId",
+        "summary": "Trouver un produit par retailer_id",
+        "description": "Endpoint interne backend, appelé par le pipeline image du whatsapp-agent après OCR pour matcher rapidement un produit via son code retailer.",
+        "parameters": [
+          {
+            "name": "retailerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Produit correspondant retourné (ou null)"
+          },
+          "400": {
+            "description": "retailerId manquant ou invalide"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/agent-internal/products/search-by-keywords": {
+      "get": {
+        "operationId": "ProductsInternalController_searchProductsByKeywords",
+        "summary": "Rechercher des produits par mots-clés",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent pour la recherche OCR textuelle. Réutilise la logique métier existante ProductsService.searchByKeywords.",
+        "parameters": [
+          {
+            "name": "retailer_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Produits et mots-clés matchés retournés"
+          },
+          "400": {
+            "description": "Aucun mot-clé valide fourni"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/agent-internal/products/cover-image-descriptions": {
+      "patch": {
+        "operationId": "ProductsInternalController_batchUpdateProductImageIndexing",
+        "summary": "Mettre à jour en batch les descriptions d'images et dates d'indexation",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent en fin d'indexation pour persister en une seule requête les coverImageDescription, indexDescriptionAt et indexImageAt des produits.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchUpdateProductImageIndexingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch appliqué sur les produits appartenant à cet agent"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/agent-internal/products/for-image-indexing": {
+      "get": {
+        "operationId": "ProductsInternalController_getProductsForImageIndexing",
+        "summary": "Lister les produits pour l'indexation image",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent pour récupérer les produits et leurs images de couverture à indexer dans Qdrant (traitement fait côté agent).",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Liste de produits prêts pour l'indexation image"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
           }
         },
         "tags": [
@@ -2647,6 +2929,10 @@
           "timestamp"
         ]
       },
+      "UpdateAgentInternalDto": {
+        "type": "object",
+        "properties": {}
+      },
       "SendMessageDto": {
         "type": "object",
         "properties": {}
@@ -2897,6 +3183,41 @@
           "value",
           "isVisible"
         ]
+      },
+      "SearchByKeywordsDto": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "description": "List of keywords to search for in products",
+            "example": [
+              "adidas",
+              "701237128001",
+              "maillot"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User ID to filter products",
+            "example": "clx123456"
+          },
+          "retailer_id": {
+            "type": "string",
+            "description": "Optional retailer ID for exact match priority",
+            "example": "701237128001"
+          }
+        },
+        "required": [
+          "keywords",
+          "user_id"
+        ]
+      },
+      "BatchUpdateProductImageIndexingDto": {
+        "type": "object",
+        "properties": {}
       },
       "UpdateBusinessInfoDto": {
         "type": "object",

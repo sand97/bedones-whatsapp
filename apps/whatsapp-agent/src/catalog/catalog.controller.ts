@@ -25,7 +25,7 @@ export class CatalogController {
   @ApiOperation({
     summary: 'Trigger manual catalog synchronization',
     description:
-      "Endpoint interne de production, appelé par le backend lors du /catalog/force-sync. Lance la synchronisation locale agent (catalogue + embeddings). Non destiné au frontend.",
+      'Endpoint interne de production, appelé par le backend lors du /catalog/force-sync. Lance la synchronisation locale agent (catalogue + embeddings). Non destiné au frontend.',
   })
   @ApiResponse({
     status: 200,

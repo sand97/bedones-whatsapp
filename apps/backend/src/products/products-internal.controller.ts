@@ -31,13 +31,15 @@ import {
 @Controller('agent-internal/products')
 @UseGuards(AgentInternalGuard)
 export class ProductsInternalController {
-  constructor(private readonly productsInternalService: ProductsInternalService) {}
+  constructor(
+    private readonly productsInternalService: ProductsInternalService,
+  ) {}
 
   @Get('sample')
   @ApiOperation({
     summary: 'Récupérer un échantillon de produits',
     description:
-      "Endpoint interne backend, appelé par le whatsapp-agent pour récupérer un échantillon représentatif du catalogue (génération/mise à jour du prompt de description image). Non destiné au frontend.",
+      'Endpoint interne backend, appelé par le whatsapp-agent pour récupérer un échantillon représentatif du catalogue (génération/mise à jour du prompt de description image). Non destiné au frontend.',
   })
   @ApiResponse({
     status: 200,
@@ -66,7 +68,7 @@ export class ProductsInternalController {
   @ApiOperation({
     summary: 'Trouver un produit par retailer_id',
     description:
-      "Endpoint interne backend, appelé par le pipeline image du whatsapp-agent après OCR pour matcher rapidement un produit via son code retailer.",
+      'Endpoint interne backend, appelé par le pipeline image du whatsapp-agent après OCR pour matcher rapidement un produit via son code retailer.',
   })
   @ApiResponse({
     status: 200,
@@ -99,7 +101,7 @@ export class ProductsInternalController {
   @ApiOperation({
     summary: 'Rechercher des produits par mots-clés',
     description:
-      "Endpoint interne backend, appelé par le whatsapp-agent pour la recherche OCR textuelle. Réutilise la logique métier existante ProductsService.searchByKeywords.",
+      'Endpoint interne backend, appelé par le whatsapp-agent pour la recherche OCR textuelle. Réutilise la logique métier existante ProductsService.searchByKeywords.',
   })
   @ApiResponse({
     status: 200,
@@ -133,7 +135,8 @@ export class ProductsInternalController {
 
   @Patch('cover-image-descriptions')
   @ApiOperation({
-    summary: "Mettre à jour en batch les descriptions d'images et dates d'indexation",
+    summary:
+      "Mettre à jour en batch les descriptions d'images et dates d'indexation",
     description:
       "Endpoint interne backend, appelé par le whatsapp-agent en fin d'indexation pour persister en une seule requête les coverImageDescription, indexDescriptionAt et indexImageAt des produits.",
   })
@@ -159,7 +162,7 @@ export class ProductsInternalController {
   @ApiOperation({
     summary: "Lister les produits pour l'indexation image",
     description:
-      "Endpoint interne backend, appelé par le whatsapp-agent pour récupérer les produits et leurs images de couverture à indexer dans Qdrant (traitement fait côté agent).",
+      'Endpoint interne backend, appelé par le whatsapp-agent pour récupérer les produits et leurs images de couverture à indexer dans Qdrant (traitement fait côté agent).',
   })
   @ApiResponse({
     status: 200,
@@ -172,6 +175,8 @@ export class ProductsInternalController {
   async getProductsForImageIndexing(
     @AgentContext() context: AgentRequestContext,
   ) {
-    return this.productsInternalService.getProductsForImageIndexing(context.userId);
+    return this.productsInternalService.getProductsForImageIndexing(
+      context.userId,
+    );
   }
 }

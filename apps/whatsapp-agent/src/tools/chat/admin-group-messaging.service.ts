@@ -58,11 +58,14 @@ export class AdminGroupMessagingService {
           options.replyToUser?.trim() ||
           "Merci, je vérifie auprès de l'équipe et je reviens vers vous.";
 
-        const replyScript = this.scriptService.getScript('chat/sendTextMessage', {
-          TO: options.chatId,
-          MESSAGE: reply,
-          USE_TYPING: 'true',
-        });
+        const replyScript = this.scriptService.getScript(
+          'chat/sendTextMessage',
+          {
+            TO: options.chatId,
+            MESSAGE: reply,
+            USE_TYPING: 'true',
+          },
+        );
 
         userResult = await this.connectorClient.executeScript(replyScript);
       }

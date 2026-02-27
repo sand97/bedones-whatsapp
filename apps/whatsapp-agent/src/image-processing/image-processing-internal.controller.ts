@@ -81,7 +81,8 @@ export class ImageProcessingInternalController {
     description: 'Catalog image indexing job queued',
   })
   async queueCatalogImageSync() {
-    const queueResult = await this.imageIndexingQueueService.enqueueCatalogImageSync();
+    const queueResult =
+      await this.imageIndexingQueueService.enqueueCatalogImageSync();
 
     return {
       success: true,

@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from 'crypto';
+
 import {
   CanActivate,
   ExecutionContext,
@@ -6,7 +8,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 
 interface AgentInternalJwtPayload {
@@ -29,6 +30,7 @@ export class InternalJwtGuard implements CanActivate {
 
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      this.logger.error('Missing or invalid authorization header');
       throw new UnauthorizedException('Missing or invalid token');
     }
 
@@ -36,28 +38,46 @@ export class InternalJwtGuard implements CanActivate {
     const secret = this.configService.get<string>('AGENT_INTERNAL_JWT_SECRET');
 
     if (!secret) {
+      this.logger.error('AGENT_INTERNAL_JWT_SECRET not configured');
       throw new UnauthorizedException('Internal auth is not configured');
     }
 
-    const payload = this.verifyHs256Jwt(token, secret);
+    try {
+      const payload = this.verifyHs256Jwt(token, secret);
 
-    if (payload.type !== 'agent-internal' || !payload.sub) {
-      throw new UnauthorizedException('Invalid token type');
-    }
+      if (payload.type !== 'agent-internal' || !payload.sub) {
+        this.logger.error(
+          `Invalid token type or missing sub: type=${payload.type}, sub=${payload.sub}`,
+        );
+        throw new UnauthorizedException('Invalid token type');
+      }
 
-    const expectedAgentId = this.configService.get<string>('AGENT_ID');
-    if (expectedAgentId && payload.sub !== expectedAgentId) {
-      this.logger.warn(
-        `Rejected token for agent ${payload.sub}: expected ${expectedAgentId}`,
+      const expectedAgentId = this.configService.get<string>('AGENT_ID');
+      if (expectedAgentId && payload.sub !== expectedAgentId) {
+        this.logger.warn(
+          `Rejected token for agent ${payload.sub}: expected ${expectedAgentId}`,
+        );
+        throw new UnauthorizedException('Token does not match this agent');
+      }
+
+      this.logger.debug(`✅ Internal JWT verified for agent: ${payload.sub}`);
+      request.internalAgentId = payload.sub;
+      return true;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      this.logger.error(`JWT verification failed: ${error.message}`);
+      throw new UnauthorizedException(
+        `Token verification failed: ${error.message}`,
       );
-      throw new UnauthorizedException('Token does not match this agent');
     }
-
-    request.internalAgentId = payload.sub;
-    return true;
   }
 
-  private verifyHs256Jwt(token: string, secret: string): AgentInternalJwtPayload {
+  private verifyHs256Jwt(
+    token: string,
+    secret: string,
+  ): AgentInternalJwtPayload {
     const parts = token.split('.');
     if (parts.length !== 3) {
       throw new UnauthorizedException('Invalid token format');
@@ -96,7 +116,9 @@ export class InternalJwtGuard implements CanActivate {
 
   private decodeJson<T>(base64Url: string): T {
     try {
-      return JSON.parse(Buffer.from(base64Url, 'base64url').toString('utf8')) as T;
+      return JSON.parse(
+        Buffer.from(base64Url, 'base64url').toString('utf8'),
+      ) as T;
     } catch {
       throw new UnauthorizedException('Invalid token payload');
     }

@@ -24,7 +24,6 @@ export class MessagesTools {
     return [
       this.createGetOlderMessagesTool(),
       this.createGetMessagesAdvancedTool(),
-      this.createGetMessageHistoryTool(),
       this.createScheduleIntentionTool(),
       this.createCancelIntentionTool(),
       this.createListIntentionsTool(),

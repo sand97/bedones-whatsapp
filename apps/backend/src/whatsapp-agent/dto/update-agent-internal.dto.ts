@@ -11,9 +11,7 @@ import {
 
 export class UpdateAgentInternalDto {
   @IsOptional()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   customDescriptionPrompt?: string;
@@ -27,10 +25,11 @@ export class UpdateAgentInternalDto {
   @IsIn(['SYNCING', 'DONE', 'FAILED'])
   syncImageStatus?: 'SYNCING' | 'DONE' | 'FAILED';
 
-  @ValidateIf((dto) => dto.syncImageStatus === 'FAILED' || dto.syncImageError !== undefined)
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
+  @ValidateIf(
+    (dto) =>
+      dto.syncImageStatus === 'FAILED' || dto.syncImageError !== undefined,
   )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   syncImageError?: string;

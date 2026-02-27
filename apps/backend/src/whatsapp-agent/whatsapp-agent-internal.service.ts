@@ -1,5 +1,9 @@
 import { Prisma } from '@app/generated/client';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -10,7 +14,7 @@ export class WhatsAppAgentInternalService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getAgentSnapshot(agentId: string, userId: string) {
-    const [agent, managementGroup] = await Promise.all([
+    const [agent, managementGroup, onboardingThread] = await Promise.all([
       this.prisma.whatsAppAgent.findUnique({
         where: { id: agentId },
       }),
@@ -30,6 +34,12 @@ export class WhatsAppAgentInternalService {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.onboardingThread.findUnique({
+        where: { userId },
+        select: {
+          context: true,
+        },
+      }),
     ]);
 
     if (!agent) {
@@ -43,6 +53,7 @@ export class WhatsAppAgentInternalService {
         name: managementGroup?.name || null,
         usage: managementGroup?.usage || null,
       },
+      businessContext: onboardingThread?.context || null,
     };
   }
 

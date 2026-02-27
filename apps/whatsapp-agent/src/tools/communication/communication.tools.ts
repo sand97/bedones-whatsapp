@@ -26,21 +26,20 @@ export class CommunicationTools {
    */
   createTools() {
     return [
-      this.createSendMessageTool(),
-      this.createSendProductTool(),
+      this.createSendTextMessageTool(),
       this.createSendProductsTool(),
       this.createSendCollectionTool(),
       this.createSendCatalogLinkTool(),
-      this.createForwardToManagementGroupTool(),
     ];
   }
 
   /**
    * Send a short text message (max 500 chars)
+   * Can optionally reply to a specific message
    */
-  private createSendMessageTool() {
+  private createSendTextMessageTool() {
     return tool(
-      async ({ message }, config?: any) => {
+      async ({ message, messageToReplyTo }, config?: any) => {
         try {
           const chatId = config?.context?.chatId;
           if (!chatId) {
@@ -59,15 +58,18 @@ export class CommunicationTools {
             });
           }
 
-          // Send via connector (uses connector's built-in sendMessage)
+          // Send via connector (with optional reply)
           const result = await this.connectorClient.sendMessage(
             chatId,
             message,
+            messageToReplyTo,
           );
 
           return JSON.stringify({
             success: true,
-            message: 'Message envoyé avec succès',
+            message: messageToReplyTo
+              ? 'Réponse envoyée avec succès'
+              : 'Message envoyé avec succès',
             result,
           });
         } catch (error: any) {
@@ -78,65 +80,29 @@ export class CommunicationTools {
         }
       },
       {
-        name: 'send_message',
+        name: 'send_text_message',
         description:
-          'Send a SHORT text message (max 500 characters) to the current conversation. If longer, split it into multiple messages.',
+          'Send a SHORT text message (max 500 characters) to the current conversation. ' +
+          'Can optionally reply to a specific message. If message is longer, split it into multiple messages.',
         returnDirect: true,
         schema: z.object({
           message: z
             .string()
             .max(500)
             .describe('Message content (max 500 characters)'),
+          messageToReplyTo: z
+            .string()
+            .optional()
+            .describe(
+              'Optional message ID to reply to (use when responding to a specific message in the conversation)',
+            ),
         }),
       },
     );
   }
 
   /**
-   * Send a product from the WhatsApp catalog
-   */
-  private createSendProductTool() {
-    return tool(
-      async ({ productId }, config?: any) => {
-        try {
-          const chatId = config?.context?.chatId;
-          if (!chatId) {
-            return JSON.stringify({
-              success: false,
-              error: 'No chatId in runtime context',
-            });
-          }
-
-          const result = await this.productSendService.sendProduct(
-            chatId,
-            productId,
-          );
-
-          return JSON.stringify({
-            success: true,
-            message: 'Produit envoyé avec succès',
-            result,
-          });
-        } catch (error: any) {
-          return JSON.stringify({
-            success: false,
-            error: error.message,
-          });
-        }
-      },
-      {
-        name: 'send_product',
-        description:
-          'Send a WhatsApp Business catalog product to the current customer',
-        schema: z.object({
-          productId: z.string().describe('Product ID to send'),
-        }),
-      },
-    );
-  }
-
-  /**
-   * Send multiple products from the WhatsApp catalog
+   * Send one or multiple products from the WhatsApp catalog
    */
   private createSendProductsTool() {
     return tool(

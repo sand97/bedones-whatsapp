@@ -2,7 +2,6 @@ import { ConnectorModule } from '@app/connector/connector.module';
 import { LangChainModule } from '@app/langchain/langchain.module';
 import { PageScriptModule } from '@app/page-scripts/page-script.module';
 import { PrismaModule } from '@app/prisma/prisma.module';
-import { MessagesTools } from '@app/tools/messages/messages.tools';
 import { BullModule } from '@nestjs/bull';
 import { Module, forwardRef } from '@nestjs/common';
 
@@ -19,7 +18,7 @@ import { ScheduledMessageProcessor } from './scheduled-message.processor';
     PageScriptModule,
     forwardRef(() => LangChainModule),
   ],
-  providers: [QueueService, ScheduledMessageProcessor, MessagesTools],
-  exports: [QueueService, MessagesTools],
+  providers: [QueueService, ScheduledMessageProcessor],
+  exports: [QueueService],
 })
 export class QueueModule {}

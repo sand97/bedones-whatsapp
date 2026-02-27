@@ -170,7 +170,7 @@
       "post": {
         "operationId": "CatalogController_triggerSync",
         "summary": "Trigger manual catalog synchronization",
-        "description": "Forces immediate catalog sync with WhatsApp connector, including embeddings generation",
+        "description": "Endpoint interne de production, appelé par le backend lors du /catalog/force-sync. Lance la synchronisation locale agent (catalogue + embeddings). Non destiné au frontend.",
         "parameters": [],
         "responses": {
           "200": {
@@ -185,11 +185,17 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "imageSyncQueued": {
+                      "type": "boolean"
                     }
                   }
                 }
               }
             }
+          },
+          "401": {
+            "description": "JWT interne backend->agent invalide ou absent"
           }
         },
         "tags": [
@@ -373,7 +379,7 @@
       "post": {
         "operationId": "ImageProcessingController_createQdrantCollection",
         "summary": "Create Qdrant collection",
-        "description": "Create a Qdrant collection for storing image embeddings (CLIP vectors)",
+        "description": "Create a Qdrant collection for storing image embeddings",
         "parameters": [],
         "responses": {
           "200": {
@@ -423,7 +429,7 @@
       "get": {
         "operationId": "ImageProcessingController_getStatus",
         "summary": "Check image processing services status",
-        "description": "Check if OCR, CLIP embeddings, and Qdrant services are available",
+        "description": "Check if OCR, Gemini image embeddings, and Qdrant services are available",
         "parameters": [],
         "responses": {
           "200": {
@@ -439,7 +445,7 @@
       "post": {
         "operationId": "ImageProcessingController_indexTestImages",
         "summary": "Index test-images folder in Qdrant",
-        "description": "Generate CLIP embeddings for all images in test-images folder and index them in Qdrant",
+        "description": "Generate image embeddings for all images in test-images folder and index them in Qdrant",
         "parameters": [],
         "responses": {
           "200": {
@@ -476,7 +482,7 @@
       "post": {
         "operationId": "ImageProcessingController_searchSimilarImages",
         "summary": "Search similar images in Qdrant",
-        "description": "Upload an image and find similar products using CLIP embeddings",
+        "description": "Upload an image and find similar products using image embeddings",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -702,10 +708,81 @@
         ]
       }
     },
+    "/test/crop/yolo": {
+      "post": {
+        "operationId": "ImageProcessingController_cropWithYolo",
+        "summary": "Crop image using YOLOv8-Nano (Strategy 2)",
+        "description": "Use YOLOv8-Nano object detection for smart cropping. Free, fast (~50ms), very accurate. Requires image-cropper service running on port 8011.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Screenshot to crop"
+                  },
+                  "margin": {
+                    "type": "string",
+                    "description": "Margin around detected object in pixels (default: 10)",
+                    "example": "10"
+                  }
+                },
+                "required": [
+                  "image"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image cropped successfully using YOLO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "method": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    },
+                    "coordinates": {
+                      "type": "object"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "croppedPath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "image-processing-test"
+        ]
+      }
+    },
     "/test/crop/opencv": {
       "post": {
         "operationId": "ImageProcessingController_cropWithOpenCV",
-        "summary": "Crop image using OpenCV Python service (Strategy 2)",
+        "summary": "Crop image using OpenCV Python service (Strategy 3)",
         "description": "Use OpenCV-based smart cropping via Python service. Free and fast (~5ms). Automatically detects light/dark mode. Requires image-cropper service running on port 8011.",
         "parameters": [],
         "requestBody": {
@@ -768,6 +845,51 @@
         ]
       }
     },
+    "/image-processing/index-product-image": {
+      "post": {
+        "operationId": "ImageProcessingInternalController_indexProductImage",
+        "summary": "Index product cover image into Qdrant image/text collections",
+        "description": "Endpoint interne de production, appelé par le whatsapp-agent lui-même pendant l'indexation en arrière-plan. Il ne doit pas être appelé par le frontend ni par des clients externes.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexProductImageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product image indexed successfully"
+          },
+          "401": {
+            "description": "JWT interne backend->agent invalide ou absent"
+          }
+        },
+        "tags": [
+          "image-processing"
+        ]
+      }
+    },
+    "/image-processing/sync-catalog-images": {
+      "post": {
+        "operationId": "ImageProcessingInternalController_queueCatalogImageSync",
+        "summary": "Queue full catalog image indexing on whatsapp-agent",
+        "description": "Endpoint interne de maintenance pour lancer explicitement un job d'indexation catalogue côté agent (Qdrant + Gemini). En production, le flux standard passe par /catalog/sync qui orchestre déjà cette étape.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Catalog image indexing job queued"
+          }
+        },
+        "tags": [
+          "image-processing"
+        ]
+      }
+    },
     "/webhook/message": {
       "post": {
         "operationId": "WebhookController_handleEvent",
@@ -794,6 +916,11 @@
   "tags": [],
   "servers": [],
   "components": {
-    "schemas": {}
+    "schemas": {
+      "IndexProductImageDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
   }
 }

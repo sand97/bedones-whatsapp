@@ -47,15 +47,29 @@ export class CatalogService {
     );
 
     try {
-      const cleanedClientId = this.cleanClientId(clientId);
+      const cleanedClientId = '+'
+        .concat(this.cleanClientId(clientId))
+        .replace('++', '+');
+
+      // Récupérer l'userId depuis la base de données
+      const user = await this.prisma.user.findUnique({
+        where: { phoneNumber: cleanedClientId },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new Error(`User not found for phone number: ${cleanedClientId}`);
+      }
 
       // Déterminer l'extension à partir du nom de fichier original
       const extension = originalFilename
         ? originalFilename.split('.').pop() || 'jpg'
         : 'jpg';
 
-      // Construire le chemin dans Minio: {clientId}/catalog/images/{collectionId}/{productId}-{index}.{ext}
-      const objectKey = `${cleanedClientId}/catalog/images/${collectionId}/${productId}-${imageIndex}.${extension}`;
+      const cleanedClientIdForPath = this.cleanClientId(clientId);
+
+      // Construire le chemin dans Minio: {clientId}/catalog/images/{collectionId}/{userId}-{productId}-{index}.{ext}
+      const objectKey = `${cleanedClientIdForPath}/catalog/images/${collectionId}/${user.id}-${productId}-${imageIndex}.${extension}`;
       this.logger.debug(`[IMAGE-UPLOAD] Object key: ${objectKey}`);
 
       // Déterminer le content-type
@@ -403,8 +417,9 @@ export class CatalogService {
       this.logger.debug(`[CATALOG] User found: ${user.id}`);
 
       const collections = catalogData.collections || [];
+      const uncategorizedProducts = catalogData.uncategorizedProducts || [];
       this.logger.log(
-        `[CATALOG] Processing ${collections.length} collections...`,
+        `[CATALOG] Processing ${collections.length} collections and ${uncategorizedProducts.length} uncategorized products...`,
       );
 
       let collectionsCreated = 0;
@@ -413,6 +428,24 @@ export class CatalogService {
       let productsUpdated = 0;
       let imagesCreated = 0;
 
+      // Récupérer toutes les collections existantes en une seule requête
+      this.logger.debug(`[CATALOG] Fetching existing collections...`);
+      const existingCollections = await this.prisma.collection.findMany({
+        where: { user_id: user.id },
+      });
+      const collectionsMap = new Map(
+        existingCollections.map((c) => [c.whatsapp_collection_id, c]),
+      );
+
+      // Récupérer tous les produits existants en une seule requête
+      this.logger.debug(`[CATALOG] Fetching existing products...`);
+      const existingProducts = await this.prisma.product.findMany({
+        where: { user_id: user.id },
+      });
+      const productsMap = new Map(
+        existingProducts.map((p) => [p.whatsapp_product_id, p]),
+      );
+
       // Parcourir chaque collection
       for (const collectionData of collections) {
         const whatsappCollectionId = collectionData.id;
@@ -420,13 +453,8 @@ export class CatalogService {
           `[CATALOG] Processing collection: ${collectionData.name} (${whatsappCollectionId})`,
         );
 
-        // Vérifier si la collection existe
-        let collection = await this.prisma.collection.findFirst({
-          where: {
-            user_id: user.id,
-            whatsapp_collection_id: whatsappCollectionId,
-          },
-        });
+        // Vérifier si la collection existe dans la Map
+        let collection = collectionsMap.get(whatsappCollectionId);
 
         // Créer ou mettre à jour la collection
         if (collection) {
@@ -472,13 +500,8 @@ export class CatalogService {
             `[CATALOG] Processing product: ${productData.name} (${whatsappProductId})`,
           );
 
-          // Vérifier si le produit existe
-          let product = await this.prisma.product.findFirst({
-            where: {
-              user_id: user.id,
-              whatsapp_product_id: whatsappProductId,
-            },
-          });
+          // Vérifier si le produit existe dans la Map
+          let product = productsMap.get(whatsappProductId);
 
           // Préparer les données du produit (snake_case comme WhatsApp)
           const normalizedPrice = normalizeWhatsAppPrice(productData.price);
@@ -571,26 +594,147 @@ export class CatalogService {
             where: { product_id: product.id },
           });
 
-          // Créer les nouvelles images du produit
+          // Créer les nouvelles images du produit en bulk
           const uploadedImages = productData.uploadedImages || [];
           this.logger.debug(
             `[CATALOG] Creating ${uploadedImages.length} images for product: ${product.id}`,
           );
-          for (const imageData of uploadedImages) {
-            await this.prisma.productImage.create({
-              data: {
-                product: {
-                  connect: { id: product.id },
-                },
+          if (uploadedImages.length > 0) {
+            await this.prisma.productImage.createMany({
+              data: uploadedImages.map((imageData) => ({
+                product_id: product.id,
                 url: imageData.url,
                 original_url: imageData.originalUrl || null,
                 normalized_url: imageData.normalizedUrl || null,
                 image_type: imageData.type || 'main',
                 image_index: imageData.index || 0,
-              },
+              })),
             });
-            imagesCreated++;
+            imagesCreated += uploadedImages.length;
           }
+        }
+      }
+
+      // Traiter les produits sans collection
+      this.logger.debug(
+        `[CATALOG] Processing ${uncategorizedProducts.length} uncategorized products`,
+      );
+
+      for (const productData of uncategorizedProducts) {
+        const whatsappProductId = productData.id;
+        this.logger.debug(
+          `[CATALOG] Processing uncategorized product: ${productData.name} (${whatsappProductId})`,
+        );
+
+        // Vérifier si le produit existe dans la Map
+        let product = productsMap.get(whatsappProductId);
+
+        // Préparer les données du produit
+        const normalizedPrice = normalizeWhatsAppPrice(productData.price);
+
+        const productPayload: Prisma.ProductUpdateInput = {
+          name: productData.name || 'Sans nom',
+          description: productData.description || null,
+          price: normalizedPrice,
+          currency: productData.currency || null,
+          retailer_id: productData.retailer_id || null,
+          availability: productData.availability || null,
+          max_available: productData.max_available || null,
+          is_hidden: productData.is_hidden || false,
+          is_sanctioned: productData.is_sanctioned || false,
+          checkmark: productData.checkmark || false,
+          url: productData.url || null,
+          capability_to_review_status:
+            (productData.capability_to_review_status as unknown as Prisma.InputJsonValue) ||
+            [],
+          whatsapp_product_can_appeal:
+            productData.whatsapp_product_can_appeal || false,
+          image_hashes_for_whatsapp:
+            productData.image_hashes_for_whatsapp || [],
+          videos:
+            (productData.videos as unknown as Prisma.InputJsonValue) ||
+            undefined,
+        };
+
+        // Créer ou mettre à jour le produit
+        if (product) {
+          // Mise à jour - retirer de la collection si nécessaire
+          this.logger.debug(
+            `[CATALOG] Updating existing uncategorized product: ${product.id}`,
+          );
+          product = await this.prisma.product.update({
+            where: { id: product.id },
+            data: {
+              ...productPayload,
+              collection: {
+                disconnect: true,
+              },
+            },
+          });
+          productsUpdated++;
+        } else {
+          // Création
+          this.logger.debug(
+            `[CATALOG] Creating new uncategorized product: ${productData.name}`,
+          );
+          const createData: Prisma.ProductUncheckedCreateInput = {
+            user_id: user.id,
+            whatsapp_product_id: whatsappProductId,
+            collection_id: null, // Pas de collection
+            name: productData.name || 'Sans nom',
+            description: productData.description || null,
+            price: normalizedPrice,
+            currency: productData.currency || null,
+            retailer_id: productData.retailer_id || null,
+            availability: productData.availability || null,
+            max_available: productData.max_available || null,
+            is_hidden: productData.is_hidden || false,
+            is_sanctioned: productData.is_sanctioned || false,
+            checkmark: productData.checkmark || false,
+            url: productData.url || null,
+            capability_to_review_status:
+              (productData.capability_to_review_status as unknown as Prisma.InputJsonValue) ||
+              [],
+            whatsapp_product_can_appeal:
+              productData.whatsapp_product_can_appeal || false,
+            image_hashes_for_whatsapp:
+              productData.image_hashes_for_whatsapp || [],
+            videos:
+              (productData.videos as unknown as Prisma.InputJsonValue) ||
+              undefined,
+          };
+
+          product = await this.prisma.product.create({
+            data: createData,
+          });
+          productsCreated++;
+        }
+
+        // Supprimer les anciennes images du produit
+        this.logger.debug(
+          `[CATALOG] Deleting old images for uncategorized product: ${product.id}`,
+        );
+        await this.prisma.productImage.deleteMany({
+          where: { product_id: product.id },
+        });
+
+        // Créer les nouvelles images du produit en bulk
+        const uploadedImages = productData.uploadedImages || [];
+        this.logger.debug(
+          `[CATALOG] Creating ${uploadedImages.length} images for uncategorized product: ${product.id}`,
+        );
+        if (uploadedImages.length > 0) {
+          await this.prisma.productImage.createMany({
+            data: uploadedImages.map((imageData) => ({
+              product_id: product.id,
+              url: imageData.url,
+              original_url: imageData.originalUrl || null,
+              normalized_url: imageData.normalizedUrl || null,
+              image_type: imageData.type || 'main',
+              image_index: imageData.index || 0,
+            })),
+          });
+          imagesCreated += uploadedImages.length;
         }
       }
 

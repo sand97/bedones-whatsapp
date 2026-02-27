@@ -1,6 +1,6 @@
-import { BackendClientService } from '@app/backend-client/backend-client.service';
 import { InternalProductMatch } from '@app/backend-client/backend-api.types';
-import { EmbeddingsService } from '@app/catalog/embeddings.service';
+import { BackendClientService } from '@app/backend-client/backend-client.service';
+import { EmbeddingsService } from '@app/catalog-shared/embeddings.service';
 import { GeminiVisionService } from '@app/image-processing/gemini-vision.service';
 import { ImageEmbeddingsService } from '@app/image-processing/image-embeddings.service';
 import { OcrService } from '@app/image-processing/ocr.service';
@@ -64,7 +64,10 @@ export class ImageMessageHandlerService {
       ),
     });
 
-    const originalImageBuffer = Buffer.from(message.downloadedMedia.data, 'base64');
+    const originalImageBuffer = Buffer.from(
+      message.downloadedMedia.data,
+      'base64',
+    );
     let imageToProcess: Buffer<ArrayBufferLike> = originalImageBuffer;
     let croppedSuccessfully = false;
     let ocrText = '';
@@ -76,7 +79,8 @@ export class ImageMessageHandlerService {
     let matchedProduct: InternalProductMatch | null = null;
 
     try {
-      imageToProcess = await this.smartCropService.cropOpenCV(originalImageBuffer);
+      imageToProcess =
+        await this.smartCropService.cropOpenCV(originalImageBuffer);
       croppedSuccessfully = imageToProcess !== originalImageBuffer;
 
       ocrText = await this.ocrService.extractText(imageToProcess);
@@ -101,11 +105,10 @@ export class ImageMessageHandlerService {
         this.imageEmbeddings.isReady()
       ) {
         const imageThreshold = this.getThreshold('QDRANT_IMAGE_THRESHOLD', 0.8);
-        const clipEmbedding = await this.imageEmbeddings.generateEmbedding(
-          imageToProcess,
-        );
+        const imageEmbedding =
+          await this.imageEmbeddings.generateEmbedding(imageToProcess);
         const qdrantImageMatches = await this.qdrantService.searchSimilarImages(
-          clipEmbedding,
+          imageEmbedding,
           1,
           imageThreshold,
         );
@@ -137,7 +140,8 @@ export class ImageMessageHandlerService {
         geminiDescription =
           await this.geminiVisionService.describeProductImage(imageToProcess);
 
-        const textEmbedding = await this.textEmbeddings.embedText(geminiDescription);
+        const textEmbedding =
+          await this.textEmbeddings.embedText(geminiDescription);
         const textThreshold = this.getThreshold('QDRANT_TEXT_THRESHOLD', 0.8);
         const qdrantTextMatches = await this.qdrantService.searchSimilarText(
           textEmbedding,
@@ -169,7 +173,9 @@ export class ImageMessageHandlerService {
       }
     } catch (error: any) {
       searchMethod = 'error';
-      this.logger.error(`Image pipeline failed for ${messageId}: ${error?.message}`);
+      this.logger.error(
+        `Image pipeline failed for ${messageId}: ${error?.message}`,
+      );
     }
 
     const matchedProducts = matchedProduct ? [matchedProduct] : [];

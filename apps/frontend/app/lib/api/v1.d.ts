@@ -140,6 +140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/image-sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get image sync status
+         * @description Endpoint frontend (dashboard catalogue) pour afficher l'état de la synchronisation asynchrone des images (SYNCING/DONE/FAILED) après un force-sync.
+         */
+        get: operations["CatalogController_getImageSyncStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog": {
         parameters: {
             query?: never;
@@ -317,6 +337,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/agent-internal/agents/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lire l'état interne complet de l'agent
+         * @description Endpoint interne backend, appelé par le whatsapp-agent pour récupérer l'objet WhatsAppAgent complet (cache local côté agent) et le groupe de gestion associé.
+         */
+        get: operations["WhatsAppAgentInternalController_getAgentSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Mettre à jour l'état interne de l'agent
+         * @description Endpoint interne backend unique pour les mises à jour venant du whatsapp-agent. Toutes les propriétés sont optionnelles (prompt, statut de sync image, erreur sync).
+         */
+        patch: operations["WhatsAppAgentInternalController_updateAgentSnapshot"];
         trace?: never;
     };
     "/onboarding/threads": {
@@ -639,6 +683,126 @@ export interface paths {
         put?: never;
         /** Add metadata to a product */
         post: operations["ProductsController_addMetadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products/search-by-keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search products by keywords (OCR results)
+         * @description Search products by keywords extracted from OCR. Returns matching products and which keywords matched.
+         */
+        post: operations["ProductsController_searchByKeywords"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-internal/products/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Récupérer un échantillon de produits
+         * @description Endpoint interne backend, appelé par le whatsapp-agent pour récupérer un échantillon représentatif du catalogue (génération/mise à jour du prompt de description image). Non destiné au frontend.
+         */
+        get: operations["ProductsInternalController_getSampleProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-internal/products/by-retailer-id/{retailerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trouver un produit par retailer_id
+         * @description Endpoint interne backend, appelé par le pipeline image du whatsapp-agent après OCR pour matcher rapidement un produit via son code retailer.
+         */
+        get: operations["ProductsInternalController_getProductByRetailerId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-internal/products/search-by-keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rechercher des produits par mots-clés
+         * @description Endpoint interne backend, appelé par le whatsapp-agent pour la recherche OCR textuelle. Réutilise la logique métier existante ProductsService.searchByKeywords.
+         */
+        get: operations["ProductsInternalController_searchProductsByKeywords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-internal/products/cover-image-descriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Mettre à jour en batch les descriptions d'images et dates d'indexation
+         * @description Endpoint interne backend, appelé par le whatsapp-agent en fin d'indexation pour persister en une seule requête les coverImageDescription, indexDescriptionAt et indexImageAt des produits.
+         */
+        patch: operations["ProductsInternalController_batchUpdateProductImageIndexing"];
+        trace?: never;
+    };
+    "/agent-internal/products/for-image-indexing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les produits pour l'indexation image
+         * @description Endpoint interne backend, appelé par le whatsapp-agent pour récupérer les produits et leurs images de couverture à indexer dans Qdrant (traitement fait côté agent).
+         */
+        get: operations["ProductsInternalController_getProductsForImageIndexing"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1128,6 +1292,7 @@ export interface components {
              */
             timestamp: string;
         };
+        UpdateAgentInternalDto: Record<string, never>;
         SendMessageDto: Record<string, never>;
         RequestPairingDto: {
             /**
@@ -1296,6 +1461,28 @@ export interface components {
              */
             isVisible: boolean;
         };
+        SearchByKeywordsDto: {
+            /**
+             * @description List of keywords to search for in products
+             * @example [
+             *       "adidas",
+             *       "701237128001",
+             *       "maillot"
+             *     ]
+             */
+            keywords: string[];
+            /**
+             * @description User ID to filter products
+             * @example clx123456
+             */
+            user_id: string;
+            /**
+             * @description Optional retailer ID for exact match priority
+             * @example 701237128001
+             */
+            retailer_id?: string;
+        };
+        BatchUpdateProductImageIndexingDto: Record<string, never>;
         UpdateBusinessInfoDto: {
             /**
              * @description Business name
@@ -1826,6 +2013,24 @@ export interface operations {
             };
         };
     };
+    CatalogController_getImageSyncStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image sync status retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CatalogController_getCatalog: {
         parameters: {
             query?: never;
@@ -2106,6 +2311,60 @@ export interface operations {
                         operationId?: string;
                     };
                 };
+            };
+        };
+    };
+    WhatsAppAgentInternalController_getAgentSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot complet de l'agent retourné */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WhatsAppAgentInternalController_updateAgentSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentInternalDto"];
+            };
+        };
+        responses: {
+            /** @description Snapshot agent mis à jour et retourné */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2839,6 +3098,185 @@ export interface operations {
             };
             /** @description Product not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsController_searchByKeywords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchByKeywordsDto"];
+            };
+        };
+        responses: {
+            /** @description Products found successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_getSampleProducts: {
+        parameters: {
+            query: {
+                max: string;
+                perCollection: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Échantillon de produits de l'agent retourné */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_getProductByRetailerId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                retailerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Produit correspondant retourné (ou null) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description retailerId manquant ou invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_searchProductsByKeywords: {
+        parameters: {
+            query: {
+                retailer_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Produits et mots-clés matchés retournés */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Aucun mot-clé valide fourni */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_batchUpdateProductImageIndexing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchUpdateProductImageIndexingDto"];
+            };
+        };
+        responses: {
+            /** @description Batch appliqué sur les produits appartenant à cet agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_getProductsForImageIndexing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liste de produits prêts pour l'indexation image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
