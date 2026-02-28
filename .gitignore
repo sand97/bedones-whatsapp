@@ -36,3 +36,4 @@ temp/
 /apps/whatsapp-agent/test-images/
 /apps/whatsapp-agent/cropped-images/
 cropped-images/
+/apps/frontend/dist/
