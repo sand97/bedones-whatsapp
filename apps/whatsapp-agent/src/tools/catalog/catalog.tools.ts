@@ -1,7 +1,8 @@
-import { CatalogSearchService } from '@app/catalog/catalog-search.service';
-import { EmbeddingsService } from '@app/catalog-shared/embeddings.service';
+import {
+  CatalogSearchService,
+  ProductSearchResult,
+} from '@app/catalog/catalog-search.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
-import { QdrantService } from '@app/image-processing/qdrant.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { tool } from '@langchain/core/tools';
 import { Injectable, Logger } from '@nestjs/common';
@@ -11,8 +12,7 @@ import { instrumentTools } from '../tool-logging.util';
 
 /**
  * Catalog tools for the WhatsApp agent
- * Uses semantic search with embeddings when available
- * Falls back to direct WhatsApp search when embeddings not ready
+ * Uses semantic search with embeddings in Qdrant
  */
 @Injectable()
 export class CatalogTools {
@@ -22,8 +22,6 @@ export class CatalogTools {
     private readonly connectorClient: ConnectorClientService,
     private readonly catalogSearch: CatalogSearchService,
     private readonly scriptService: PageScriptService,
-    private readonly embeddingsService: EmbeddingsService,
-    private readonly qdrantService: QdrantService,
   ) {}
 
   /**
@@ -93,27 +91,28 @@ export class CatalogTools {
   }
 
   /**
-   * Search products with intelligent routing:
-   * - Uses vector search (Qdrant) if available (best results, free)
-   * - Falls back to direct WhatsApp search if Qdrant not configured
+   * Search products with semantic vector search in Qdrant.
    */
   private createSearchProductsTool() {
     return tool(
-      async ({ query, limit, scoreThreshold }, config?: any) => {
+      async ({ query, query_en, limit }, config?: any) => {
         try {
-          // Use intelligent search service with automatic fallback
+          // Semantic search in Qdrant via CatalogSearchService
           const result = await this.catalogSearch.searchProducts(
             query,
             limit,
-            scoreThreshold,
+            query_en,
           );
+          const compactProducts = this.toCompactSearchProducts(result.products);
+          const productsCsv = this.toProductsCsv(compactProducts);
 
           return JSON.stringify({
             success: result.success,
-            products: result.products,
+            products: compactProducts,
+            products_csv: productsCsv,
             query,
-            count: result.products.length,
-            method: result.method, // 'vector_search' or 'direct_whatsapp'
+            query_en,
+            count: compactProducts.length,
             error: result.error,
           });
         } catch (error: any) {
@@ -126,28 +125,80 @@ export class CatalogTools {
       {
         name: 'search_products',
         description:
-          'Search products intelligently using vector search (understands synonyms, context, and semantic meaning). ' +
-          'Automatically falls back to direct WhatsApp search if vector search is not available. ' +
-          'Use this to find products based on natural language descriptions or multiple keywords.',
+          'Search products using semantic retrieval + hybrid reranking. ' +
+          'Pass query as the user-language keywords (name/description intent). ' +
+          'Pass query_en as the English interpretation of the same intent, used especially to match cover_image_description (which is in English). ' +
+          'When possible, provide both query and query_en to improve multilingual recall. ' +
+          'The tool returns a compact CSV with columns: productID, rankingScore, description, price.',
         schema: z.object({
           query: z
             .string()
             .describe(
-              'Natural language search query (e.g. "elegant evening dress", "smartphone with good camera", "red shoes for running")',
+              'User-language query from the contact message. Example: "maillot barca", "robe elegante".',
+            ),
+          query_en: z
+            .string()
+            .optional()
+            .describe(
+              'English interpretation of the same product intent. Example: "barcelona jersey", "elegant dress".',
             ),
           limit: z
             .number()
             .default(10)
             .describe('Maximum number of results to return'),
-          scoreThreshold: z
-            .number()
-            .default(0.7)
-            .describe(
-              'Minimum similarity score for vector search (0-1). Higher = more strict matching. Default: 0.7',
-            ),
         }),
       },
     );
+  }
+
+  private toCompactSearchProducts(
+    products: ProductSearchResult[],
+  ): Array<{
+    productID: string;
+    rankingScore: number;
+    description: string;
+    price: number | null;
+  }> {
+    return products
+      .filter(
+        (product) =>
+          typeof product.rankingScore === 'number' &&
+          Number.isFinite(product.rankingScore),
+      )
+      .map((product) => ({
+        productID: product.id,
+        rankingScore: product.rankingScore as number,
+        description: product.description || '',
+        price: typeof product.price === 'number' ? product.price : null,
+      }));
+  }
+
+  private toProductsCsv(
+    products: Array<{
+      productID: string;
+      rankingScore: number;
+      description: string;
+      price: number | null;
+    }>,
+  ): string {
+    const header = 'productID,rankingScore,description,price';
+    const rows = products.map((product) =>
+      [
+        this.escapeCsv(product.productID),
+        this.escapeCsv(product.rankingScore.toString()),
+        this.escapeCsv(product.description),
+        this.escapeCsv(product.price === null ? '' : product.price.toString()),
+      ].join(','),
+    );
+
+    return [header, ...rows].join('\n');
+  }
+
+  private escapeCsv(value: string): string {
+    if (!/[",\n\r]/.test(value)) {
+      return value;
+    }
+    return `"${value.replace(/"/g, '""')}"`;
   }
 
   /**

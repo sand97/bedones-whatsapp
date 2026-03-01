@@ -47,7 +47,7 @@ export class ChatTools {
    * Reply to current conversation (SECURED - cannot send to arbitrary contacts)
    */
   private createReplyToMessageTool() {
-    return tool(
+    const replyTool = tool(
       async ({ message, quotedMessageId }, config?: any) => {
         try {
           const chatId = config?.context?.chatId;
@@ -61,11 +61,14 @@ export class ChatTools {
 
           this.logger.log(`Replying to conversation: ${chatId}`);
 
+          const normalizedQuotedMessageId =
+            this.normalizeMessageId(quotedMessageId);
+
           const script = this.scriptService.getScript('chat/sendTextMessage', {
             TO: chatId,
             MESSAGE: message,
             USE_TYPING: 'true',
-            QUOTED_MESSAGE_ID: quotedMessageId || '',
+            QUOTED_MESSAGE_ID: normalizedQuotedMessageId || '',
           });
 
           const result = await this.connectorClient.executeScript(script);
@@ -85,12 +88,54 @@ export class ChatTools {
         schema: z.object({
           message: z.string().describe('Message content to send'),
           quotedMessageId: z
-            .string()
+            .any()
             .optional()
-            .describe('Message ID to reply to (quoted message)'),
+            .describe(
+              'Optional message ID string to quote a previous message. Provide the exact WhatsApp message ID (example: "true_64845667926032@lid_3EB0..."). Do not pass a full object.',
+            ),
         }),
       },
     );
+
+    return replyTool;
+  }
+
+  private normalizeMessageId(rawId: unknown): string | undefined {
+    if (!rawId) {
+      return undefined;
+    }
+
+    if (typeof rawId === 'string') {
+      const trimmed = rawId.trim();
+      if (!trimmed || trimmed === '[object Object]') {
+        return undefined;
+      }
+      return trimmed;
+    }
+
+    if (typeof rawId === 'object') {
+      const candidate = (rawId as any)?._serialized;
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+
+      const nestedCandidate = (rawId as any)?.id?._serialized;
+      if (typeof nestedCandidate === 'string' && nestedCandidate.trim()) {
+        return nestedCandidate.trim();
+      }
+
+      const fallback = String(rawId).trim();
+      if (!fallback || fallback === '[object Object]') {
+        return undefined;
+      }
+      return fallback;
+    }
+
+    const fallback = String(rawId).trim();
+    if (!fallback || fallback === '[object Object]') {
+      return undefined;
+    }
+    return fallback;
   }
 
   /**

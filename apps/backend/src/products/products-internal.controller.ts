@@ -97,6 +97,39 @@ export class ProductsInternalController {
     );
   }
 
+  @Get('by-id/:productId')
+  @ApiOperation({
+    summary: 'Trouver un produit par identifiant interne/WhatsApp/retailer',
+    description:
+      "Endpoint interne backend, appelé par le whatsapp-agent pour résoudre un identifiant produit vers le produit métier et son whatsapp_product_id.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Produit correspondant retourné (ou null)',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'productId manquant ou invalide',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'JWT inter-services invalide ou absent',
+  })
+  async getProductByAnyId(
+    @AgentContext() context: AgentRequestContext,
+    @Param('productId') productId: string,
+  ) {
+    const normalizedProductId = productId?.trim();
+    if (!normalizedProductId) {
+      throw new BadRequestException('productId is required');
+    }
+
+    return this.productsInternalService.getProductByAnyId(
+      context.userId,
+      normalizedProductId,
+    );
+  }
+
   @Get('search-by-keywords')
   @ApiOperation({
     summary: 'Rechercher des produits par mots-clés',

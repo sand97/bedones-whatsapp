@@ -1,6 +1,21 @@
+import { BackendClientService } from '@app/backend-client/backend-client.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { Injectable, Logger } from '@nestjs/common';
+
+export interface ProductIdResolution {
+  inputId: string;
+  resolvedId: string;
+  source: 'passthrough' | 'backend_whatsapp_product_id' | 'backend_no_whatsapp_id';
+  backendProductId?: string;
+  backendRetailerId?: string | null;
+  backendWhatsAppProductId?: string | null;
+}
+
+export interface ProductIdResolutionResult {
+  resolvedIds: string[];
+  mappings: ProductIdResolution[];
+}
 
 @Injectable()
 export class ProductSendService {
@@ -11,6 +26,7 @@ export class ProductSendService {
   private conversationChains = new Map<string, Promise<unknown>>();
 
   constructor(
+    private readonly backendClient: BackendClientService,
     private readonly connectorClient: ConnectorClientService,
     private readonly scriptService: PageScriptService,
   ) {}
@@ -28,14 +44,92 @@ export class ProductSendService {
       throw new Error('PRODUCT_IDS is required');
     }
 
+    const resolution = await this.resolveProductIdsForWhatsApp(productIds);
+    if (resolution.resolvedIds.length === 0) {
+      throw new Error('No valid product IDs after resolution');
+    }
+
+    this.logger.debug(
+      `[PRODUCT_SEND] Resolved product IDs: ${JSON.stringify(
+        resolution.mappings,
+      )}`,
+    );
+
     return this.enqueueConversationTask(to, async () => {
       const script = this.scriptService.getScript('chat/sendProductsMessage', {
         TO: to,
-        PRODUCT_IDS: productIds.map((id) => String(id)).join(','),
+        PRODUCT_IDS: resolution.resolvedIds.map((id) => String(id)).join(','),
       });
 
-      return this.connectorClient.executeScript(script);
+      const sendResult = await this.connectorClient.executeScript(script);
+      return {
+        ...(sendResult && typeof sendResult === 'object'
+          ? sendResult
+          : { rawResult: sendResult }),
+        resolvedProductIds: resolution.resolvedIds,
+        resolution: resolution.mappings,
+      };
     });
+  }
+
+  async resolveProductIdsForWhatsApp(
+    productIds: string[],
+  ): Promise<ProductIdResolutionResult> {
+    const mappings: ProductIdResolution[] = [];
+    const resolvedIds: string[] = [];
+    const seenResolved = new Set<string>();
+
+    for (const rawId of productIds || []) {
+      const inputId = String(rawId || '').trim();
+      if (!inputId) {
+        continue;
+      }
+
+      let resolvedId = inputId;
+      let source: ProductIdResolution['source'] = 'passthrough';
+      let backendProductId: string | undefined;
+      let backendRetailerId: string | null | undefined;
+      let backendWhatsAppProductId: string | null | undefined;
+
+      try {
+        const backendProduct = await this.backendClient.getProductByAnyId(inputId);
+        if (backendProduct) {
+          backendProductId = backendProduct.id;
+          backendRetailerId = backendProduct.retailer_id ?? null;
+          backendWhatsAppProductId = backendProduct.whatsapp_product_id ?? null;
+
+          if (backendProduct.whatsapp_product_id?.trim()) {
+            resolvedId = backendProduct.whatsapp_product_id.trim();
+            source = 'backend_whatsapp_product_id';
+          } else {
+            source = 'backend_no_whatsapp_id';
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(
+          `[PRODUCT_SEND] Failed to resolve productId "${inputId}" via backend: ${error?.message || error}`,
+        );
+      }
+
+      mappings.push({
+        inputId,
+        resolvedId,
+        source,
+        backendProductId,
+        backendRetailerId,
+        backendWhatsAppProductId,
+      });
+
+      if (!seenResolved.has(resolvedId)) {
+        seenResolved.add(resolvedId);
+        resolvedIds.push(resolvedId);
+      }
+    }
+
+    return {
+      resolvedIds,
+      mappings,
+    };
   }
 
   async sendCollection(to: string, collectionId: string): Promise<any> {

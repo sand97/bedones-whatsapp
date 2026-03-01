@@ -21,6 +21,7 @@ import {
   DeleteMediaResponse,
   InternalProductSample,
   InternalProductMatch,
+  InternalProductIdMatch,
   InternalProductForImageIndexing,
   InternalProductImageIndexingUpdate,
   InternalAgentSnapshotResponse,
@@ -323,6 +324,15 @@ export class BackendClientService {
     const encodedRetailerId = encodeURIComponent(retailerId);
     return this.internalGet<InternalProductMatch | null>(
       `/agent-internal/products/by-retailer-id/${encodedRetailerId}`,
+    );
+  }
+
+  async getProductByAnyId(
+    productId: string,
+  ): Promise<InternalProductIdMatch | null> {
+    const encodedProductId = encodeURIComponent(productId);
+    return this.internalGet<InternalProductIdMatch | null>(
+      `/agent-internal/products/by-id/${encodedProductId}`,
     );
   }
 

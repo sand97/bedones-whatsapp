@@ -564,8 +564,8 @@ importers:
         specifier: ^10.2.3
         version: 10.3.0(@nestjs/axios@3.1.3(@nestjs/common@11.1.6(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.13.2)(rxjs@7.8.2))(@nestjs/common@11.1.6(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.6)(@prisma/client@6.16.2(prisma@6.16.2(typescript@5.9.3))(typescript@5.9.3))(mongoose@8.19.4(socks@2.8.7))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@wppconnect/wa-js':
-        specifier: ^3.19.3
-        version: 3.19.3
+        specifier: ^3.22.1
+        version: 3.22.1
       axios:
         specifier: ^1.7.2
         version: 1.13.2
@@ -4685,8 +4685,8 @@ packages:
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
 
-  '@wppconnect/wa-js@3.19.3':
-    resolution: {integrity: sha512-IbTI7yZjxChmS7iIYJhEdRzDPTA+ylIU/FGCQ+MIKf4SbQPHewgpyVF0UGV7Rd5IbJouUt92T56jYAkqFJSYXA==}
+  '@wppconnect/wa-js@3.22.1':
+    resolution: {integrity: sha512-0GzM4Yvm2tKg4YcsEuWIpa0ydT5PGkUQVUSzSpz2lzIZXysGySc24GqBTqOLE9Qxqj63pQ79pNNsbDz9eTZH9w==}
     engines: {whatsapp-web: '>=2.2326.10-beta'}
 
   '@xenova/transformers@2.17.2':
@@ -16983,7 +16983,7 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@wppconnect/wa-js@3.19.3': {}
+  '@wppconnect/wa-js@3.22.1': {}
 
   '@xenova/transformers@2.17.2':
     dependencies:

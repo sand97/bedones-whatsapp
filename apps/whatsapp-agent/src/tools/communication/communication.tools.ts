@@ -141,7 +141,8 @@ export class CommunicationTools {
       {
         name: 'send_products',
         description:
-          'Send multiple WhatsApp Business catalog products to the current customer',
+          'Send multiple WhatsApp Business catalog products to the current customer. ' +
+          'You can pass internal DB product IDs, WhatsApp product IDs, or retailer IDs: the system resolves them to WhatsApp product IDs before sending.',
         schema: z.object({
           productIds: z
             .array(z.string())

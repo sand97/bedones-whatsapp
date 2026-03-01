@@ -174,7 +174,7 @@ export class MessagesTools {
             'messages/getMessageHistory',
             {
               CHAT_ID: chatId,
-              MAX_TOTAL: String(maxTotal || 20),
+              MAX_TOTAL: String(maxTotal || 10),
               MESSAGE_ID: messageId || '',
               DIRECTION: direction || 'before',
             },
@@ -193,11 +193,11 @@ export class MessagesTools {
       {
         name: 'get_message_history',
         description:
-          'Retrieve message history only when provided context is insufficient. Supports fetching before or after a reference message ID.',
+          'Retrieve additional history only when currently provided conversation context is genuinely insufficient. Do NOT call this when relevant history is already present in messages.',
         schema: z.object({
           maxTotal: z
             .number()
-            .default(20)
+            .default(10)
             .describe('Maximum number of messages to retrieve'),
           messageId: z
             .string()

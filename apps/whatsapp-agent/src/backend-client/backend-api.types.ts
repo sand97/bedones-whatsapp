@@ -153,6 +153,13 @@ export interface InternalProductMatch {
   coverImageDescription?: string | null;
 }
 
+export interface InternalProductIdMatch {
+  id: string;
+  name: string;
+  retailer_id?: string | null;
+  whatsapp_product_id?: string | null;
+}
+
 export interface InternalProductForImageIndexing {
   id: string;
   name: string;

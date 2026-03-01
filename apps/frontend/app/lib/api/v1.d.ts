@@ -749,6 +749,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-internal/products/by-id/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trouver un produit par identifiant interne/WhatsApp/retailer
+         * @description Endpoint interne backend, appelé par le whatsapp-agent pour résoudre un identifiant produit vers le produit métier et son whatsapp_product_id.
+         */
+        get: operations["ProductsInternalController_getProductByAnyId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent-internal/products/search-by-keywords": {
         parameters: {
             query?: never;
@@ -3181,6 +3201,40 @@ export interface operations {
                 content?: never;
             };
             /** @description retailerId manquant ou invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JWT inter-services invalide ou absent */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductsInternalController_getProductByAnyId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Produit correspondant retourné (ou null) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description productId manquant ou invalide */
             400: {
                 headers: {
                     [name: string]: unknown;

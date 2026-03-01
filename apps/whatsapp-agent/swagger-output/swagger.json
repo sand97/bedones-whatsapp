@@ -237,6 +237,147 @@
         ]
       }
     },
+    "/catalog/search/test": {
+      "post": {
+        "operationId": "CatalogController_testSemanticSearch",
+        "summary": "Debug semantic product search against Qdrant",
+        "description": "Test endpoint to validate text embedding + Qdrant retrieval for catalog products.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "example": "maillot barcelone"
+                  },
+                  "queryEn": {
+                    "type": "string",
+                    "example": "barcelona jersey"
+                  },
+                  "limit": {
+                    "type": "number",
+                    "example": 10,
+                    "default": 10
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "query": {
+                      "type": "string"
+                    },
+                    "embeddingDimensions": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    },
+                    "internalThreshold": {
+                      "type": "number"
+                    },
+                    "internalRelaxedThreshold": {
+                      "type": "number"
+                    },
+                    "count": {
+                      "type": "number"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "productId": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          },
+                          "productName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "retailerId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "price": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "similarity": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "rankingScore": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "payload": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "mapped": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "price": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "similarity": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "rankingScore": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
     "/test/ocr-extract": {
       "post": {
         "operationId": "ImageProcessingController_extractOcr",
@@ -887,6 +1028,56 @@
         },
         "tags": [
           "image-processing"
+        ]
+      }
+    },
+    "/tools/communication/send-products/test": {
+      "post": {
+        "operationId": "CommunicationTestController_testSendProducts",
+        "summary": "Test product ID resolution before sending products",
+        "description": "Resolve internal/retailer/WhatsApp product IDs to WhatsApp product IDs. Use dryRun=true to test without sending.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chatId": {
+                    "type": "string",
+                    "example": "64845667926032@lid",
+                    "nullable": true
+                  },
+                  "productIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "cmm6aiemj003ys02rifs8isp2",
+                      "barcelone-domicile"
+                    ]
+                  },
+                  "dryRun": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": [
+                  "productIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolution result (and optional send result)"
+          }
+        },
+        "tags": [
+          "Communication"
         ]
       }
     },

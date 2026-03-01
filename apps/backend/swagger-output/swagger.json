@@ -1730,6 +1730,42 @@
         ]
       }
     },
+    "/agent-internal/products/by-id/{productId}": {
+      "get": {
+        "operationId": "ProductsInternalController_getProductByAnyId",
+        "summary": "Trouver un produit par identifiant interne/WhatsApp/retailer",
+        "description": "Endpoint interne backend, appelé par le whatsapp-agent pour résoudre un identifiant produit vers le produit métier et son whatsapp_product_id.",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Produit correspondant retourné (ou null)"
+          },
+          "400": {
+            "description": "productId manquant ou invalide"
+          },
+          "401": {
+            "description": "JWT inter-services invalide ou absent"
+          }
+        },
+        "tags": [
+          "products"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/agent-internal/products/search-by-keywords": {
       "get": {
         "operationId": "ProductsInternalController_searchProductsByKeywords",

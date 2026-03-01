@@ -25,7 +25,6 @@ import {
   createMiddleware,
   modelCallLimitMiddleware,
   modelFallbackMiddleware,
-  toolCallLimitMiddleware,
 } from 'langchain';
 import { z } from 'zod';
 
@@ -217,113 +216,20 @@ export class WhatsAppAgentService implements OnModuleInit {
       return;
     }
 
+    const modelRunLimitRaw = this.configService.get<string>(
+      'AGENT_MODEL_CALL_LIMIT',
+    );
+    const modelRunLimit = modelRunLimitRaw ? Number(modelRunLimitRaw) : 6;
+    const safeModelRunLimit =
+      Number.isFinite(modelRunLimit) && modelRunLimit > 0 ? modelRunLimit : 6;
+
     // Build middleware array
-    const sideEffectTools = new Set([
-      'reply_to_message',
-      'send_text_message',
-      'send_products',
-      'send_collection',
-      'send_catalog_link',
-      'send_to_admin_group',
-      'notify_authorized_group',
-      'forward_to_management_group',
-      'send_group_invite',
-      'add_label_to_contact',
-      'remove_label_from_contact',
-      'save_persistent_memory',
-      'schedule_intention',
-      'cancel_intention',
-    ]);
-
-    // Single middleware to enforce "max 1 call per side-effect tool per run"
-    // This avoids creating one LangGraph node per side-effect tool limiter.
-    const sideEffectToolCallLimiter = createMiddleware({
-      name: 'SideEffectToolCallLimiter',
-      stateSchema: z.object({
-        runSideEffectToolCallCount: z.record(z.string(), z.number()).default({}),
-      }),
-      afterModel: {
-        hook: (state) => {
-          const messages = Array.isArray((state as any).messages)
-            ? ((state as any).messages as any[])
-            : [];
-
-          const aiMessageWithTools = [...messages]
-            .reverse()
-            .find(
-              (message) =>
-                Array.isArray(message?.tool_calls) &&
-                message.tool_calls.length > 0,
-            );
-
-          if (!aiMessageWithTools) {
-            return undefined;
-          }
-
-          const runCounts = {
-            ...((state as any).runSideEffectToolCallCount || {}),
-          } as Record<string, number>;
-
-          const blockedToolCalls: Array<{ id?: string; name?: string }> = [];
-
-          for (const toolCall of aiMessageWithTools.tool_calls as Array<{
-            id?: string;
-            name?: string;
-          }>) {
-            const toolName = toolCall.name;
-            if (!toolName || !sideEffectTools.has(toolName)) {
-              continue;
-            }
-
-            const count = runCounts[toolName] || 0;
-            if (count >= 1) {
-              blockedToolCalls.push(toolCall);
-              continue;
-            }
-
-            runCounts[toolName] = count + 1;
-          }
-
-          if (blockedToolCalls.length === 0) {
-            return {
-              runSideEffectToolCallCount: runCounts,
-            };
-          }
-
-          const blockedMessages = blockedToolCalls.map(
-            (toolCall) =>
-              new ToolMessage({
-                content: `Tool call limit exceeded. Do not call '${toolCall.name || 'this tool'}' again in this run.`,
-                tool_call_id: toolCall.id || '',
-                name: toolCall.name || 'unknown_tool',
-                status: 'error',
-              }),
-          );
-
-          return {
-            runSideEffectToolCallCount: runCounts,
-            messages: blockedMessages,
-          };
-        },
-      },
-      afterAgent: () => ({
-        runSideEffectToolCallCount: {},
-      }),
-    });
-
     const middleware = [
-      // Model call limit middleware (max 6 iterations)
+      // Keep a strict model-turn budget to cap cost in pathological loops.
       modelCallLimitMiddleware({
-        runLimit: 6,
+        runLimit: safeModelRunLimit,
         exitBehavior: 'end',
       }),
-      // Global tool call limit (per run) to prevent excessive tool usage
-      toolCallLimitMiddleware({
-        runLimit: 6,
-        exitBehavior: 'continue',
-      }),
-      // Prevent duplicate side-effect tool calls in a single run
-      sideEffectToolCallLimiter,
       // Tool execution tracking middleware
       createMiddleware({
         name: 'ToolTracking',
@@ -339,38 +245,46 @@ export class WhatsAppAgentService implements OnModuleInit {
             ? ((response as any).tool_calls as Array<{ name?: string }>)
             : [];
 
-          if (chatId && toolCalls.length > 0) {
-            const toolNames = toolCalls
-              .map((toolCall) => toolCall.name || 'unknown_tool')
-              .join(', ');
-            this.logger.debug(
-              `🤖 [${chatId}] Model turn #${modelTurn} proposed tools: ${toolNames}`,
-            );
-
-            const previousAiMessageWithTools = Array.isArray(
-              (request.state as any)?.messages,
-            )
-              ? [...(request.state as any).messages]
-                  .reverse()
-                  .find(
-                    (message: any) =>
-                      Array.isArray(message?.tool_calls) &&
-                      message.tool_calls.length > 0,
-                  )
-              : undefined;
-
-            if (previousAiMessageWithTools) {
-              const previousToolNames = (
-                previousAiMessageWithTools.tool_calls as Array<{ name?: string }>
-              )
+          if (chatId) {
+            if (toolCalls.length > 0) {
+              const toolNames = toolCalls
                 .map((toolCall) => toolCall.name || 'unknown_tool')
                 .join(', ');
+              this.logger.debug(
+                `🤖 [${chatId}] Model turn #${modelTurn} proposed tools: ${toolNames}`,
+              );
 
-              if (previousToolNames === toolNames) {
-                this.logger.warn(
-                  `⚠️ [${chatId}] Potential tool loop at model turn #${modelTurn}: repeated tools "${toolNames}"`,
-                );
+              const previousAiMessageWithTools = Array.isArray(
+                (request.state as any)?.messages,
+              )
+                ? [...(request.state as any).messages]
+                    .reverse()
+                    .find(
+                      (message: any) =>
+                        Array.isArray(message?.tool_calls) &&
+                        message.tool_calls.length > 0,
+                    )
+                : undefined;
+
+              if (previousAiMessageWithTools) {
+                const previousToolNames = (
+                  previousAiMessageWithTools.tool_calls as Array<{
+                    name?: string;
+                  }>
+                )
+                  .map((toolCall) => toolCall.name || 'unknown_tool')
+                  .join(', ');
+
+                if (previousToolNames === toolNames) {
+                  this.logger.warn(
+                    `⚠️ [${chatId}] Potential tool loop at model turn #${modelTurn}: repeated tools "${toolNames}"`,
+                  );
+                }
               }
+            } else {
+              this.logger.debug(
+                `🤖 [${chatId}] Model turn #${modelTurn} proposed no tools`,
+              );
             }
           }
 
@@ -379,6 +293,35 @@ export class WhatsAppAgentService implements OnModuleInit {
         wrapToolCall: async (request, handler) => {
           const chatId = request.runtime.context?.chatId;
           const toolName = request.toolCall.name;
+
+          // Anti-spam guard without graph-level routing side effects:
+          // block any second reply_to_message execution in the same run.
+          if (toolName === 'reply_to_message') {
+            const previousReplyCount = Array.isArray((request.state as any)?.messages)
+              ? ((request.state as any).messages as any[]).filter(
+                  (message) =>
+                    ToolMessage.isInstance(message) &&
+                    message.name === 'reply_to_message' &&
+                    message.status !== 'error',
+                ).length
+              : 0;
+
+            if (previousReplyCount >= 1) {
+              if (chatId) {
+                this.logger.warn(
+                  `⚠️ [${chatId}] Blocking duplicate reply_to_message in same run`,
+                );
+              }
+              return new ToolMessage({
+                content:
+                  "Tool call limit exceeded. Do not call 'reply_to_message' again in this run.",
+                tool_call_id: request.toolCall.id || '',
+                name: 'reply_to_message',
+                status: 'error',
+              });
+            }
+          }
+
           if (chatId) {
             this.logger.log(`🛠️ [${chatId}] Executing tool: ${toolName}`);
           }
@@ -894,6 +837,13 @@ export class WhatsAppAgentService implements OnModuleInit {
       };
     } catch (error: any) {
       this.logger.error('Agent invocation failed:', error.message);
+
+      const attemptedTools = callbackHandler.metrics.toolsUsed.map(
+        (tool) => tool.name,
+      );
+      this.logger.warn(
+        `Agent failed after ${attemptedTools.length} executed tool call(s): ${attemptedTools.join(', ') || 'none'}`,
+      );
 
       // Capture error in metrics
       callbackHandler.metrics.status = 'error';

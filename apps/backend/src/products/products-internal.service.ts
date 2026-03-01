@@ -137,6 +137,30 @@ export class ProductsInternalService {
     });
   }
 
+  async getProductByAnyId(userId: string, productId: string) {
+    return this.prisma.product.findFirst({
+      where: {
+        user_id: userId,
+        OR: [
+          { id: productId },
+          { whatsapp_product_id: productId },
+          {
+            retailer_id: {
+              equals: productId,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        retailer_id: true,
+        whatsapp_product_id: true,
+      },
+    });
+  }
+
   async searchProductsByKeywords(
     userId: string,
     keywords: string[],

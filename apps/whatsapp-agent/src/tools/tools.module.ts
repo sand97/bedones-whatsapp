@@ -1,3 +1,4 @@
+import { BackendClientModule } from '@app/backend-client/backend-client.module';
 import { CatalogModule } from '@app/catalog/catalog.module';
 import { ConnectorModule } from '@app/connector/connector.module';
 import { ImageProcessingModule } from '@app/image-processing/image-processing.module';
@@ -10,6 +11,7 @@ import { CatalogTools } from './catalog/catalog.tools';
 import { AdminGroupMessagingService } from './chat/admin-group-messaging.service';
 import { ChatTools } from './chat/chat.tools';
 import { CommunicationTools } from './communication/communication.tools';
+import { CommunicationTestController } from './communication/communication-test.controller';
 import { ProductSendService } from './communication/product-send.service';
 import { ContactResolverService } from './contact/contact-resolver.service';
 import { GroupTools } from './group/group.tools';
@@ -20,6 +22,7 @@ import { MessagesTools } from './messages/messages.tools';
 
 @Module({
   imports: [
+    BackendClientModule,
     PrismaModule,
     ConnectorModule,
     CatalogModule, // Provides semantic search and sync
@@ -40,6 +43,7 @@ import { MessagesTools } from './messages/messages.tools';
     IntentTools,
     MessagesTools,
   ],
+  controllers: [CommunicationTestController],
   exports: [
     CommunicationTools,
     ProductSendService,

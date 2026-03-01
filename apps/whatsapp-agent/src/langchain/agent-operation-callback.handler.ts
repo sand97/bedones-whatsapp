@@ -97,9 +97,13 @@ export class AgentOperationCallbackHandler extends BaseCallbackHandler {
   async handleLLMEnd(output: LLMResult, _runId: string): Promise<void> {
     const tokenUsage = output.llmOutput?.tokenUsage;
     if (tokenUsage) {
-      this.metrics.totalTokens = tokenUsage.totalTokens;
-      this.metrics.promptTokens = tokenUsage.promptTokens;
-      this.metrics.completionTokens = tokenUsage.completionTokens;
+      this.metrics.totalTokens =
+        (this.metrics.totalTokens || 0) + (tokenUsage.totalTokens || 0);
+      this.metrics.promptTokens =
+        (this.metrics.promptTokens || 0) + (tokenUsage.promptTokens || 0);
+      this.metrics.completionTokens =
+        (this.metrics.completionTokens || 0) +
+        (tokenUsage.completionTokens || 0);
     }
   }
 
