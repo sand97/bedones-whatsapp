@@ -34,6 +34,9 @@
 
     // ========== HELPER FUNCTIONS ==========
 
+    // Version du cache - à incrémenter lors de changements dans la logique d'upload/traitement d'image
+    const CACHE_VERSION = 4; // v4: redimensionnement 480x480 (meilleure qualité que 330)
+
     /**
      * Normalise une URL WhatsApp en extrayant la partie stable (avant les query params)
      * Exemple: https://media.whatsapp.net/v/t45.5328-4/image.jpg?stp=...
@@ -47,7 +50,7 @@
 
     /**
      * Récupère les données d'image en cache depuis localStorage
-     * Cache structure: { productId: { normalized_url, messageId, uploadedAt, mediaData } }
+     * Cache structure: { productId: { normalized_url, messageId, uploadedAt, mediaData, version } }
      */
     function getCachedImageData(productId, normalizedUrl) {
       try {
@@ -56,6 +59,14 @@
         const cached = cache[productId];
 
         if (!cached) return null;
+
+        // Vérifier la version du cache
+        if (!cached.version || cached.version !== CACHE_VERSION) {
+          console.log(
+            `[cache] Version mismatch for product ${productId} (expected ${CACHE_VERSION}, got ${cached.version || 1}), cache invalidated`,
+          );
+          return null;
+        }
 
         // Vérifier que le normalized_url correspond
         if (cached.normalized_url !== normalizedUrl) {
@@ -99,10 +110,11 @@
           messageId: messageId,
           uploadedAt: Date.now(),
           mediaData: mediaData,
+          version: CACHE_VERSION,
         };
 
         localStorage.setItem(cacheKey, JSON.stringify(cache));
-        console.log(`[cache] Saved for product ${productId}`);
+        console.log(`[cache] Saved for product ${productId} with version ${CACHE_VERSION}`);
       } catch (error) {
         console.warn('[cache] Error saving cache:', error);
       }
@@ -326,11 +338,16 @@
         // Télécharger l'image
         console.log(`[upload] Downloading image for product ${productId}`);
         const download = await WPP.util.downloadImage(imageUrl);
-        const dataUrl = download.data;
+        let dataUrl = download.data;
 
         if (!dataUrl) {
           throw new Error(`Failed to download image for product ${productId}`);
         }
+
+        // Redimensionner l'image principale si elle dépasse 480x480 (meilleure qualité que 330)
+        console.log(`[upload] Checking image dimensions for product ${productId}`);
+        dataUrl = await generateThumbnail(dataUrl, 480, 480);
+        console.log(`[upload] Image resized to max 480x480 for product ${productId}`);
 
         // Générer la thumbnail
         console.log(`[upload] Generating thumbnail for product ${productId}`);

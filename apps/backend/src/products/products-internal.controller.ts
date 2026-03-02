@@ -101,7 +101,7 @@ export class ProductsInternalController {
   @ApiOperation({
     summary: 'Trouver un produit par identifiant interne/WhatsApp/retailer',
     description:
-      "Endpoint interne backend, appelé par le whatsapp-agent pour résoudre un identifiant produit vers le produit métier et son whatsapp_product_id.",
+      'Endpoint interne backend, appelé par le whatsapp-agent pour résoudre un identifiant produit vers le produit métier et son whatsapp_product_id.',
   })
   @ApiResponse({
     status: 200,

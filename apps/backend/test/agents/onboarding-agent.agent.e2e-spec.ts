@@ -66,7 +66,8 @@ jest.mock('@langchain/xai', () => ({
     finalResponse: string;
 
     constructor() {
-      this.toolCalls = ((globalThis as any).__ONBOARDING_MODEL_STATE__?.toolCalls || []) as FakeToolCall[][];
+      this.toolCalls = ((globalThis as any).__ONBOARDING_MODEL_STATE__
+        ?.toolCalls || []) as FakeToolCall[][];
       this.finalResponse =
         ((globalThis as any).__ONBOARDING_MODEL_STATE__?.finalResponse as
           | string
@@ -122,7 +123,9 @@ jest.mock('langchain', () => {
 
     return {
       invoke: async (input: any, config?: any) => {
-        const messages = Array.isArray(input?.messages) ? [...input.messages] : [];
+        const messages = Array.isArray(input?.messages)
+          ? [...input.messages]
+          : [];
         const runtimeContext = config?.context || {};
         const recursionLimit = Number(config?.recursionLimit || 25);
 
@@ -166,7 +169,9 @@ jest.mock('langchain', () => {
                 context: currentRequest.runtime.context,
               });
 
-            for (const currentMiddleware of [...wrapToolMiddlewares].reverse()) {
+            for (const currentMiddleware of [
+              ...wrapToolMiddlewares,
+            ].reverse()) {
               const previous = handler;
               handler = (currentRequest: any) =>
                 currentMiddleware.wrapToolCall(currentRequest, previous);
@@ -198,7 +203,8 @@ jest.mock('langchain', () => {
                 score: 30,
                 context: '',
                 needs: [],
-                question: 'Pouvez-vous donner plus de détails sur votre activité ?',
+                question:
+                  'Pouvez-vous donner plus de détails sur votre activité ?',
               });
 
         messages.push({ role: 'assistant', content: finalResponse });

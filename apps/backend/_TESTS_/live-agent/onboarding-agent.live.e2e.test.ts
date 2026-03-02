@@ -186,7 +186,7 @@ const scenarios: Scenario[] = [
     prompt: [
       'Mode test QA.',
       'Tu dois appeler exactement une seule fois le tool save_business_context.',
-      "Ne dois pas appeler send_whatsapp_message dans ce scénario.",
+      'Ne dois pas appeler send_whatsapp_message dans ce scénario.',
       "Contexte à sauvegarder: 'Livraison locale, paiement mobile money'.",
       'Après le tool, termine la réponse.',
     ].join('\n'),
@@ -198,7 +198,7 @@ const scenarios: Scenario[] = [
     prompt: [
       'Mode test QA.',
       'Tu dois appeler exactement une fois save_business_context.',
-      "Ensuite tu dois appeler exactement une fois send_whatsapp_message.",
+      'Ensuite tu dois appeler exactement une fois send_whatsapp_message.',
       "Contexte: 'Stock principal à Douala, livraison sous 48h'.",
       "Message WhatsApp: 'Merci, j’ai bien enregistré vos infos.'",
       'Après ces deux tools, termine la réponse.',

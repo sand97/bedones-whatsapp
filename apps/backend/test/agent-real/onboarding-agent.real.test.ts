@@ -10,11 +10,14 @@ import { OnboardingService } from '../../src/onboarding/onboarding.service';
 import { DbToolsService, WaJsToolsService } from '../../src/onboarding/tools';
 
 const state = vi.hoisted(() => ({
-  toolCalls: [] as Array<Array<{ id: string; name: string; args: Record<string, any> }>>,
+  toolCalls: [] as Array<
+    Array<{ id: string; name: string; args: Record<string, any> }>
+  >,
 }));
 
 vi.mock('@langchain/xai', async () => {
-  const langchain = await vi.importActual<typeof import('langchain')>('langchain');
+  const langchain =
+    await vi.importActual<typeof import('langchain')>('langchain');
 
   class ChatXAI extends langchain.FakeToolCallingModel {
     constructor() {
@@ -26,7 +29,8 @@ vi.mock('@langchain/xai', async () => {
 });
 
 vi.mock('@langchain/google-genai', async () => {
-  const langchain = await vi.importActual<typeof import('langchain')>('langchain');
+  const langchain =
+    await vi.importActual<typeof import('langchain')>('langchain');
 
   class ChatGoogleGenerativeAI extends langchain.FakeToolCallingModel {
     constructor() {
@@ -38,8 +42,12 @@ vi.mock('@langchain/google-genai', async () => {
 });
 
 function createAgentTools() {
-  const dbHandler = vi.fn().mockResolvedValue(JSON.stringify({ success: true }));
-  const waHandler = vi.fn().mockResolvedValue(JSON.stringify({ success: true }));
+  const dbHandler = vi
+    .fn()
+    .mockResolvedValue(JSON.stringify({ success: true }));
+  const waHandler = vi
+    .fn()
+    .mockResolvedValue(JSON.stringify({ success: true }));
 
   const dbTool = tool(dbHandler, {
     name: 'save_business_context',
@@ -61,7 +69,9 @@ function createAgentTools() {
 }
 
 async function createService(
-  toolCalls: Array<Array<{ id: string; name: string; args: Record<string, any> }>>,
+  toolCalls: Array<
+    Array<{ id: string; name: string; args: Record<string, any> }>
+  >,
 ) {
   state.toolCalls = toolCalls;
 
@@ -160,16 +170,24 @@ describe('Onboarding agent integration (real LangChain runtime)', () => {
       [],
     ]);
 
-    const result = await (service as any).executeToolsLoop('user-1', 'prompt', undefined, {
-      id: 'user-1',
-      phoneNumber: '237600000000',
-      status: 'PENDING',
-    });
+    const result = await (service as any).executeToolsLoop(
+      'user-1',
+      'prompt',
+      undefined,
+      {
+        id: 'user-1',
+        phoneNumber: '237600000000',
+        status: 'PENDING',
+      },
+    );
 
     expect(typeof result).toBe('string');
     expect(handlers.dbHandler).toHaveBeenCalledTimes(1);
     expect(handlers.waHandler).toHaveBeenCalledTimes(0);
-    expect(onboardingGateway.emitToolExecuting).toHaveBeenCalledWith('user-1', 'save_business_context');
+    expect(onboardingGateway.emitToolExecuting).toHaveBeenCalledWith(
+      'user-1',
+      'save_business_context',
+    );
   });
 
   it('executes multiple tools across turns', async () => {

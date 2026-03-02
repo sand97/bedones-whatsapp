@@ -203,7 +203,9 @@ export class ProductsInternalService {
       },
     });
 
-    const byProductId = new Map(products.map((product) => [product.id, product]));
+    const byProductId = new Map(
+      products.map((product) => [product.id, product]),
+    );
     const byWhatsappProductId = new Map(
       products
         .filter((product) => product.whatsapp_product_id)

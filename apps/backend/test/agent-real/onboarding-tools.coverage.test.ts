@@ -94,11 +94,14 @@ function generateFromSchema(schema: ZodTypeAny, keyPath = ''): unknown {
   return null;
 }
 
-function generateToolInput(toolName: string, schema: ZodTypeAny): Record<string, unknown> {
+function generateToolInput(
+  toolName: string,
+  schema: ZodTypeAny,
+): Record<string, unknown> {
   const generated = generateFromSchema(schema);
-  const payload = (generated && typeof generated === 'object'
-    ? generated
-    : {}) as Record<string, unknown>;
+  const payload = (
+    generated && typeof generated === 'object' ? generated : {}
+  ) as Record<string, unknown>;
 
   if (toolName === 'addAuthorizedGroup') {
     payload.whatsappGroupId = 'group-test@g.us';
@@ -106,7 +109,10 @@ function generateToolInput(toolName: string, schema: ZodTypeAny): Record<string,
     payload.usage = 'Support client';
   }
 
-  if (toolName === 'updateAuthorizedGroup' || toolName === 'deleteAuthorizedGroup') {
+  if (
+    toolName === 'updateAuthorizedGroup' ||
+    toolName === 'deleteAuthorizedGroup'
+  ) {
     payload.groupId = 'group-db-1';
   }
 
