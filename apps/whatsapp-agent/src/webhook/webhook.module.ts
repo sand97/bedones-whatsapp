@@ -6,6 +6,7 @@ import { ConnectorModule } from '../connector/connector.module';
 import { ImageProcessingModule } from '../image-processing/image-processing.module';
 import { LangChainModule } from '../langchain/langchain.module';
 import { MediaModule } from '../media/media.module';
+import { MessageMetadataModule } from '../message-metadata/message-metadata.module';
 import { ToolsModule } from '../tools/tools.module';
 
 import { AudioMessageHandlerService } from './handlers/audio-message-handler.service';
@@ -21,6 +22,7 @@ import { WebhookController } from './webhook.controller';
     CatalogModule,
     ConnectorModule,
     MediaModule,
+    MessageMetadataModule,
     ImageProcessingModule,
     ToolsModule,
   ],

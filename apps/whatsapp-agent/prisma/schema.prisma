@@ -38,6 +38,13 @@ enum IntentionStatus {
   OBSOLETE     // Devenue obsolète (contexte a changé)
 }
 
+enum MessageMetadataType {
+  AUDIO
+  IMAGE
+  PRODUCT
+  QUOTED
+}
+
 // ============================================
 // MODELS
 // ============================================
@@ -174,3 +181,19 @@ model CatalogSyncMetadata {
 
 // Note: La table `checkpoints` sera créée automatiquement par PostgresSaver de LangGraph
 // pour stocker l'état des conversations (historique, contexte agent, etc.)
+
+// Metadata for messages (audio transcripts, image descriptions, etc.)
+// Moved from backend as it's specific to the WhatsApp agent instance
+model MessageMetadata {
+  id        String              @id @default(cuid())
+  messageId String
+  type      MessageMetadataType
+  metadata  Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([messageId, type], name: "messageId_type")
+  @@index([messageId])
+  @@map("message_metadata")
+}

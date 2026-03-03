@@ -114,7 +114,9 @@
         };
 
         localStorage.setItem(cacheKey, JSON.stringify(cache));
-        console.log(`[cache] Saved for product ${productId} with version ${CACHE_VERSION}`);
+        console.log(
+          `[cache] Saved for product ${productId} with version ${CACHE_VERSION}`,
+        );
       } catch (error) {
         console.warn('[cache] Error saving cache:', error);
       }
@@ -345,9 +347,13 @@
         }
 
         // Redimensionner l'image principale si elle dépasse 480x480 (meilleure qualité que 330)
-        console.log(`[upload] Checking image dimensions for product ${productId}`);
+        console.log(
+          `[upload] Checking image dimensions for product ${productId}`,
+        );
         dataUrl = await generateThumbnail(dataUrl, 480, 480);
-        console.log(`[upload] Image resized to max 480x480 for product ${productId}`);
+        console.log(
+          `[upload] Image resized to max 480x480 for product ${productId}`,
+        );
 
         // Générer la thumbnail
         console.log(`[upload] Generating thumbnail for product ${productId}`);

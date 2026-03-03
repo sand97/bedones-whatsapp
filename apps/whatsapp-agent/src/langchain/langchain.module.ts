@@ -1,5 +1,6 @@
 import { BackendClientModule } from '@app/backend-client/backend-client.module';
 import { ConnectorModule } from '@app/connector/connector.module';
+import { MessageMetadataModule } from '@app/message-metadata/message-metadata.module';
 import { PageScriptModule } from '@app/page-scripts/page-script.module';
 import { SecurityModule } from '@app/security/security.module';
 import { ToolsModule } from '@app/tools/tools.module';
@@ -13,6 +14,7 @@ import { WhatsAppAgentService } from './whatsapp-agent.service';
   imports: [
     ConfigModule,
     ConnectorModule,
+    MessageMetadataModule,
     PageScriptModule,
     BackendClientModule,
     SecurityModule,

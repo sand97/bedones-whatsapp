@@ -1,6 +1,6 @@
-import { BackendClientService } from '@app/backend-client/backend-client.service';
 import { WhatsAppAgentService } from '@app/langchain/whatsapp-agent.service';
 import { AudioTranscriptionService } from '@app/media/audio-transcription.service';
+import { MessageMetadataService } from '@app/message-metadata/message-metadata.service';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { stripAndSanitizeWaId } from '../utils/wa-id.utils';
@@ -10,7 +10,7 @@ export class AudioMessageHandlerService {
   private readonly logger = new Logger(AudioMessageHandlerService.name);
 
   constructor(
-    private readonly backendClient: BackendClientService,
+    private readonly messageMetadata: MessageMetadataService,
     private readonly audioTranscription: AudioTranscriptionService,
     private readonly agentService: WhatsAppAgentService,
   ) {}
@@ -29,7 +29,7 @@ export class AudioMessageHandlerService {
       return;
     }
 
-    const upload = await this.backendClient.uploadMedia({
+    const upload = await this.messageMetadata.uploadMedia({
       messageId: message?.id?._serialized || message?.id || 'unknown',
       chatId,
       userId,
@@ -48,7 +48,7 @@ export class AudioMessageHandlerService {
     });
 
     if (transcription?.transcript) {
-      await this.backendClient.upsertMessageMetadata({
+      await this.messageMetadata.upsertMetadata({
         messageId: message?.id?._serialized || message?.id || 'unknown',
         type: 'AUDIO',
         metadata: {
@@ -64,7 +64,7 @@ export class AudioMessageHandlerService {
 
       if (upload.objectKey) {
         try {
-          await this.backendClient.deleteMedia({ objectKey: upload.objectKey });
+          await this.messageMetadata.deleteMedia(upload.objectKey);
         } catch (error: any) {
           this.logger.warn(
             `Unable to delete media ${upload.objectKey}: ${error.message}`,

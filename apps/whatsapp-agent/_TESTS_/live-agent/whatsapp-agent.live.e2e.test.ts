@@ -270,6 +270,9 @@ async function createService(scenario: Scenario, modelConfig: LiveModelConfig) {
       checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
     } as unknown as RateLimitService,
     backendClient as unknown as BackendClientService,
+    {
+      getByMessageIds: vi.fn().mockResolvedValue({}),
+    } as any,
     {} as ConnectorClientService,
     {} as PageScriptService,
     new SystemPromptService(),

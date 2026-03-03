@@ -37,7 +37,8 @@ export class ChatTools {
       this.createSendScheduledCallTool(),
       this.createEditMessageTool(),
       this.createMarkIsUnreadTool(),
-      this.createMarkIsReadTool(),
+      // DISABLED: WhatsApp automatically marks as read when sending a message
+      // this.createMarkIsReadTool(),
     ];
 
     return instrumentTools(this.logger, ChatTools.name, tools);

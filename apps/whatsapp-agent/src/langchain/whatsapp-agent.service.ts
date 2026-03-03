@@ -4,6 +4,7 @@ import {
 } from '@app/backend-client/backend-api.types';
 import { BackendClientService } from '@app/backend-client/backend-client.service';
 import { ConnectorClientService } from '@app/connector/connector-client.service';
+import { MessageMetadataService } from '@app/message-metadata/message-metadata.service';
 import { PageScriptService } from '@app/page-scripts/page-script.service';
 import { RateLimitService } from '@app/security/rate-limit.service';
 import { SanitizationService } from '@app/security/sanitization.service';
@@ -61,16 +62,31 @@ interface ContactLabel {
 
 interface HistoryMessage {
   id: string;
-  body: string;
+  body?: string;
   from: string;
   fromMe: boolean;
   timestamp: number;
   type: string;
   hasMedia: boolean;
+  metadata?: any[];
+  quotedStanzaID?: string;
   quotedMsg?: {
-    id: string;
-    body: string;
+    id?: string;
+    body?: string;
+    type?: string;
+    fromMe?: boolean;
+    from?: string;
+    hasMedia?: boolean;
+    metadata?: any[];
+    // Product message fields for quoted messages
+    productId?: string;
+    title?: string;
+    description?: string;
   };
+  // Product message fields
+  productId?: string;
+  title?: string;
+  description?: string;
 }
 
 interface MessageHistory {
@@ -122,6 +138,7 @@ export class WhatsAppAgentService implements OnModuleInit {
     private readonly sanitizationService: SanitizationService,
     private readonly rateLimitService: RateLimitService,
     private readonly backendClient: BackendClientService,
+    private readonly messageMetadata: MessageMetadataService,
     private readonly connectorClient: ConnectorClientService,
     private readonly scriptService: PageScriptService,
     private readonly systemPromptService: SystemPromptService,
@@ -488,12 +505,12 @@ export class WhatsAppAgentService implements OnModuleInit {
       }
 
       // Prefer transcript if present (audio), otherwise body
-      const userMessage =
+      const rawUserMessage =
         message?.body ||
         (message as any)?.transcript ||
         (message as any)?.metadata?.transcript ||
         '';
-      const messageId = message?.id?._serialized || message?.id || '';
+      const messageId = this.extractMessageId(message) || '';
       // chatId is the conversation ID (contact or group)
       // contactId is the real contact ID (not @lid), added by connector
       // For individual chats: "33765538022@c.us"
@@ -513,37 +530,89 @@ export class WhatsAppAgentService implements OnModuleInit {
         this.logger.warn(`⚠️ [AGENT] No messageHistory in received message!`);
       }
 
-      // Fetch metadata (e.g., transcripts) for history + current message
+      // Fetch metadata (e.g., transcripts, image match info) for history + current + quoted
       const historyIds =
-        message.messageHistory?.messages?.map((m) => m.id).filter(Boolean) ||
-        [];
-      const idsToFetch = [...historyIds, messageId].filter(Boolean);
+        message.messageHistory?.messages
+          ?.map((m) => this.extractMessageId(m))
+          .filter(Boolean) || [];
+      const historyQuotedIds =
+        message.messageHistory?.messages
+          ?.map((m) => {
+            const quoted = this.extractQuotedMessage(m);
+            return this.extractMessageId(quoted) || this.extractQuotedStanzaId(m);
+          })
+          .filter(Boolean) || [];
+      const currentQuoted = this.extractQuotedMessage(message as any);
+      const currentQuotedId =
+        this.extractMessageId(currentQuoted) ||
+        this.extractQuotedStanzaId(message as any) ||
+        '';
+
+      const idsToFetch = Array.from(
+        new Set([...historyIds, ...historyQuotedIds, messageId, currentQuotedId]),
+      ).filter((id): id is string => Boolean(id));
       let metadataMap: Record<string, any[]> | undefined;
 
       if (idsToFetch.length > 0) {
         try {
-          const metadataRes = await this.backendClient.fetchMetadataList({
-            messageIds: idsToFetch,
-          });
-          metadataMap = metadataRes.data;
+          metadataMap = await this.messageMetadata.getByMessageIds(idsToFetch);
           (message as any).metadataMap = metadataMap;
 
-          // Attach metadata to messageHistory messages for easier use later
+          // Attach metadata to messageHistory messages and quoted messages for easier use later
           message.messageHistory?.messages?.forEach((m) => {
-            if (m.id && metadataMap?.[m.id]) {
-              (m as any).metadata = metadataMap[m.id];
+            const mid = this.extractMessageId(m);
+            if (mid && metadataMap?.[mid]) {
+              (m as any).metadata = metadataMap[mid];
+            }
+
+            const quoted = this.extractQuotedMessage(m);
+            const quotedId =
+              this.extractMessageId(quoted) || this.extractQuotedStanzaId(m);
+            if (quoted && quotedId && metadataMap?.[quotedId]) {
+              (quoted as any).metadata = metadataMap[quotedId];
+              if (!quoted.id) {
+                quoted.id = quotedId;
+              }
+              if (!(m as any).quotedMsg) {
+                (m as any).quotedMsg = quoted;
+              }
             }
           });
+
+          if (messageId && metadataMap?.[messageId]) {
+            (message as any).metadata = metadataMap[messageId];
+          }
+
+          if (currentQuoted && currentQuotedId) {
+            if (metadataMap?.[currentQuotedId]) {
+              currentQuoted.metadata = metadataMap[currentQuotedId];
+            }
+            if (!currentQuoted.id) {
+              currentQuoted.id = currentQuotedId;
+            }
+            if (!(message as any).quotedMsg) {
+              (message as any).quotedMsg = currentQuoted;
+            }
+          }
         } catch (error: any) {
           this.logger.warn(
-            `Failed to fetch metadata list: ${error.message || error}`,
+            `Failed to fetch local metadata list: ${error.message || error}`,
           );
         }
       }
 
-      const sanitized = this.sanitizationService.sanitizeUserInput(userMessage);
+      const messageForAgentRaw = this.attachMessageIdToContext(
+        message as any,
+        this.formatMessageForContext(message as any),
+      );
+      const sanitizedForPolicy =
+        this.sanitizationService.sanitizeUserInput(rawUserMessage);
+      const sanitizedForAgent = this.sanitizationService.sanitizeUserInput(
+        messageForAgentRaw || rawUserMessage || '[Message sans texte]',
+      );
 
-      const validation = this.sanitizationService.validateInput(sanitized);
+      const validation =
+        this.sanitizationService.validateInput(sanitizedForAgent);
       if (!validation.valid) {
         this.logger.warn(`Invalid input from ${chatId}: ${validation.reason}`);
         return;
@@ -556,7 +625,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       }
 
       this.logger.log(
-        `💬 Processing message from ${chatId}: ${sanitized.substring(0, 50)}...`,
+        `💬 Processing message from ${chatId}: ${sanitizedForAgent.substring(0, 50)}...`,
       );
 
       // Check with backend first using userId (connected WhatsApp account ID) instead of chatId
@@ -571,7 +640,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       const canProcess = await this.checkCanProcess(
         userId,
         chatId,
-        sanitized,
+        sanitizedForPolicy || sanitizedForAgent,
         message.contactLabels,
       );
 
@@ -610,6 +679,7 @@ export class WhatsAppAgentService implements OnModuleInit {
         canProcess.agentContext || '',
         groupUsage,
         canProcess.authorizedGroups,
+        message.contactLabels,
       );
 
       // Build conversation history from message history
@@ -623,11 +693,11 @@ export class WhatsAppAgentService implements OnModuleInit {
       );
 
       // Log conversation before sending to agent
-      this.logConversation(conversationHistory, sanitized);
+      this.logConversation(conversationHistory, sanitizedForAgent);
 
       const { metrics } = await this.invokeAgent(
         chatId,
-        sanitized,
+        sanitizedForAgent,
         systemPrompt,
         conversationHistory,
         {
@@ -684,15 +754,277 @@ export class WhatsAppAgentService implements OnModuleInit {
     // Log history
     conversationHistory.forEach((msg) => {
       const sender = msg.role === 'assistant' ? 'ME' : 'CONTACT';
-      const preview = msg.content.substring(0, 100);
+
+      // Check if content looks like base64 (starts with /9j/ which is JPEG base64)
+      const isBase64 =
+        msg.content.startsWith('/9j/') || msg.content.startsWith('data:image');
+
+      let preview: string;
+      if (isBase64) {
+        preview = '[Image base64]';
+      } else {
+        preview = msg.content.substring(0, 100);
+      }
+
       this.logger.log(
-        `${sender}: ${preview}${msg.content.length > 100 ? '...' : ''}`,
+        `${sender}: ${preview}${!isBase64 && msg.content.length > 100 ? '...' : ''}`,
       );
     });
 
     // Log current message
     this.logger.log(`CONTACT: ${currentMessage || '[Message sans texte]'}`);
     this.logger.log('======================\n');
+  }
+
+  private extractMessageId(messageLike: any): string | undefined {
+    if (!messageLike) {
+      return undefined;
+    }
+
+    const id = messageLike?.id?._serialized || messageLike?.id;
+    if (!id) {
+      return undefined;
+    }
+
+    return String(id);
+  }
+
+  private extractQuotedMessage(messageLike: any): any | undefined {
+    if (!messageLike) {
+      return undefined;
+    }
+
+    return messageLike.quotedMsg;
+  }
+
+  private extractQuotedStanzaId(messageLike: any): string | undefined {
+    if (!messageLike) {
+      return undefined;
+    }
+
+    const stanzaId = messageLike.quotedStanzaID;
+
+    if (!stanzaId) {
+      return undefined;
+    }
+
+    return String(stanzaId);
+  }
+
+  private normalizeMessageBody(body: unknown): string {
+    if (typeof body !== 'string') {
+      return '';
+    }
+
+    const trimmed = body.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (this.looksLikeBase64(trimmed)) {
+      return '';
+    }
+
+    return trimmed;
+  }
+
+  private looksLikeBase64(value: string): boolean {
+    if (!value) {
+      return false;
+    }
+
+    if (value.startsWith('/9j/') || value.startsWith('data:image')) {
+      return true;
+    }
+
+    const compact = value.replace(/\s+/g, '');
+    if (compact.length < 512) {
+      return false;
+    }
+
+    return /^[A-Za-z0-9+/=]+$/.test(compact);
+  }
+
+  private truncateText(value: string, maxLength: number): string {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return `${value.slice(0, maxLength)}...`;
+  }
+
+  private formatImageFromMetadata(records?: any[]): string {
+    const imageMetaRecord = records?.find((r) => r.type === 'IMAGE');
+    const imageMeta = imageMetaRecord?.metadata;
+
+    if (!imageMeta) {
+      return '[Image]';
+    }
+
+    const matchedProduct = imageMeta?.matchedProducts?.[0];
+    if (matchedProduct?.id) {
+      const productName = matchedProduct.name || 'Produit';
+      return `[${productName}] (${matchedProduct.id})`;
+    }
+
+    if (typeof imageMeta?.geminiDescription === 'string') {
+      const geminiDescription = imageMeta.geminiDescription.trim();
+      if (geminiDescription) {
+        return `[Image] ${this.truncateText(geminiDescription, 180)}`;
+      }
+    }
+
+    if (typeof imageMeta?.ocrText === 'string') {
+      const ocrText = imageMeta.ocrText.trim();
+      if (ocrText) {
+        return `[Image OCR] ${this.truncateText(ocrText, 140)}`;
+      }
+    }
+
+    return '[Image]';
+  }
+
+  private formatQuotedMessageForContext(quotedMessage: any): string {
+    const records = Array.isArray(quotedMessage?.metadata)
+      ? quotedMessage.metadata
+      : [];
+    const messageType = String(
+      quotedMessage?.type || quotedMessage?.kind || '',
+    ).toLowerCase();
+    const lines: string[] = [];
+
+    if (
+      (messageType === 'product' || quotedMessage?.kind === 'product') &&
+      quotedMessage?.productId
+    ) {
+      const productTitle = quotedMessage?.title || 'Produit';
+      lines.push(`#PRODUCT: ${productTitle} (${quotedMessage.productId})`);
+      return lines.join('\n');
+    }
+
+    const audioMeta = records.find((r) => r.type === 'AUDIO');
+    if (audioMeta || messageType === 'audio' || messageType === 'ptt') {
+      const transcript =
+        audioMeta?.metadata?.transcript ||
+        quotedMessage?.transcript ||
+        quotedMessage?.metadata?.transcript ||
+        '';
+      const audioParts: string[] = [];
+
+      if (typeof transcript === 'string' && transcript.trim()) {
+        audioParts.push(`transcript="${this.truncateText(transcript.trim(), 220)}"`);
+      }
+      if (typeof audioMeta?.metadata?.language === 'string') {
+        audioParts.push(`language=${audioMeta.metadata.language}`);
+      }
+      if (typeof audioMeta?.metadata?.confidence === 'number') {
+        audioParts.push(`confidence=${audioMeta.metadata.confidence}`);
+      }
+
+      lines.push(`#AUDIO_METADATA: ${audioParts.join(' | ') || 'available'}`);
+      return lines.join('\n');
+    }
+
+    const imageMetaRecord = records.find((r) => r.type === 'IMAGE');
+    if (imageMetaRecord || messageType === 'image') {
+      const imageMeta = imageMetaRecord?.metadata || {};
+      const imageParts: string[] = [];
+      const matchedProduct = imageMeta?.matchedProducts?.[0];
+
+      if (matchedProduct?.id) {
+        imageParts.push(
+          `product=${matchedProduct.name || 'Produit'} (${matchedProduct.id})`,
+        );
+      }
+      if (typeof imageMeta?.searchMethod === 'string' && imageMeta.searchMethod) {
+        imageParts.push(`search_method=${imageMeta.searchMethod}`);
+      }
+      if (typeof imageMeta?.confidence === 'number') {
+        imageParts.push(`confidence=${(imageMeta.confidence * 100).toFixed(1)}%`);
+      }
+      if (typeof imageMeta?.ocrText === 'string' && imageMeta.ocrText.trim()) {
+        imageParts.push(
+          `ocr="${this.truncateText(imageMeta.ocrText.trim(), 120)}"`,
+        );
+      }
+      if (
+        typeof imageMeta?.geminiDescription === 'string' &&
+        imageMeta.geminiDescription.trim()
+      ) {
+        imageParts.push(
+          `description="${this.truncateText(imageMeta.geminiDescription.trim(), 160)}"`,
+        );
+      }
+
+      lines.push(`#IMAGE_METADATA: ${imageParts.join(' | ') || 'available'}`);
+      return lines.join('\n');
+    }
+
+    const normalizedBody = this.normalizeMessageBody(quotedMessage?.body);
+    lines.push(`#BODY: ${normalizedBody || '[Message cité]'}`);
+    return lines.join('\n');
+  }
+
+  private attachMessageIdToContext(messageLike: any, content: string): string {
+    const messageId = this.extractMessageId(messageLike);
+    if (!messageId) {
+      return content;
+    }
+
+    return `Message ID: ${messageId}\n${content}`;
+  }
+
+  private formatMessageForContext(
+    messageLike: any,
+    includeQuoted: boolean = true,
+  ): string {
+    if (!messageLike) {
+      return '[Message sans texte]';
+    }
+
+    const records = Array.isArray(messageLike.metadata)
+      ? messageLike.metadata
+      : [];
+    const audioMeta = records.find((r) => r.type === 'AUDIO');
+    const transcript =
+      audioMeta?.metadata?.transcript ||
+      messageLike?.transcript ||
+      messageLike?.metadata?.transcript ||
+      '';
+
+    const messageType = String(
+      messageLike?.type || messageLike?.kind || '',
+    ).toLowerCase();
+
+    let content = '';
+
+    if (
+      (messageType === 'product' || messageLike?.kind === 'product') &&
+      messageLike?.productId
+    ) {
+      const productTitle = messageLike.title || 'Produit';
+      content = `[${productTitle}] (${messageLike.productId})`;
+    } else if (typeof transcript === 'string' && transcript.trim()) {
+      content = transcript.trim();
+    } else {
+      const normalizedBody = this.normalizeMessageBody(messageLike?.body);
+      if (normalizedBody) {
+        content = normalizedBody;
+      } else if (messageType === 'image' || records.some((r) => r.type === 'IMAGE')) {
+        content = this.formatImageFromMetadata(records);
+      } else if (messageType === 'ptt' || messageType === 'audio') {
+        content = '[Message vocal]';
+      } else {
+        content = '[Message sans texte]';
+      }
+    }
+
+    const quotedMsg = this.extractQuotedMessage(messageLike);
+    if (includeQuoted && quotedMsg) {
+      const quotedContent = this.formatQuotedMessageForContext(quotedMsg);
+      return `Quoted Message:\n${quotedContent}\nUser Message:\n${content}`;
+    }
+
+    return content;
   }
 
   /**
@@ -729,13 +1061,14 @@ export class WhatsAppAgentService implements OnModuleInit {
         return true;
       })
       .map((msg) => {
-        const records = (msg as any).metadata as any[];
-        const audioMeta = records?.find((r) => r.type === 'AUDIO');
-        const transcript = audioMeta?.metadata?.transcript;
+        const content = this.attachMessageIdToContext(
+          msg,
+          this.formatMessageForContext(msg),
+        );
 
         return {
           role: msg.fromMe ? 'assistant' : 'user',
-          content: transcript || msg.body || '[Message sans texte]',
+          content,
         };
       });
 

@@ -60,20 +60,67 @@ export class MessageMetadataService {
       return {};
     }
 
+    const normalizedIds = Array.from(
+      new Set(
+        messageIds
+          .map((id) => String(id || '').trim())
+          .filter((id) => id.length > 0),
+      ),
+    );
+
+    if (normalizedIds.length === 0) {
+      return {};
+    }
+
     const records = await this.prisma.messageMetadata.findMany({
       where: {
-        messageId: { in: messageIds },
+        messageId: { in: normalizedIds },
         ...(type ? { type } : {}),
       },
     });
 
-    return records.reduce<Record<string, any[]>>((acc, record) => {
-      if (!acc[record.messageId]) {
-        acc[record.messageId] = [];
+    const result: Record<string, any[]> = {};
+    const addRecord = (key: string, record: any) => {
+      if (!result[key]) {
+        result[key] = [];
       }
-      acc[record.messageId].push(record);
-      return acc;
-    }, {});
+      if (!result[key].some((existing) => existing.id === record.id)) {
+        result[key].push(record);
+      }
+    };
+
+    records.forEach((record) => {
+      addRecord(record.messageId, record);
+    });
+
+    // Some quoted payloads only provide stanza IDs (without the full serialized key).
+    // For those IDs, resolve metadata by suffix match on `_stanzaId`.
+    const unresolvedIds = normalizedIds.filter((id) => !result[id]);
+    const stanzaLikeIds = unresolvedIds.filter(
+      (id) => !id.includes('_') && !id.includes('@'),
+    );
+
+    if (stanzaLikeIds.length > 0) {
+      const suffixRecords = await this.prisma.messageMetadata.findMany({
+        where: {
+          OR: stanzaLikeIds.map((id) => ({
+            messageId: { endsWith: `_${id}` },
+          })),
+          ...(type ? { type } : {}),
+        },
+      });
+
+      suffixRecords.forEach((record) => {
+        addRecord(record.messageId, record);
+        stanzaLikeIds.forEach((stanzaId) => {
+          if (record.messageId.endsWith(`_${stanzaId}`)) {
+            addRecord(stanzaId, record);
+          }
+        });
+      });
+    }
+
+    return result;
   }
 
   async uploadMedia(input: UploadMediaInput) {

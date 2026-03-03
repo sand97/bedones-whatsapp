@@ -309,6 +309,105 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`⚠️ [CONNECTOR] No history to add to message`);
         }
 
+        // Enrich quoted message explicitly so webhook payload is stable
+        const formatQuotedMessage = (quoted: any, quotedKey?: any) => {
+          const formatted: any = {
+            id:
+              quoted?.id?._serialized ||
+              quoted?.id ||
+              quotedKey?._serialized ||
+              undefined,
+            from:
+              quoted?.from?._serialized ||
+              quoted?.from ||
+              quotedKey?.remote ||
+              undefined,
+            fromMe:
+              typeof quoted?.fromMe === 'boolean'
+                ? quoted.fromMe
+                : typeof quotedKey?.fromMe === 'boolean'
+                  ? quotedKey.fromMe
+                  : false,
+            timestamp: quoted?.timestamp || quoted?.t,
+            type: quoted?.type,
+            hasMedia: Boolean(quoted?.hasMedia),
+          };
+
+          if (quoted?.type === 'product') {
+            formatted.productId = quoted?.productId;
+            formatted.title = quoted?.title;
+            formatted.description = quoted?.description;
+          } else {
+            formatted.body = quoted?.body || '';
+          }
+
+          return formatted;
+        };
+
+        const quotedMsgKey =
+          (message as any)?.quotedMsgKey ||
+          (message as any)?._data?.quotedMsgKey ||
+          (message as any)?.__x_quotedMsgKey;
+
+        const stanzaId =
+          (message as any)?.quotedStanzaID ||
+          (message as any)?._data?.quotedStanzaID ||
+          (message as any)?.__x_quotedStanzaID ||
+          quotedMsgKey?.id;
+
+        if (stanzaId) {
+          (message as any).quotedStanzaID = stanzaId;
+        }
+
+        const inlineQuoted =
+          (message as any)?.quotedMsg ||
+          (message as any)?.__x_quotedMsg ||
+          (message as any)?._data?.quotedMsg;
+
+        if (inlineQuoted) {
+          const formattedQuoted = formatQuotedMessage(inlineQuoted, quotedMsgKey);
+          if (!formattedQuoted.id && stanzaId) {
+            formattedQuoted.id = stanzaId;
+          }
+          (message as any).quotedMsg = formattedQuoted;
+          this.logger.debug(
+            `✅ [CONNECTOR] Added inline quoted message for ${message.id?._serialized}`,
+          );
+        } else if (
+          (message as any)?.hasQuotedMsg &&
+          typeof (message as any)?.getQuotedMessage === 'function'
+        ) {
+          try {
+            const fetchedQuoted = await (message as any).getQuotedMessage();
+            if (fetchedQuoted) {
+              const formattedQuoted = formatQuotedMessage(
+                fetchedQuoted,
+                quotedMsgKey,
+              );
+              if (!formattedQuoted.id && stanzaId) {
+                formattedQuoted.id = stanzaId;
+              }
+              (message as any).quotedMsg = formattedQuoted;
+              this.logger.debug(
+                `✅ [CONNECTOR] Fetched quoted message for ${message.id?._serialized}`,
+              );
+            }
+          } catch (error: any) {
+            this.logger.warn(
+              `⚠️ [CONNECTOR] Failed to fetch quoted message for ${message.id?._serialized}: ${error.message}`,
+            );
+          }
+        } else if (quotedMsgKey) {
+          (message as any).quotedMsg = {
+            id: quotedMsgKey._serialized || stanzaId,
+            from: quotedMsgKey.remote,
+            fromMe: Boolean(quotedMsgKey.fromMe),
+          };
+          this.logger.debug(
+            `✅ [CONNECTOR] Added quoted key fallback for ${message.id?._serialized}`,
+          );
+        }
+
         // Télécharger le média si présent et l'attacher au payload
         if (message.hasMedia) {
           try {

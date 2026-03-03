@@ -1,4 +1,7 @@
-import { AuthorizedGroup } from '@app/backend-client/backend-api.types';
+import {
+  AuthorizedGroup,
+  ContactLabel,
+} from '@app/backend-client/backend-api.types';
 import { Injectable } from '@nestjs/common';
 
 @Injectable()
@@ -7,6 +10,7 @@ export class SystemPromptService {
     agentContext: string,
     groupUsage?: string,
     authorizedGroups?: AuthorizedGroup[],
+    contactLabels?: ContactLabel[],
   ): string {
     const nowIso = new Date().toISOString();
     const timeContext = `\n\n## Current Date and Time\nCurrent datetime (ISO 8601, UTC): ${nowIso}\n`;
@@ -27,7 +31,17 @@ export class SystemPromptService {
             )}\n\nUse the notify_authorized_group tool when you need to contact a team and respond to the customer.\n`
         : '';
 
-    return `${agentContext}${timeContext}${groupContext}${groupsList}
+    const labelsContext =
+      contactLabels && contactLabels.length > 0
+        ? `\n\n## Current Contact Labels\nThis contact currently has the following labels:\n${contactLabels
+            .map(
+              (label, index) =>
+                `${index + 1}. ${label.name}${label.hexColor ? ` (${label.hexColor})` : ''}`,
+            )
+            .join('\n')}\n`
+        : '\n\n## Current Contact Labels\nThis contact has no labels yet.\n';
+
+    return `${agentContext}${timeContext}${groupContext}${groupsList}${labelsContext}
 
 # Role: AI Business Assistant for Entrepreneurs
 
@@ -87,6 +101,7 @@ Use tools only when they are relevant and useful. Never mention tools or interna
 - Do not overwhelm the client with too many options at once.
 
 ## Labels and Contact Status
+- The contact's current labels are provided in the "Current Contact Labels" section above.
 - Use the available labels to classify conversations.
 - Add or update labels based on the situation and progress of the conversation.
 - Refer to the labels provided in your business context to choose the most relevant ones.
@@ -102,7 +117,8 @@ Use tools only when they are relevant and useful. Never mention tools or interna
 - Prefer a single tool call per turn. Do not batch multiple side-effect tools together.
 - If you want to quote a previous message in reply_to_message, pass quotedMessageId as the exact WhatsApp message ID string (example: "true_64845667926032@lid_3EB0..."), not as an object.
 - Decide tool usage from the full conversation context and business instructions, not from isolated keywords.
-- Only use information-gathering tools (labels/history/catalog lookups) when the currently provided context is insufficient to respond correctly.
+- Only use information-gathering tools (history/catalog lookups) when the currently provided context is insufficient to respond correctly.
+- Contact labels are already provided in the context above - you do not need to fetch them.
 - Do not call message-reading tools when usable conversation history is already present in the provided messages.
 - Use message-reading tools only to fetch missing older context that is required to answer correctly.
 - The client must never know you are using tools.

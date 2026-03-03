@@ -7,6 +7,7 @@ import { OcrService } from '@app/image-processing/ocr.service';
 import { QdrantService } from '@app/image-processing/qdrant.service';
 import { SmartCropService } from '@app/image-processing/smart-crop.service';
 import { WhatsAppAgentService } from '@app/langchain/whatsapp-agent.service';
+import { MessageMetadataService } from '@app/message-metadata/message-metadata.service';
 import { AdminGroupMessagingService } from '@app/tools/chat/admin-group-messaging.service';
 import { Injectable, Logger } from '@nestjs/common';
 
@@ -25,6 +26,7 @@ export class ImageMessageHandlerService {
 
   constructor(
     private readonly backendClient: BackendClientService,
+    private readonly messageMetadata: MessageMetadataService,
     private readonly ocrService: OcrService,
     private readonly qdrantService: QdrantService,
     private readonly imageEmbeddings: ImageEmbeddingsService,
@@ -51,7 +53,7 @@ export class ImageMessageHandlerService {
 
     const messageId = message?.id?._serialized || message?.id || 'unknown';
 
-    const upload = await this.backendClient.uploadMedia({
+    const upload = await this.messageMetadata.uploadMedia({
       messageId,
       chatId,
       userId,
@@ -187,7 +189,7 @@ export class ImageMessageHandlerService {
       geminiDescription,
     });
 
-    await this.backendClient.upsertMessageMetadata({
+    await this.messageMetadata.upsertMetadata({
       messageId,
       type: 'IMAGE',
       metadata: {
@@ -226,7 +228,7 @@ export class ImageMessageHandlerService {
 
     if (upload.objectKey) {
       try {
-        await this.backendClient.deleteMedia({ objectKey: upload.objectKey });
+        await this.messageMetadata.deleteMedia(upload.objectKey);
         this.logger.debug(`Deleted image ${upload.objectKey} from MinIO`);
       } catch (error: any) {
         this.logger.warn(

@@ -24,7 +24,8 @@ export class LabelsTools {
    */
   createTools() {
     const tools = [
-      this.createGetContactLabelsTool(),
+      // DISABLED: Contact labels are now provided in the system prompt context
+      // this.createGetContactLabelsTool(),
       this.createAddLabelToContactTool(),
       this.createRemoveLabelFromContactTool(),
     ];

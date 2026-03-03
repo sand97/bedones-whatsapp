@@ -32,6 +32,7 @@
       quotedMessageId && !quotedMessageId.includes('{{')
         ? quotedMessageId
         : null;
+    let validQuotedMsg = null;
 
     if (!to || to.includes('{{')) {
       throw new Error('TO is required');
@@ -42,6 +43,26 @@
     }
 
     console.log(`Sending text message to ${to}`);
+
+    // Validate quoted message ID to avoid send failures when the original message
+    // is deleted or no longer available in the local store.
+    if (quotedMsg) {
+      try {
+        const quotedMessage = await window.WPP.chat.getMessageById(quotedMsg);
+        if (quotedMessage) {
+          validQuotedMsg = quotedMsg;
+        } else {
+          console.warn(
+            `Quoted message not found, sending without quote: ${quotedMsg}`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to resolve quoted message, sending without quote: ${quotedMsg}`,
+          error?.message || error,
+        );
+      }
+    }
 
     // Determine if TO is already a full contact ID or a phone number
     let chatId;
@@ -75,8 +96,8 @@
     if (typingDelay) {
       options.delay = typingDelay;
     }
-    if (quotedMsg) {
-      options.quotedMsg = quotedMsg;
+    if (validQuotedMsg) {
+      options.quotedMsg = validQuotedMsg;
     }
 
     const hasOptions = Object.keys(options).length > 0;

@@ -89,11 +89,6 @@ enum SyncImageStatus {
   FAILED // Échec de la synchronisation des images
 }
 
-enum MessageMetadataType {
-  AUDIO
-  IMAGE
-}
-
 // ============================================
 // MODELS
 // ============================================
@@ -582,14 +577,3 @@ model AgentOperation {
   @@index([createdAt])
 }
 
-model MessageMetadata {
-  id        String              @id @unique @default(cuid())
-  messageId String
-  type      MessageMetadataType
-  metadata  Json
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-
-  @@unique([messageId, type])
-  @@index([createdAt])
-}

@@ -65,6 +65,54 @@ export class MessageHistoryService {
             });
           }
 
+          // Helper function to format a message (reused for both regular and quoted messages)
+          type FormattedMessage = {
+            id: any;
+            from: string;
+            fromMe: boolean;
+            timestamp: any;
+            type: any;
+            hasMedia: boolean;
+            body?: string;
+            productId?: any;
+            title?: any;
+            description?: any;
+            quotedStanzaID?: string;
+            quotedMsg?: FormattedMessage;
+          };
+
+          const formatMessage = (
+            msg: any,
+            messageFrom: string,
+            isFromUs: boolean,
+          ): FormattedMessage => {
+            const baseMessage = {
+              id: msg.id?._serialized || msg.id,
+              from: messageFrom,
+              fromMe: isFromUs,
+              timestamp: msg.timestamp || msg.t,
+              type: msg.type,
+              hasMedia: msg.hasMedia || false,
+            };
+
+            // Handle product messages - extract product info, skip base64 body
+            if (msg.type === 'product') {
+              return {
+                ...baseMessage,
+                productId: msg.productId,
+                title: msg.title,
+                description: msg.description,
+                // Do NOT send body (base64) for products
+              };
+            }
+
+            // Regular message - add body
+            return {
+              ...baseMessage,
+              body: msg.body || '',
+            };
+          };
+
           // Count messages by sender
           let hostMessageCount = 0;
           let ourMessageCount = 0;
@@ -72,8 +120,6 @@ export class MessageHistoryService {
           // Map messages to a simpler format
           const messages = rawMessages.map((m: any) => {
             // Determine if message is from us by comparing sender with chatId
-            // If m.from._serialized === chatId, it's from the contact (host)
-            // Otherwise, it's from us
             const messageFrom = m.from?._serialized || m.from;
             const isFromHost = messageFrom === chatId;
             const isFromUs = !isFromHost;
@@ -88,21 +134,36 @@ export class MessageHistoryService {
               `[MessageHistory] Message: from=${messageFrom}, chatId=${chatId}, isFromHost=${isFromHost}, isFromUs=${isFromUs}`,
             );
 
-            return {
-              id: m.id?._serialized || m.id,
-              body: m.body || '',
-              from: messageFrom,
-              fromMe: isFromUs, // Use our computed value, not m.fromMe
-              timestamp: m.timestamp || m.t,
-              type: m.type,
-              hasMedia: m.hasMedia || false,
-              quotedMsg: m.quotedMsg
-                ? {
-                    id: m.quotedMsg.id?._serialized || m.quotedMsg.id,
-                    body: m.quotedMsg.body,
-                  }
-                : undefined,
-            };
+            // Format the main message
+            const formattedMessage: FormattedMessage = formatMessage(
+              m,
+              messageFrom,
+              isFromUs,
+            );
+            if (m.quotedStanzaID) {
+              formattedMessage.quotedStanzaID = m.quotedStanzaID;
+            }
+
+            // Handle quoted messages - format with same function
+            if (m.quotedMsg) {
+              const quotedFrom =
+                m.quotedMsg.from?._serialized ||
+                m.quotedMsg.from ||
+                messageFrom;
+              const quotedIsFromUs = quotedFrom !== chatId;
+
+              const formattedQuoted = formatMessage(
+                m.quotedMsg,
+                quotedFrom,
+                quotedIsFromUs,
+              );
+              if (!formattedQuoted.id && m.quotedStanzaID) {
+                formattedQuoted.id = m.quotedStanzaID;
+              }
+              formattedMessage.quotedMsg = formattedQuoted;
+            }
+
+            return formattedMessage;
           });
 
           const result = {
