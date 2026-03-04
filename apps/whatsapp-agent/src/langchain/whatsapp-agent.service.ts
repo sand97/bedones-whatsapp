@@ -601,9 +601,17 @@ export class WhatsAppAgentService implements OnModuleInit {
         }
       }
 
+      const historyContextMessageIds = this.buildHistoryContextMessageIds(
+        message.messageHistory,
+        messageId,
+      );
       const messageForAgentRaw = this.attachMessageIdToContext(
         message as any,
-        this.formatMessageForContext(message as any),
+        this.formatMessageForContext(
+          message as any,
+          true,
+          historyContextMessageIds,
+        ),
       );
       const sanitizedForPolicy =
         this.sanitizationService.sanitizeUserInput(rawUserMessage);
@@ -686,6 +694,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       const conversationHistory = this.buildConversationHistory(
         message.messageHistory,
         messageId,
+        historyContextMessageIds,
       );
 
       this.logger.log(
@@ -809,6 +818,79 @@ export class WhatsAppAgentService implements OnModuleInit {
     }
 
     return String(stanzaId);
+  }
+
+  private extractMessageIdVariants(rawId?: string): string[] {
+    if (!rawId) {
+      return [];
+    }
+
+    const normalized = String(rawId).trim();
+    if (!normalized) {
+      return [];
+    }
+
+    const variants = new Set<string>([normalized]);
+    const lastSegment = normalized.split('_').pop()?.trim();
+    if (lastSegment) {
+      variants.add(lastSegment);
+    }
+
+    return [...variants];
+  }
+
+  private addMessageIdVariants(target: Set<string>, rawId?: string): void {
+    this.extractMessageIdVariants(rawId).forEach((variant) =>
+      target.add(variant),
+    );
+  }
+
+  private buildHistoryContextMessageIds(
+    messageHistory?: MessageHistory,
+    currentMessageId?: string,
+  ): Set<string> {
+    const historyMessageIds = new Set<string>();
+
+    if (!messageHistory?.messages?.length) {
+      return historyMessageIds;
+    }
+
+    messageHistory.messages.forEach((message) => {
+      const messageId = this.extractMessageId(message);
+      if (messageId && currentMessageId && messageId === currentMessageId) {
+        return;
+      }
+
+      this.addMessageIdVariants(historyMessageIds, messageId);
+    });
+
+    return historyMessageIds;
+  }
+
+  private isQuotedMessageAlreadyInHistory(
+    messageLike: any,
+    historyMessageIds?: Set<string>,
+  ): boolean {
+    if (!historyMessageIds || historyMessageIds.size === 0) {
+      return false;
+    }
+
+    const quotedMessage = this.extractQuotedMessage(messageLike);
+    const quotedMessageId = this.extractMessageId(quotedMessage);
+    const quotedStanzaId = this.extractQuotedStanzaId(messageLike);
+
+    const quotedVariants = new Set<string>([
+      ...this.extractMessageIdVariants(quotedMessageId),
+      ...this.extractMessageIdVariants(quotedStanzaId),
+    ]);
+
+    for (const variant of quotedVariants) {
+      if (historyMessageIds.has(variant)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private normalizeMessageBody(body: unknown): string {
@@ -964,6 +1046,12 @@ export class WhatsAppAgentService implements OnModuleInit {
     return lines.join('\n');
   }
 
+  private formatTruncatedQuotedMessageForContext(quotedMessage: any): string {
+    const formattedQuoted = this.formatQuotedMessageForContext(quotedMessage);
+    const compactQuoted = formattedQuoted.replace(/\s+/g, ' ').trim();
+    return this.truncateText(compactQuoted, 120);
+  }
+
   private attachMessageIdToContext(messageLike: any, content: string): string {
     const messageId = this.extractMessageId(messageLike);
     if (!messageId) {
@@ -976,6 +1064,7 @@ export class WhatsAppAgentService implements OnModuleInit {
   private formatMessageForContext(
     messageLike: any,
     includeQuoted: boolean = true,
+    historyMessageIds?: Set<string>,
   ): string {
     if (!messageLike) {
       return '[Message sans texte]';
@@ -1020,6 +1109,12 @@ export class WhatsAppAgentService implements OnModuleInit {
 
     const quotedMsg = this.extractQuotedMessage(messageLike);
     if (includeQuoted && quotedMsg) {
+      if (this.isQuotedMessageAlreadyInHistory(messageLike, historyMessageIds)) {
+        const truncatedQuoted =
+          this.formatTruncatedQuotedMessageForContext(quotedMsg);
+        return `Quoted Message:\n${truncatedQuoted}\nUser Message:\n${content}`;
+      }
+
       const quotedContent = this.formatQuotedMessageForContext(quotedMsg);
       return `Quoted Message:\n${quotedContent}\nUser Message:\n${content}`;
     }
@@ -1034,10 +1129,15 @@ export class WhatsAppAgentService implements OnModuleInit {
   private buildConversationHistory(
     messageHistory?: MessageHistory,
     currentMessageId?: string,
+    historyMessageIds?: Set<string>,
   ): Array<{ role: string; content: string }> {
     if (!messageHistory || messageHistory.messages.length === 0) {
       return [];
     }
+
+    const effectiveHistoryMessageIds =
+      historyMessageIds ||
+      this.buildHistoryContextMessageIds(messageHistory, currentMessageId);
 
     // Sort messages by timestamp (oldest first) to maintain chronological order
     const sortedMessages = [...messageHistory.messages].sort(
@@ -1063,7 +1163,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       .map((msg) => {
         const content = this.attachMessageIdToContext(
           msg,
-          this.formatMessageForContext(msg),
+          this.formatMessageForContext(msg, true, effectiveHistoryMessageIds),
         );
 
         return {
@@ -1073,6 +1173,38 @@ export class WhatsAppAgentService implements OnModuleInit {
       });
 
     return history;
+  }
+
+  private extractReplyMessageFromTools(
+    toolsUsed: Array<{ name: string; args: any; error?: string }>,
+  ): string | undefined {
+    const lastReplyTool = [...toolsUsed]
+      .reverse()
+      .find((tool) => tool.name === 'reply_to_message' && !tool.error);
+
+    if (!lastReplyTool) {
+      return undefined;
+    }
+
+    const args = lastReplyTool.args;
+    if (args && typeof args === 'object' && typeof args.message === 'string') {
+      const trimmed = args.message.trim();
+      return trimmed || undefined;
+    }
+
+    if (typeof args === 'string') {
+      try {
+        const parsed = JSON.parse(args);
+        if (parsed && typeof parsed.message === 'string') {
+          const trimmed = parsed.message.trim();
+          return trimmed || undefined;
+        }
+      } catch {
+        // no-op: string arg is not JSON
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -1151,10 +1283,29 @@ export class WhatsAppAgentService implements OnModuleInit {
       );
 
       const lastMessage = result.messages[result.messages.length - 1];
-      const responseContent =
-        typeof lastMessage.content === 'string'
-          ? lastMessage.content
-          : String(lastMessage.content);
+      let responseContent = '';
+
+      if (
+        lastMessage &&
+        ToolMessage.isInstance(lastMessage) &&
+        lastMessage.name === 'reply_to_message' &&
+        lastMessage.status !== 'error'
+      ) {
+        responseContent =
+          this.extractReplyMessageFromTools(callbackHandler.metrics.toolsUsed) ||
+          '';
+
+        if (!responseContent) {
+          this.logger.warn(
+            `reply_to_message completed but response text could not be resolved for ${chatId}`,
+          );
+        }
+      } else if (lastMessage) {
+        responseContent =
+          typeof lastMessage.content === 'string'
+            ? lastMessage.content
+            : String(lastMessage.content);
+      }
 
       const sanitizedResponse =
         this.sanitizationService.sanitizeAgentResponse(responseContent);

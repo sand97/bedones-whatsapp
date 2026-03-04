@@ -86,6 +86,7 @@ export class ChatTools {
         name: 'reply_to_message',
         description:
           'REQUIRED: Use this tool for EVERY reply to the customer. The agent will show "typing..." for a natural delay (80 WPM). This tool is the ONLY way to communicate with the customer - NEVER reply directly without using this tool.',
+        returnDirect: true,
         schema: z.object({
           message: z.string().describe('Message content to send'),
           quotedMessageId: z
