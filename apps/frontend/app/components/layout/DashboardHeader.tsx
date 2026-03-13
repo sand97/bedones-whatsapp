@@ -1,4 +1,4 @@
-// import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { CloseOutlined, MenuOutlined } from '@ant-design/icons'
 import LayoutSidebar from '@app/assets/LayoutSidebar.svg?react'
 import { useLayout } from '@app/contexts/LayoutContext'
 import { Button } from 'antd'
@@ -10,30 +10,44 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ title, right }: DashboardHeaderProps) {
-  const { collapsed, toggleCollapsed } = useLayout()
+  const { collapsed, isDesktop, mobileMenuOpen, toggleNavigation } = useLayout()
+
+  const toggleLabel = isDesktop
+    ? collapsed
+      ? 'Déplier la navigation'
+      : 'Réduire la navigation'
+    : mobileMenuOpen
+      ? 'Fermer le menu'
+      : 'Ouvrir le menu'
 
   return (
-    <div className='flex items-center justify-between pr-6 pl-4 border-b border-gray-200 bg-white sticky top-0 z-10 rounded-t-2xl'>
-      <div className='flex items-center gap-4'>
-        <span className={'border-r border-gray-200 pr-2 mr-2'}>
+    <div className='sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 rounded-t-2xl'>
+      <div className='flex min-w-0 items-center gap-3'>
+        <span className='mr-1 border-r border-gray-200 pr-3'>
           <Button
             type='text'
+            aria-label={toggleLabel}
+            aria-expanded={!isDesktop && mobileMenuOpen}
             icon={
-              collapsed ? (
+              isDesktop ? (
                 <LayoutSidebar width={20} />
+              ) : mobileMenuOpen ? (
+                <CloseOutlined />
               ) : (
-                <LayoutSidebar width={20} />
+                <MenuOutlined />
               )
             }
-            onClick={toggleCollapsed}
+            onClick={toggleNavigation}
           />
         </span>
 
         {title && (
-          <span className={'flex gap-2 text-sm font-semibold'}>{title}</span>
+          <span className='flex min-w-0 gap-2 text-sm font-semibold'>
+            <span className='truncate'>{title}</span>
+          </span>
         )}
       </div>
-      {right && <div>{right}</div>}
+      {right && <div className='flex shrink-0 items-center'>{right}</div>}
     </div>
   )
 }

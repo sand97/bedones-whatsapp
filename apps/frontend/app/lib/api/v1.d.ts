@@ -635,6 +635,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/stats/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get current user daily analytics
+         * @description Returns daily aggregated analytics for messages, conversations and tokens. Without dates, returns the full series for the current UTC year up to today.
+         */
+        get: operations["StatsController_getMyAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/status-schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scheduled WhatsApp statuses for current user */
+        get: operations["StatusSchedulerController_listSchedules"];
+        put?: never;
+        /** Create a new scheduled WhatsApp status */
+        post: operations["StatusSchedulerController_createSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/status-schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a scheduled WhatsApp status */
+        delete: operations["StatusSchedulerController_cancelSchedule"];
+        options?: never;
+        head?: never;
+        /** Update a scheduled WhatsApp status */
+        patch: operations["StatusSchedulerController_updateSchedule"];
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -1343,6 +1399,108 @@ export interface components {
             productsImported: number;
             /** @description Number of contacts imported */
             contactsImported: number;
+        };
+        StatsAnalyticsRangeDto: {
+            /** @example 2026-01-01 */
+            startDate: string;
+            /** @example 2026-03-07 */
+            endDate: string;
+            /** @example true */
+            includesToday: boolean;
+            /** @example UTC */
+            timezone: string;
+        };
+        DailyStatsPointDto: {
+            /** @example 2026-03-07 */
+            day: string;
+            /** @example 18 */
+            messages: number;
+            /** @example 16 */
+            messagesHandled: number;
+            /** @example 3 */
+            imageMessages: number;
+            /** @example 2 */
+            imageMessagesHandled: number;
+            /** @example 15 */
+            textMessages: number;
+            /** @example 14 */
+            textMessagesHandled: number;
+            /** @example 7 */
+            conversations: number;
+            /** @example 1240 */
+            tokens: number;
+        };
+        StatsAnalyticsResponseDto: {
+            range: components["schemas"]["StatsAnalyticsRangeDto"];
+            /** @example 2026-03-07T14:32:00.000Z */
+            generatedAt: string;
+            series: components["schemas"]["DailyStatsPointDto"][];
+        };
+        CreateStatusScheduleDto: {
+            /**
+             * @description Scheduled publication datetime in ISO format
+             * @example 2026-03-08T08:30:00.000Z
+             */
+            scheduledFor: string;
+            /**
+             * @description IANA timezone used when the schedule was created
+             * @example Europe/Paris
+             */
+            timezone: string;
+            /**
+             * @description WhatsApp status content type
+             * @example TEXT
+             * @enum {string}
+             */
+            contentType: "TEXT" | "IMAGE" | "VIDEO";
+            /**
+             * @description Text content for a text status
+             * @example Nouvelle promo ce matin au magasin.
+             */
+            textContent?: string;
+            /**
+             * @description Caption for an image or video status
+             * @example Arrivage du jour
+             */
+            caption?: string;
+            /**
+             * @description Public media URL or data URL for image/video statuses
+             * @example https://cdn.example.com/statuses/collection-ete.mp4
+             */
+            mediaUrl?: string;
+        };
+        UpdateStatusScheduleDto: {
+            /**
+             * @description Scheduled publication datetime in ISO format
+             * @example 2026-03-08T10:00:00.000Z
+             */
+            scheduledFor?: string;
+            /**
+             * @description IANA timezone used when the schedule was created
+             * @example Europe/Paris
+             */
+            timezone?: string;
+            /**
+             * @description WhatsApp status content type
+             * @example IMAGE
+             * @enum {string}
+             */
+            contentType?: "TEXT" | "IMAGE" | "VIDEO";
+            /**
+             * @description Text content for a text status
+             * @example Stock limité cet après-midi.
+             */
+            textContent?: string;
+            /**
+             * @description Caption for an image or video status
+             * @example Nouveautés disponibles
+             */
+            caption?: string;
+            /**
+             * @description Public media URL or data URL for image/video statuses
+             * @example https://cdn.example.com/statuses/lookbook.jpg
+             */
+            mediaUrl?: string;
         };
         CreateProductDto: {
             /**
@@ -2812,6 +2970,199 @@ export interface operations {
                 content?: never;
             };
             /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StatsController_getMyAnalytics: {
+        parameters: {
+            query?: {
+                /** @description Start day (inclusive) in ISO format YYYY-MM-DD */
+                startDate?: string;
+                /** @description End day (inclusive) in ISO format YYYY-MM-DD */
+                endDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daily analytics retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsAnalyticsResponseDto"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StatusSchedulerController_listSchedules: {
+        parameters: {
+            query?: {
+                /** @description Start day (inclusive) in ISO format YYYY-MM-DD */
+                startDate?: string;
+                /** @description End day (inclusive) in ISO format YYYY-MM-DD */
+                endDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scheduled statuses retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StatusSchedulerController_createSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStatusScheduleDto"];
+            };
+        };
+        responses: {
+            /** @description Scheduled status created successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StatusSchedulerController_cancelSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scheduled status ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scheduled status cancelled successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Scheduled status not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StatusSchedulerController_updateSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scheduled status ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStatusScheduleDto"];
+            };
+        };
+        responses: {
+            /** @description Scheduled status updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Scheduled status not found */
             404: {
                 headers: {
                     [name: string]: unknown;

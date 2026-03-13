@@ -7,7 +7,9 @@ declare module 'react-window' {
   }
 
   export interface FixedSizeListProps {
-    children: Component<ListChildComponentProps> | ((props: ListChildComponentProps) => ReactNode)
+    children:
+      | Component<ListChildComponentProps>
+      | ((props: ListChildComponentProps) => ReactNode)
     className?: string
     height: number | string
     itemCount: number

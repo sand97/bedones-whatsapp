@@ -1,5 +1,6 @@
 import {
   BarChartOutlined,
+  CreditCardOutlined,
   CustomerServiceOutlined,
   HomeOutlined,
   LoadingOutlined,
@@ -8,7 +9,7 @@ import {
   QuestionCircleOutlined,
   SettingOutlined,
   ShopOutlined,
-  ShoppingCartOutlined,
+  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { LayoutProvider, useLayout } from '@app/contexts/LayoutContext'
@@ -17,7 +18,24 @@ import { Avatar, Layout, Menu, Modal, Spin } from 'antd'
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-const { Sider, Content } = Layout
+const { Sider } = Layout
+
+const DESKTOP_SIDER_WIDTH = 280
+const DESKTOP_COLLAPSED_WIDTH = 80
+const CONTEXT_OPTIONAL_KEYS = new Set([
+  'context',
+  'leads',
+  'pricing',
+  'support',
+  'faq',
+])
+const CONTEXT_OPTIONAL_PATHS = [
+  '/context',
+  '/leads',
+  '/pricing',
+  '/support',
+  '/faq',
+]
 
 const menuSections = [
   {
@@ -36,10 +54,16 @@ const menuSections = [
         path: '/stats',
       },
       {
-        key: 'orders',
-        label: 'Commandes',
-        icon: <ShoppingCartOutlined />,
-        path: '/orders',
+        key: 'leads',
+        label: 'Leads',
+        icon: <TeamOutlined />,
+        path: '/leads',
+      },
+      {
+        key: 'forfaits',
+        label: 'Forfaits',
+        icon: <CreditCardOutlined />,
+        path: '/pricing',
       },
     ],
   },
@@ -60,15 +84,9 @@ const menuSections = [
       },
       {
         key: 'marketing',
-        label: 'Marketing',
+        label: 'Status scheduler',
         icon: <NotificationOutlined />,
-        path: '/marketing',
-      },
-      {
-        key: 'support',
-        label: 'Support',
-        icon: <CustomerServiceOutlined />,
-        path: '/support',
+        path: '/status-scheduler',
       },
     ],
   },
@@ -76,55 +94,151 @@ const menuSections = [
     title: 'Aides',
     items: [
       {
+        key: 'support',
+        label: 'Support',
+        icon: <CustomerServiceOutlined />,
+        path: '/support',
+      },
+      {
         key: 'faq',
         label: 'FAQ',
         icon: <QuestionCircleOutlined />,
         path: '/faq',
       },
-      {
-        key: 'help',
-        label: 'Support',
-        icon: <QuestionCircleOutlined />,
-        path: '/help',
-      },
     ],
   },
 ]
 
+type DashboardSidebarContentProps = {
+  collapsed: boolean
+  isContextIncomplete: boolean
+  selectedKeys: string[]
+  onLogout: () => void
+  onNavigate: (path: string) => void
+  user: ReturnType<typeof useAuth>['user']
+}
+
+function DashboardSidebarContent({
+  collapsed,
+  isContextIncomplete,
+  selectedKeys,
+  onLogout,
+  onNavigate,
+  user,
+}: DashboardSidebarContentProps) {
+  return (
+    <div className='flex h-full flex-col'>
+      <div className='brand-name'>
+        {!collapsed ? (
+          <div className='flex items-center gap-3'>
+            <Avatar
+              size={40}
+              src={user?.businessInfo?.avatar_url}
+              icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
+              className='bg-[#bfbfbf] flex-shrink-0'
+            />
+            <div className='flex min-w-0 flex-1 flex-col gap-1'>
+              <div className='flex items-center gap-2'>
+                {user?.whatsappProfile?.pushname && (
+                  <span className='truncate text-sm font-medium text-black'>
+                    {user?.whatsappProfile?.pushname}
+                  </span>
+                )}
+                <span className='rounded bg-[#24d366] px-2 py-0.5 text-xs font-semibold text-black'>
+                  Free
+                </span>
+              </div>
+              <span className='truncate text-xs text-[#494949]'>
+                {user?.phoneNumber}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <Avatar
+            size={40}
+            src={user?.businessInfo?.avatar_url}
+            icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
+            className='bg-white'
+          />
+        )}
+      </div>
+
+      <div className='flex-1 overflow-auto py-4'>
+        <Menu
+          mode='inline'
+          selectedKeys={selectedKeys}
+          items={menuSections.map(section => ({
+            type: 'group' as const,
+            label: section.title,
+            children: section.items.map(item => ({
+              key: item.key,
+              icon: item.icon,
+              label: item.label,
+              disabled:
+                isContextIncomplete && !CONTEXT_OPTIONAL_KEYS.has(item.key),
+              onClick: () => onNavigate(item.path),
+            })),
+          }))}
+          className='border-none'
+          inlineCollapsed={collapsed}
+        />
+      </div>
+
+      <div className='logout-section'>
+        <button
+          onClick={onLogout}
+          type='button'
+          className='flex w-full items-center gap-3 border-none bg-transparent transition-opacity hover:opacity-80'
+        >
+          <span className='text-lg text-error'>
+            <LogoutOutlined />
+          </span>
+          <span className='logout-text text-sm font-medium text-error'>
+            Déconnexion
+          </span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function DashboardLayoutContent() {
   const { user, isLoading, isAuthenticated, logout } = useAuth()
-  const { collapsed } = useLayout()
+  const { collapsed, isDesktop, mobileMenuOpen, setMobileMenuOpen } =
+    useLayout()
   const navigate = useNavigate()
   const location = useLocation()
   const [modal, contextHolder] = Modal.useModal()
   const isNavigatingRef = useRef(false)
+  const isPricingRoute =
+    location.pathname === '/pricing' ||
+    location.pathname.startsWith('/pricing/')
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isNavigatingRef.current) {
       isNavigatingRef.current = true
       navigate('/auth/login', { replace: true })
     }
-    // Reset when authenticated
+
     if (isAuthenticated) {
       isNavigatingRef.current = false
     }
   }, [isLoading, isAuthenticated, navigate])
 
-  // Redirect to context if score < 80% and trying to access restricted routes
   const contextScore = user?.contextScore
   const hasContextScore = typeof contextScore === 'number'
+
   useEffect(() => {
-    // Only run this check when user is authenticated and loaded
     if (isLoading || !isAuthenticated || !user) return
 
-    const isContextRoute = location.pathname === '/context'
+    const isContextOptionalRoute = CONTEXT_OPTIONAL_PATHS.some(
+      path =>
+        location.pathname === path || location.pathname.startsWith(path + '/')
+    )
 
-    // Wait until context score is known to avoid redirecting with stale data
     if (!hasContextScore) return
 
-    // If score < 80% and not on context route, redirect to context
-    if (contextScore < 80 && !isContextRoute) {
+    if (contextScore < 80 && !isContextOptionalRoute) {
       navigate('/context', { replace: true })
     }
   }, [
@@ -136,6 +250,36 @@ function DashboardLayoutContent() {
     location.pathname,
     navigate,
   ])
+
+  useEffect(() => {
+    if (isDesktop) return
+
+    setMobileMenuOpen(false)
+  }, [isDesktop, location.pathname, setMobileMenuOpen])
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || isDesktop || !mobileMenuOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isDesktop, mobileMenuOpen])
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+
+    const handleKeyDown = (event: { key: string }) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [mobileMenuOpen, setMobileMenuOpen])
 
   const handleLogout = () => {
     modal.confirm({
@@ -154,10 +298,8 @@ function DashboardLayoutContent() {
     )
   }
 
-  // Check if context score is below 80% - only context menu should be active
   const isContextIncomplete = hasContextScore ? contextScore < 80 : false
 
-  // Get currently selected menu key
   const getSelectedKey = () => {
     for (const section of menuSections) {
       for (const item of section.items) {
@@ -166,139 +308,119 @@ function DashboardLayoutContent() {
         }
       }
     }
+
     return []
   }
 
-  // Build menu items for Ant Design Menu
-  if (isLoading) {
-    return (
-      <div className='min-h-screen flex items-center justify-center bg-[#fdfdfd]'>
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
-      </div>
-    )
+  const handleNavigate = (path: string) => {
+    if (!isDesktop) {
+      setMobileMenuOpen(false)
+    }
+
+    navigate(path)
   }
 
-  if (!isAuthenticated) {
-    // Show loading while redirect happens via useEffect
+  if (isLoading || !isAuthenticated) {
     return (
-      <div className='min-h-screen flex items-center justify-center bg-[#fdfdfd]'>
+      <div className='flex min-h-screen items-center justify-center bg-[#fdfdfd]'>
         <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
       </div>
     )
   }
 
   return (
-    <Layout className='min-h-screen'>
+    <div className='min-h-screen bg-[#fbfafb]'>
       {contextHolder}
-      <Sider
-        collapsed={collapsed}
-        collapsedWidth={80}
-        width={280}
-        trigger={null}
-        style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-        }}
+
+      <div
+        className={`relative flex min-h-screen w-full ${
+          isPricingRoute ? 'lg:px-4 lg:pb-4 lg:pt-0' : 'lg:p-4'
+        }`}
       >
-        <div className='flex flex-col h-full'>
-          {/* User Profile */}
-          <div className='brand-name'>
-            {!collapsed ? (
-              <div className='flex items-center gap-3'>
-                <Avatar
-                  size={40}
-                  src={user?.businessInfo?.avatar_url}
-                  icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
-                  className='bg-[#bfbfbf] flex-shrink-0'
-                />
-                <div className='flex flex-col gap-1 flex-1 min-w-0'>
-                  <div className='flex items-center gap-2'>
-                    {user?.whatsappProfile?.pushname && (
-                      <span className='font-medium text-sm text-black truncate'>
-                        {user?.whatsappProfile?.pushname}
-                      </span>
-                    )}
-                    <span className='bg-[#af52de] text-white text-xs px-2 py-0.5 rounded'>
-                      Free
-                    </span>
-                  </div>
-                  <span className='text-xs text-[#494949] truncate'>
-                    {user?.phoneNumber}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <Avatar
-                  size={40}
-                  src={user?.businessInfo?.avatar_url}
-                  icon={!user?.businessInfo?.avatar_url && <UserOutlined />}
-                  className='bg-white'
-                />
-              </div>
-            )}
-          </div>
+        <button
+          type='button'
+          aria-label='Fermer le menu'
+          onClick={() => setMobileMenuOpen(false)}
+          className={`fixed inset-0 z-30 bg-black/20 transition-opacity duration-300 lg:hidden ${
+            mobileMenuOpen
+              ? 'pointer-events-auto opacity-100'
+              : 'pointer-events-none opacity-0'
+          }`}
+        />
 
-          {/* Menu */}
-          <div className='flex-1 overflow-auto py-4'>
-            <Menu
-              mode='inline'
-              selectedKeys={getSelectedKey()}
-              items={menuSections.map(section => ({
-                type: 'group' as const,
-                label: section.title,
-                children: section.items.map(item => ({
-                  key: item.key,
-                  icon: item.icon,
-                  label: item.label,
-                  disabled: isContextIncomplete && item.key !== 'context',
-                  onClick: () => navigate(item.path),
-                })),
-              }))}
-              className='border-none'
-              inlineCollapsed={collapsed}
-            />
-          </div>
-
-          {/* Logout Button */}
-          <div className='logout-section'>
-            <button
-              onClick={handleLogout}
-              type='button'
-              className={`flex items-center gap-3 w-full bg-transparent border-none cursor-pointer hover:opacity-80 transition-opacity`}
+        <div
+          className={`fixed inset-y-0 left-0 z-40 lg:hidden ${
+            mobileMenuOpen ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
+        >
+          <div
+            className={`h-full transition-transform duration-300 ease-out ${
+              mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+          >
+            <Sider
+              collapsed={false}
+              collapsedWidth={DESKTOP_COLLAPSED_WIDTH}
+              width={DESKTOP_SIDER_WIDTH}
+              trigger={null}
+              style={{
+                overflow: 'auto',
+                height: '100vh',
+                boxShadow: '0 16px 40px rgba(17, 27, 33, 0.12)',
+              }}
             >
-              <span className='text-lg text-error'>
-                <LogoutOutlined />
-              </span>
-              <span className='text-sm text-error font-medium logout-text'>
-                Déconnexion
-              </span>
-            </button>
+              <DashboardSidebarContent
+                collapsed={false}
+                isContextIncomplete={isContextIncomplete}
+                selectedKeys={getSelectedKey()}
+                onLogout={handleLogout}
+                onNavigate={handleNavigate}
+                user={user}
+              />
+            </Sider>
           </div>
         </div>
-      </Sider>
 
-      <Layout
-        style={{
-          marginLeft: collapsed ? 80 : 280,
-          transition: 'margin-left 0.2s',
-        }}
-      >
-        <Content className='min-h-screen bg-transparent'>
-          <div
-            className={
-              'bg-white m-4 lg:ml-2 rounded-2xl shadow-card min-h-[calc(100vh_-_32px)]'
-            }
+        <div className='hidden lg:block lg:flex-none'>
+          <Sider
+            collapsed={collapsed}
+            collapsedWidth={DESKTOP_COLLAPSED_WIDTH}
+            width={DESKTOP_SIDER_WIDTH}
+            trigger={null}
+            style={{
+              overflow: 'auto',
+              height: 'calc(100vh - 32px)',
+              position: 'sticky',
+              top: 16,
+              left: 0,
+            }}
           >
-            <Outlet />
+            <DashboardSidebarContent
+              collapsed={collapsed}
+              isContextIncomplete={isContextIncomplete}
+              selectedKeys={getSelectedKey()}
+              onLogout={handleLogout}
+              onNavigate={handleNavigate}
+              user={user}
+            />
+          </Sider>
+        </div>
+
+        <main className='flex min-w-0 flex-1 flex-col lg:pl-4'>
+          <div className='min-h-screen bg-transparent lg:min-h-[calc(100vh-32px)]'>
+            <div
+              className={`flex min-h-screen min-w-0 flex-col ${
+                isPricingRoute
+                  ? 'bg-transparent lg:min-h-[calc(100vh-16px)] lg:rounded-none lg:shadow-none'
+                  : 'bg-white lg:min-h-[calc(100vh-32px)] lg:rounded-2xl lg:shadow-card'
+              }`}
+            >
+              <Outlet />
+            </div>
           </div>
-        </Content>
-      </Layout>
-    </Layout>
+        </main>
+      </div>
+    </div>
   )
 }
 

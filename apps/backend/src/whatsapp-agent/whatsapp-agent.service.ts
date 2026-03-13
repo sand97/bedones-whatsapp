@@ -5,6 +5,7 @@ import {
   WhatsAppAgent,
   WhatsAppAgentStatus,
   ConnectionStatus,
+  StatusScheduleContentType,
 } from '@app/generated/client';
 import {
   PageScriptService,
@@ -440,6 +441,37 @@ export class WhatsAppAgentService {
     });
   }
 
+  async publishStatus(
+    userId: string,
+    payload: {
+      contentType: StatusScheduleContentType;
+      textContent?: string | null;
+      caption?: string | null;
+      mediaUrl?: string | null;
+    },
+  ): Promise<{
+    success: boolean;
+    statusId?: string;
+    messageId?: string;
+    contentType?: string;
+    error?: string;
+  }> {
+    const result = await this.executeScript(userId, 'status/sendStatus', {
+      STATUS_TYPE: payload.contentType,
+      TEXT_CONTENT: payload.textContent ?? '',
+      CAPTION: payload.caption ?? '',
+      MEDIA_URL: payload.mediaUrl ?? '',
+    });
+
+    return result as {
+      success: boolean;
+      statusId?: string;
+      messageId?: string;
+      contentType?: string;
+      error?: string;
+    };
+  }
+
   /**
    * Check if the agent can process a message from a chat
    * Returns agent configuration, context, and authorized groups
@@ -625,12 +657,22 @@ export class WhatsAppAgentService {
     metadata?: any;
   }): Promise<{ success: boolean; operationId?: string }> {
     try {
-      // Extract userId from chatId if not provided
+      // Prefer ownership inference from the agent, because chatId points to the contact conversation.
       let userId = data.userId;
+
+      if (!userId && data.agentId) {
+        const agent = await this.prisma.whatsAppAgent.findUnique({
+          where: { id: data.agentId },
+          select: { userId: true },
+        });
+        userId = agent?.userId ?? undefined;
+      }
+
+      // Fallback for legacy payloads without agentId.
       if (!userId) {
         const phoneMatch = data.chatId.match(/^(\d+)@c\.us$/);
         if (phoneMatch) {
-          const phoneNumber = phoneMatch[1];
+          const phoneNumber = `+${phoneMatch[1]}`;
           const user = await this.prisma.user.findUnique({
             where: { phoneNumber },
             select: { id: true },

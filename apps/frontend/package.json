@@ -21,6 +21,7 @@
     "antd": "^5.27.4",
     "antd-phone-input": "^0.3.15",
     "axios": "^1.12.2",
+    "dayjs": "^1.11.19",
     "embla-carousel-react": "^8.6.0",
     "isbot": "^5",
     "openapi-fetch": "^0.14.0",
@@ -31,6 +32,7 @@
     "react-router-dom": "^6.30.2",
     "react-scripts": "^5.0.1",
     "react-window": "^1.8.10",
+    "recharts": "^3.8.0",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {

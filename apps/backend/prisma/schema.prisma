@@ -89,6 +89,20 @@ enum SyncImageStatus {
   FAILED // Échec de la synchronisation des images
 }
 
+enum StatusScheduleContentType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+enum StatusScheduleState {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 // ============================================
 // MODELS
 // ============================================
@@ -127,6 +141,8 @@ model User {
   creditHistory     Credit[]
   subscription      Subscription?
   groups            Group[]
+  dailyStats        UserDailyStat[]
+  statusSchedules   StatusSchedule[]
 
   @@index([phoneNumber])
   @@index([status])
@@ -577,3 +593,57 @@ model AgentOperation {
   @@index([createdAt])
 }
 
+model UserDailyStat {
+  id     String @id @unique @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  day String @db.VarChar(10)
+
+  messages              Int @default(0)
+  messagesHandled       Int @default(0)
+  imageMessages         Int @default(0)
+  imageMessagesHandled  Int @default(0)
+  textMessages          Int @default(0)
+  textMessagesHandled   Int @default(0)
+  conversations         Int @default(0)
+  tokens                Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, day])
+  @@index([userId])
+  @@index([day])
+}
+
+model StatusSchedule {
+  id     String @id @unique @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scheduledFor DateTime
+  scheduledDay String @db.VarChar(10)
+  timezone     String
+
+  contentType StatusScheduleContentType
+  textContent String?                   @db.Text
+  caption     String?                   @db.Text
+  mediaUrl    String?                   @db.Text
+
+  status   StatusScheduleState @default(PENDING)
+  attempts Int                 @default(0)
+
+  lastError String?   @db.Text
+  sentAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([scheduledDay])
+  @@index([scheduledFor])
+  @@index([status])
+  @@index([userId, scheduledDay])
+  @@index([status, scheduledFor])
+}

@@ -62,6 +62,7 @@ const PLAN_CONTENT: Record<PlanKey, PlanConfig> = {
   free: {
     description: 'Testez votre agent une semaine sur de vraies conversations.',
     featureIntro: 'Pour démarrer :',
+    overageLabel: '200 messages disponibles',
     features: [
       {
         icon: <MessageOutlined />,
@@ -183,7 +184,7 @@ export default function PricingPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { isDesktop, mobileMenuOpen, toggleNavigation } = useLayout()
-  const [duration, setDuration] = useState<BillingDuration>(1)
+  const [duration, setDuration] = useState<BillingDuration>(6)
   const currentPlan = useMemo(() => resolveCurrentPlanKey(user), [user])
 
   return (
@@ -194,14 +195,14 @@ export default function PricingPage() {
           aria-label={mobileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
           aria-expanded={mobileMenuOpen}
           onClick={toggleNavigation}
-          className='absolute left-4 top-4 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#e8e8e8] bg-white text-[#111b21]'
+          className='absolute left-2 top-2 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#e8e8e8] bg-white text-[#111b21]'
         >
           {mobileMenuOpen ? <CloseOutlined /> : <MenuOutlined />}
         </button>
       )}
 
       <div className='min-h-screen px-0 pb-8 pt-0'>
-        <section className='pricing-top-grid h-[150px] px-4 pt-0 sm:px-6 lg:px-8'>
+        <section className='pricing-top-grid h-[145px] px-4 pt-0 sm:px-6 lg:px-8'>
           <div className='flex h-full items-center justify-center'>
             <Segmented<BillingDuration>
               className='stats-granularity-toggle pricing-billing-toggle'
@@ -221,6 +222,10 @@ export default function PricingPage() {
             const totalPrice = isPaidPlan
               ? getDurationTotal(content.monthlyPrice as number, duration)
               : null
+            const discountedMonthlyPrice = isPaidPlan
+              ? (content.monthlyPrice as number) *
+                (1 - DURATION_DISCOUNT[duration])
+              : 0
 
             return (
               <article
@@ -232,16 +237,14 @@ export default function PricingPage() {
                 }`}
               >
                 {content.accentLabel && (
-                  <div className='pointer-events-none absolute left-0 top-0 -translate-y-full'>
-                    <span className='inline-flex h-10 items-center rounded-tr-[16px] bg-black px-4 text-[13px] font-medium text-white'>
-                      {content.accentLabel}
-                    </span>
-                  </div>
+                  <span className='absolute top-0 z-10 inline-flex rounded-b-lg left-1/2 -translate-x-1/2 py-2 items-center bg-black px-4 text-xs font-medium text-white'>
+                    {content.accentLabel}
+                  </span>
                 )}
 
                 <div className='flex h-full flex-col justify-between gap-8 px-6 py-8 sm:px-7 sm:py-9'>
                   <div className='space-y-7'>
-                    <div className='flex min-h-[60px] items-start justify-between gap-4'>
+                    <div className='flex items-center justify-between gap-4'>
                       <h2 className='text-[34px] font-semibold tracking-tight text-[#111b21]'>
                         {plan === 'free'
                           ? 'Free'
@@ -254,14 +257,15 @@ export default function PricingPage() {
                         <span className='inline-flex items-center whitespace-nowrap rounded-full bg-[#24d366] px-4 py-2 text-[12px] font-semibold text-[#111b21]'>
                           Plan actuel
                         </span>
-                      ) : isPaidPlan ? (
-                        <span className='inline-flex items-center whitespace-nowrap rounded-full bg-[#f0df9a] px-4 py-2 text-[12px] font-semibold text-[#3b3526]'>
-                          -50% en ce moment
-                        </span>
-                      ) : null}
+                      ) : //   : isPaidPlan ? (
+                      //   <span className='inline-flex items-center whitespace-nowrap rounded-full bg-[#f0df9a] px-4 py-2 text-[12px] font-semibold text-[#3b3526]'>
+                      //     -50% en ce moment
+                      //   </span>
+                      // )
+                      null}
                     </div>
 
-                    <p className='max-w-[30ch] text-[17px] leading-[1.5] text-[#6b7280]'>
+                    <p className='max-w-[30ch] text-[17px] leading-[1.5] text-[#6b7280] -mt-3'>
                       {content.description}
                     </p>
 
@@ -279,7 +283,7 @@ export default function PricingPage() {
                         ) : (
                           <>
                             <span className='text-[52px] font-semibold leading-none tracking-[-0.04em]'>
-                              {formatCompactEuro(content.monthlyPrice as number)}
+                              {formatCompactEuro(discountedMonthlyPrice)}
                             </span>
                             <span className='text-[24px] leading-none text-[#6b7280]'>
                               {content.periodLabel}
@@ -305,7 +309,7 @@ export default function PricingPage() {
                         {content.featureIntro}
                       </p>
 
-                      <ul className='space-y-3 text-[14px] leading-[1.45] text-[#5b6169]'>
+                      <ul className='space-y-4 text-[14px] leading-[1.45] text-[#5b6169]'>
                         {content.features.map(feature => (
                           <li key={feature.label} className='flex gap-3'>
                             <span className='flex h-5 w-5 shrink-0 items-center justify-center text-[#111b21]'>

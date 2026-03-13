@@ -9,18 +9,27 @@ import VerifyOtpPage from '@app/routes/auth.verify-otp'
 import Catalog from '@app/routes/catalog'
 import ContextOnboarding from '@app/routes/context.onboarding'
 import Dashboard from '@app/routes/dashboard'
+import FaqPage from '@app/routes/faq'
 import Home from '@app/routes/home'
+import LeadsPage from '@app/routes/leads'
 import OnboardingAdvancedOptions from '@app/routes/onboarding.advanced-options'
 import OnboardingBusinessInfo from '@app/routes/onboarding.business-info'
 import OnboardingImport from '@app/routes/onboarding.import'
 import OnboardingReviewProducts from '@app/routes/onboarding.review-products'
+import PricingPage from '@app/routes/pricing'
 import Stats from '@app/routes/stats'
+import StatusScheduler from '@app/routes/status-scheduler'
+import SupportPage from '@app/routes/support'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntdApp, ConfigProvider } from 'antd'
 import frFR from 'antd/locale/fr_FR'
+import dayjs from 'dayjs'
+import 'dayjs/locale/fr'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { Navigate, createBrowserRouter, RouterProvider } from 'react-router-dom'
+
+dayjs.locale('fr')
 
 const queryClient = new QueryClient()
 
@@ -58,12 +67,44 @@ const router = createBrowserRouter([
         element: <Stats />,
       },
       {
+        path: 'leads',
+        element: <LeadsPage />,
+      },
+      {
+        path: 'orders',
+        element: <Navigate to='/leads' replace />,
+      },
+      {
+        path: 'pricing',
+        element: <PricingPage />,
+      },
+      {
+        path: 'forfaits',
+        element: <Navigate to='/pricing' replace />,
+      },
+      {
         path: 'catalog',
         element: <Catalog />,
       },
       {
+        path: 'status-scheduler',
+        element: <StatusScheduler />,
+      },
+      {
+        path: 'marketing',
+        element: <Navigate to='/status-scheduler' replace />,
+      },
+      {
         path: 'context',
         element: <ContextOnboarding />,
+      },
+      {
+        path: 'support',
+        element: <SupportPage />,
+      },
+      {
+        path: 'faq',
+        element: <FaqPage />,
       },
     ],
   },

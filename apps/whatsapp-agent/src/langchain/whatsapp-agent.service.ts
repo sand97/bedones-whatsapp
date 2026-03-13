@@ -102,6 +102,9 @@ interface MessageData {
   fromMe: boolean;
   from: string;
   body: string;
+  type?: string;
+  hasMedia?: boolean;
+  mediaKind?: string;
   contactId?: string; // Real contact ID (not @lid format), added by connector
   contactLabels?: ContactLabel[];
   messageHistory?: MessageHistory; // Added by connector
@@ -517,6 +520,15 @@ export class WhatsAppAgentService implements OnModuleInit {
       // For group chats: "123456@g.us"
       const chatId = message?.from || '';
       const contactId = message?.contactId || '';
+      const analyticsMetadata = this.buildAnalyticsMetadata(
+        message as MessageData,
+        {
+          chatId,
+          contactId,
+          messageId,
+          ownerWhatsappId: userId,
+        },
+      );
 
       // Log what the agent receives
       this.logger.log(
@@ -723,7 +735,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       );
 
       // Log to backend with full metrics
-      await this.logToBackend(metrics);
+      await this.logToBackend(metrics, analyticsMetadata);
     } catch (error: any) {
       this.logger.error('Error processing incoming message:', error.message);
       throw error;
@@ -1347,6 +1359,7 @@ export class WhatsAppAgentService implements OnModuleInit {
    */
   private async logToBackend(
     metrics: import('./agent-operation-callback.handler').AgentOperationMetrics,
+    metadata: Record<string, unknown> = {},
   ): Promise<void> {
     try {
       const result = await this.backendClient.logOperation({
@@ -1370,7 +1383,7 @@ export class WhatsAppAgentService implements OnModuleInit {
         })),
         status: metrics.status,
         error: metrics.error,
-        metadata: {},
+        metadata,
       });
 
       if (result.success) {
@@ -1381,5 +1394,30 @@ export class WhatsAppAgentService implements OnModuleInit {
     } catch (error: any) {
       this.logger.error('Error logging to backend:', error.message);
     }
+  }
+
+  private buildAnalyticsMetadata(
+    message: MessageData,
+    context: {
+      chatId: string;
+      contactId?: string;
+      messageId?: string;
+      ownerWhatsappId?: string;
+    },
+  ): Record<string, unknown> {
+    const rawType = String(message?.type || message?.mediaKind || '').toLowerCase();
+    const mediaKind = String(message?.mediaKind || '').toLowerCase();
+    const normalizedType = mediaKind || rawType || 'text';
+
+    return {
+      sourceMessageId: context.messageId,
+      ownerWhatsappId: context.ownerWhatsappId,
+      contactId: context.contactId,
+      chatId: context.chatId,
+      isGroupMessage: context.chatId.includes('@g.us'),
+      hasMedia: Boolean(message?.hasMedia),
+      mediaKind: mediaKind || undefined,
+      messageType: normalizedType,
+    };
   }
 }

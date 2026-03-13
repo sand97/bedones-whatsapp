@@ -20,6 +20,8 @@ import { OrdersModule } from './orders/orders.module';
 import { PageScriptModule } from './page-scripts/page-script.module';
 import { ProductsModule } from './products/products.module';
 import { SettingsModule } from './settings/settings.module';
+import { StatusSchedulerModule } from './status-scheduler/status-scheduler.module';
+import { StatsModule } from './stats/stats.module';
 import { UserModule } from './user/user.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WhatsAppAgentModule } from './whatsapp-agent/whatsapp-agent.module';
@@ -59,6 +61,8 @@ import { WhatsAppAgentModule } from './whatsapp-agent/whatsapp-agent.module';
     OnboardingModule,
     AuthModule,
     UserModule,
+    StatsModule,
+    StatusSchedulerModule,
     ProductsModule,
     SettingsModule,
     OrdersModule,

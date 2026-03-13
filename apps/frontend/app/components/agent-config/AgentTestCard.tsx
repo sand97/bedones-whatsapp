@@ -64,14 +64,9 @@ export function AgentTestCard() {
 
   return (
     <>
-      <Card
-        className='h-full'
-        styles={{
-          body: { padding: 24 },
-        }}
-      >
+      <Card className='h-full'>
         <div className='flex flex-col gap-4 w-full'>
-          <div className='flex items-start justify-between'>
+          <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
             <div className='w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center'>
               <TestIcon className='w-5 h-5' />
             </div>

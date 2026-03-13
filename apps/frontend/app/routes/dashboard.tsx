@@ -1,16 +1,19 @@
 import {
   ArrowRightOutlined,
-  GoogleOutlined,
-  FacebookOutlined,
-  RiseOutlined,
   MessageOutlined,
+  RiseOutlined,
 } from '@ant-design/icons'
 import {
-  AgentTestCard,
   AgentProductionCard,
+  AgentTestCard,
 } from '@app/components/agent-config'
+import {
+  GoogleBrandIcon,
+  FacebookBrandIcon,
+} from '@app/components/icons/BrandIcons'
 import { DashboardHeader } from '@app/components/layout'
-import { Button, Card, Typography, Badge } from 'antd'
+import { Button, Card, Typography } from 'antd'
+import { useNavigate } from 'react-router-dom'
 
 const { Title, Text, Link } = Typography
 
@@ -25,37 +28,47 @@ export function meta() {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
+
+  const openModerator = () => {
+    if (typeof window === 'undefined') return
+
+    window.open(
+      'https://moderator.bedones.com',
+      '_blank',
+      'noopener,noreferrer'
+    )
+  }
+
   return (
     <>
-      <DashboardHeader title={'Accueil'} />
-      <div className='flex flex-col gap-6 w-full p-6'>
-        {/* Section: Tester ou passer en production */}
+      <DashboardHeader title='Accueil' />
+
+      <div className='flex w-full flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6 card-button-bottom'>
         <section>
           <Title level={5} className='mb-4'>
             Tester ou passer en production
           </Title>
-          <div className='grid grid-cols-2 gap-4'>
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
             <AgentTestCard />
             <AgentProductionCard />
           </div>
         </section>
 
-        {/* Section: Plan et usage */}
         <section>
           <Title level={5} className='mb-4'>
-            Plan et usage
+            Usages et plan
           </Title>
-          <div className='grid grid-cols-2 gap-4'>
-            {/* Messages Card */}
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
             <Card
               className='h-full'
               styles={{
                 body: { padding: 24 },
               }}
             >
-              <div className='flex flex-col gap-4 w-full'>
-                <div className='flex items-start justify-between'>
-                  <div className='w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center'>
+              <div className='flex w-full flex-col gap-4'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                  <div className='flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100'>
                     <MessageOutlined className='text-lg' />
                   </div>
                   <Button
@@ -63,12 +76,13 @@ export default function DashboardPage() {
                     shape='round'
                     icon={<ArrowRightOutlined />}
                     iconPosition='end'
+                    onClick={() => navigate('/stats')}
                   >
                     Voir les détails
                   </Button>
                 </div>
                 <div>
-                  <Text strong className='block mb-1'>
+                  <Text strong className='mb-1 block'>
                     50 messages traités aujourd&apos;hui
                   </Text>
                   <Text type='secondary'>
@@ -78,16 +92,15 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            {/* Forfait Card */}
             <Card
               className='h-full'
               styles={{
                 body: { padding: 24 },
               }}
             >
-              <div className='flex flex-col gap-4 w-full'>
-                <div className='flex items-start justify-between'>
-                  <div className='w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center'>
+              <div className='flex w-full flex-col gap-4'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                  <div className='flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100'>
                     <RiseOutlined className='text-lg' />
                   </div>
                   <Button
@@ -95,25 +108,21 @@ export default function DashboardPage() {
                     shape='round'
                     icon={<ArrowRightOutlined />}
                     iconPosition='end'
-                    style={{
-                      backgroundColor: '#af52de',
-                      borderColor: '#af52de',
-                    }}
+                    onClick={() => navigate('/pricing')}
                   >
-                    Passer à la version Pro
+                    Voir les forfaits
                   </Button>
                 </div>
                 <div>
-                  <div className='flex items-center gap-2 mb-1'>
+                  <div className='mb-1 flex items-center gap-2'>
                     <Text strong>Forfait</Text>
-                    <Badge
-                      count='Free'
-                      style={{ backgroundColor: '#24d366' }}
-                    />
+                    <span className='rounded-full bg-[#24d366] px-2.5 py-1 text-xs font-semibold text-black'>
+                      Free
+                    </span>
                   </div>
                   <Text type='secondary' className='block'>
                     L&apos;IA répondra à tous les contacts sauf aux contacts
-                    exclu. <Link underline>Exclure des contacts</Link>
+                    exclus. <Link>Exclure des contacts</Link>
                   </Text>
                 </div>
               </div>
@@ -121,26 +130,21 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Section: Outils */}
         <section>
           <Title level={5} className='mb-4'>
             Outils
           </Title>
-          <div className='grid grid-cols-2 gap-4'>
-            {/* Google Contacts Card */}
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
             <Card
               className='h-full'
               styles={{
                 body: { padding: 24 },
               }}
             >
-              <div className='flex flex-col gap-4 w-full'>
-                <div className='flex items-start justify-between'>
-                  <div className='w-12 h-12 flex items-center justify-center'>
-                    <GoogleOutlined
-                      className='text-3xl'
-                      style={{ color: '#4285F4' }}
-                    />
+              <div className='flex w-full flex-col gap-4'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                  <div className='flex h-12 w-12 items-center justify-center'>
+                    <GoogleBrandIcon className='h-10 w-10' />
                   </div>
                   <Button
                     type='default'
@@ -152,7 +156,7 @@ export default function DashboardPage() {
                   </Button>
                 </div>
                 <div>
-                  <Text strong className='block mb-1'>
+                  <Text strong className='mb-1 block'>
                     Google Contacts
                   </Text>
                   <Text type='secondary'>
@@ -163,32 +167,29 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            {/* Facebook Card */}
             <Card
               className='h-full'
               styles={{
                 body: { padding: 24 },
               }}
             >
-              <div className='flex flex-col gap-4 w-full'>
-                <div className='flex items-start justify-between'>
-                  <div className='w-12 h-12 flex items-center justify-center'>
-                    <FacebookOutlined
-                      className='text-3xl'
-                      style={{ color: '#1877F2' }}
-                    />
+              <div className='flex w-full flex-col gap-4'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                  <div className='flex h-12 w-12 items-center justify-center'>
+                    <FacebookBrandIcon className='h-10 w-10' />
                   </div>
                   <Button
                     type='default'
                     shape='round'
                     icon={<ArrowRightOutlined />}
                     iconPosition='end'
+                    onClick={openModerator}
                   >
                     Connecter
                   </Button>
                 </div>
                 <div>
-                  <Text strong className='block mb-1'>
+                  <Text strong className='mb-1 block'>
                     Facebook
                   </Text>
                   <Text type='secondary'>

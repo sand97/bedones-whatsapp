@@ -24,7 +24,7 @@ export interface FeatureCategory {
 
 export const featuresConfig: Record<string, FeatureCategory> = {
   marketing: {
-    title: 'Marketing',
+    title: 'Status scheduler',
     features: [
       {
         title: 'Relance des clients si nécessaire',

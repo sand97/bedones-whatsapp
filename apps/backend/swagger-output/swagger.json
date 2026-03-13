@@ -1388,6 +1388,225 @@
         ]
       }
     },
+    "/users/me/stats/analytics": {
+      "get": {
+        "operationId": "StatsController_getMyAnalytics",
+        "summary": "Get current user daily analytics",
+        "description": "Returns daily aggregated analytics for messages, conversations and tokens. Without dates, returns the full series for the current UTC year up to today.",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start day (inclusive) in ISO format YYYY-MM-DD",
+            "schema": {
+              "example": "2026-01-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End day (inclusive) in ISO format YYYY-MM-DD",
+            "schema": {
+              "example": "2026-03-07",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily analytics retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsAnalyticsResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "tags": [
+          "stats"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/me/status-schedules": {
+      "get": {
+        "operationId": "StatusSchedulerController_listSchedules",
+        "summary": "List scheduled WhatsApp statuses for current user",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start day (inclusive) in ISO format YYYY-MM-DD",
+            "schema": {
+              "example": "2026-03-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End day (inclusive) in ISO format YYYY-MM-DD",
+            "schema": {
+              "example": "2026-03-31",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled statuses retrieved successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "status-scheduler"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "StatusSchedulerController_createSchedule",
+        "summary": "Create a new scheduled WhatsApp status",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStatusScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scheduled status created successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "status-scheduler"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/me/status-schedules/{id}": {
+      "patch": {
+        "operationId": "StatusSchedulerController_updateSchedule",
+        "summary": "Update a scheduled WhatsApp status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Scheduled status ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStatusScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scheduled status updated successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Scheduled status not found"
+          }
+        },
+        "tags": [
+          "status-scheduler"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "StatusSchedulerController_cancelSchedule",
+        "summary": "Cancel a scheduled WhatsApp status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Scheduled status ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled status cancelled successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Scheduled status not found"
+          }
+        },
+        "tags": [
+          "status-scheduler"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/products": {
       "get": {
         "operationId": "ProductsController_getAllProducts",
@@ -3025,6 +3244,193 @@
           "productsImported",
           "contactsImported"
         ]
+      },
+      "StatsAnalyticsRangeDto": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "example": "2026-01-01"
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2026-03-07"
+          },
+          "includesToday": {
+            "type": "boolean",
+            "example": true
+          },
+          "timezone": {
+            "type": "string",
+            "example": "UTC"
+          }
+        },
+        "required": [
+          "startDate",
+          "endDate",
+          "includesToday",
+          "timezone"
+        ]
+      },
+      "DailyStatsPointDto": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "example": "2026-03-07"
+          },
+          "messages": {
+            "type": "number",
+            "example": 18
+          },
+          "messagesHandled": {
+            "type": "number",
+            "example": 16
+          },
+          "imageMessages": {
+            "type": "number",
+            "example": 3
+          },
+          "imageMessagesHandled": {
+            "type": "number",
+            "example": 2
+          },
+          "textMessages": {
+            "type": "number",
+            "example": 15
+          },
+          "textMessagesHandled": {
+            "type": "number",
+            "example": 14
+          },
+          "conversations": {
+            "type": "number",
+            "example": 7
+          },
+          "tokens": {
+            "type": "number",
+            "example": 1240
+          }
+        },
+        "required": [
+          "day",
+          "messages",
+          "messagesHandled",
+          "imageMessages",
+          "imageMessagesHandled",
+          "textMessages",
+          "textMessagesHandled",
+          "conversations",
+          "tokens"
+        ]
+      },
+      "StatsAnalyticsResponseDto": {
+        "type": "object",
+        "properties": {
+          "range": {
+            "$ref": "#/components/schemas/StatsAnalyticsRangeDto"
+          },
+          "generatedAt": {
+            "type": "string",
+            "example": "2026-03-07T14:32:00.000Z"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyStatsPointDto"
+            }
+          }
+        },
+        "required": [
+          "range",
+          "generatedAt",
+          "series"
+        ]
+      },
+      "CreateStatusScheduleDto": {
+        "type": "object",
+        "properties": {
+          "scheduledFor": {
+            "type": "string",
+            "description": "Scheduled publication datetime in ISO format",
+            "example": "2026-03-08T08:30:00.000Z"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone used when the schedule was created",
+            "example": "Europe/Paris"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "WhatsApp status content type",
+            "enum": [
+              "TEXT",
+              "IMAGE",
+              "VIDEO"
+            ],
+            "example": "TEXT"
+          },
+          "textContent": {
+            "type": "string",
+            "description": "Text content for a text status",
+            "example": "Nouvelle promo ce matin au magasin."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Caption for an image or video status",
+            "example": "Arrivage du jour"
+          },
+          "mediaUrl": {
+            "type": "string",
+            "description": "Public media URL or data URL for image/video statuses",
+            "example": "https://cdn.example.com/statuses/collection-ete.mp4"
+          }
+        },
+        "required": [
+          "scheduledFor",
+          "timezone",
+          "contentType"
+        ]
+      },
+      "UpdateStatusScheduleDto": {
+        "type": "object",
+        "properties": {
+          "scheduledFor": {
+            "type": "string",
+            "description": "Scheduled publication datetime in ISO format",
+            "example": "2026-03-08T10:00:00.000Z"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone used when the schedule was created",
+            "example": "Europe/Paris"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "WhatsApp status content type",
+            "enum": [
+              "TEXT",
+              "IMAGE",
+              "VIDEO"
+            ],
+            "example": "IMAGE"
+          },
+          "textContent": {
+            "type": "string",
+            "description": "Text content for a text status",
+            "example": "Stock limité cet après-midi."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Caption for an image or video status",
+            "example": "Nouveautés disponibles"
+          },
+          "mediaUrl": {
+            "type": "string",
+            "description": "Public media URL or data URL for image/video statuses",
+            "example": "https://cdn.example.com/statuses/lookbook.jpg"
+          }
+        }
       },
       "CreateProductDto": {
         "type": "object",
