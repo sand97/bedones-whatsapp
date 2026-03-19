@@ -88,64 +88,53 @@ body {
   font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', 'Geist', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--color-page-bg);
+  @apply md:bg-page-bg;
 }
 
 .ant-form-item-margin-offset {
-  margin: 0 !important;
+  @apply !m-0;
 }
 
 .ant-form-item {
-  margin-bottom: 20px;
+  @apply mb-5;
 }
 
 .ant-form-item-additional {
-  margin-top: 4px;
+  @apply mt-1;
 }
 
 .ant-btn {
-  min-height: 46px;
-  padding: 10px 24px;
-  border-radius: var(--radius-control);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
+  @apply min-h-[46px] px-6 py-2.5 rounded-[var(--radius-control)] font-semibold tracking-[0.01em] cursor-pointer;
 }
 
 .ant-btn.ant-btn-round {
-  border-radius: 999px !important;
+  @apply !rounded-full;
 }
 
 .dashboard-header {
- min-height: 46px;
+  @apply min-h-[46px];
 }
 .dashboard-header .ant-btn {
-  min-height: 38px;
-  height: 38px;
+  @apply min-h-[38px] h-[38px];
+}
+.dashboard-header .ant-picker-outlined {
+  @apply min-h-[38px] h-[38px];
 }
 
 .ant-btn-primary.ant-btn-variant-solid {
-  color: #111b21;
-  border: 1px solid #111b21;
-  background: var(--color-primary);
-  box-shadow: none;
+  @apply text-[#111b21] border border-[#111b21] bg-[var(--color-primary)] shadow-none;
 }
 
 .ant-btn-primary.ant-btn-variant-solid:hover,
 .ant-btn-primary.ant-btn-variant-solid:focus {
-  color: #111b21 !important;
-  border-color: #111b21 !important;
-  background: #1fcb5f !important;
+  @apply !text-[#111b21] !border-[#111b21] !bg-[#1fcb5f];
 }
 
 .ant-btn-primary.ant-btn-variant-solid:disabled,
 .ant-btn-primary.ant-btn-variant-solid.ant-btn-disabled,
 .ant-btn-primary.ant-btn-color-primary:disabled,
 .ant-btn-primary.ant-btn-color-primary.ant-btn-disabled {
-  color: var(--color-text-soft) !important;
-  border-color: var(--color-field-border-muted) !important;
-  background: var(--color-surface-accent) !important;
-  box-shadow: none !important;
+  @apply !text-[var(--color-text-soft)] !border-[var(--color-field-border-muted)] !bg-[var(--color-surface-accent)] !shadow-none;
 }
 
 .ant-btn-primary.ant-btn-variant-solid:disabled:hover,
@@ -156,26 +145,19 @@ body {
 .ant-btn-primary.ant-btn-variant-solid.ant-btn-disabled:focus,
 .ant-btn-primary.ant-btn-color-primary:disabled:focus,
 .ant-btn-primary.ant-btn-color-primary.ant-btn-disabled:focus {
-  color: var(--color-text-soft) !important;
-  border-color: var(--color-field-border-muted) !important;
-  background: var(--color-surface-accent) !important;
+  @apply !text-[var(--color-text-soft)] !border-[var(--color-field-border-muted)] !bg-[var(--color-surface-accent)];
 }
 
 .ant-btn-default,
 .ant-btn-variant-outlined {
-  border: none;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  @apply border-none bg-[var(--color-surface)] shadow-[var(--shadow-card)];
 }
 
 .ant-btn-default:hover,
 .ant-btn-default:focus,
 .ant-btn-variant-outlined:hover,
 .ant-btn-variant-outlined:focus {
-  color: #111b21 !important;
-  border-color: transparent !important;
-  background: #fff !important;
-  box-shadow: var(--shadow-card), 0 0 0 1px #111b21 !important;
+  @apply !text-[#111b21] !border-transparent !bg-white !shadow-[var(--shadow-card),0_0_0_1px_#111b21];
 }
 
 .ant-input-outlined,
@@ -183,17 +165,7 @@ body {
 .ant-select-outlined .ant-select-selector,
 .ant-picker-outlined,
 .ant-input-number-outlined {
-  border: 1px solid var(--color-field-border) !important;
-  box-shadow: none !important;
-}
-
-.ant-input-outlined,
-.ant-input-affix-wrapper,
-.ant-select-outlined .ant-select-selector,
-.ant-picker-outlined,
-.ant-input-number-outlined {
-  min-height: 52px;
-  border-radius: var(--radius-control) !important;
+  @apply !border !border-[var(--color-field-border)] !shadow-none min-h-[52px] !rounded-[var(--radius-control)];
 }
 
 .ant-input-outlined:hover,
@@ -201,7 +173,7 @@ body {
 .ant-select-outlined:not(.ant-select-disabled):hover .ant-select-selector,
 .ant-picker-outlined:hover,
 .ant-input-number-outlined:hover {
-  border-color: #bcbcbc !important;
+  @apply !border-[#bcbcbc];
 }
 
 .ant-input-outlined:focus,
@@ -210,46 +182,41 @@ body {
 .ant-select-focused .ant-select-selector,
 .ant-picker-focused,
 .ant-input-number-focused {
-  border-color: #111b21 !important;
-  box-shadow: 0 0 0 3px rgba(17, 27, 33, 0.05) !important;
+  @apply !border-[#111b21] !shadow-[0_0_0_3px_rgba(17,27,33,0.05)];
 }
 
 .ant-select-selector,
 .ant-picker,
 .ant-input,
 .ant-input-affix-wrapper input {
-  font-size: 16px !important;
+  @apply !text-base;
 }
 
 .ant-select-selector,
 .ant-picker {
-  padding-inline: 24px !important;
+  @apply !px-6;
 }
 
 .ant-input::placeholder,
 .ant-select-selection-placeholder,
 .ant-picker-input input::placeholder {
-  color: #bdbdbd !important;
+  @apply !text-[#bdbdbd];
 }
 
 .ant-input-group-addon {
-  padding: 0;
-  border: none;
-  background: transparent;
+  @apply p-0 border-none bg-transparent;
 }
 
 .ant-input-group-wrapper-outlined .ant-input-group-addon {
-  padding: 0;
+  @apply p-0;
 }
 
 .ant-input-prefix {
-  margin-inline-end: 8px;
+  @apply me-2;
 }
 
 .ant-input-textarea textarea {
-  min-height: 156px;
-  padding: 24px !important;
-  border-radius: var(--radius-control) !important;
+  @apply min-h-[156px] !p-6 !rounded-[var(--radius-control)];
 }
 
 .ant-modal.app-double-modal .ant-modal-content {
@@ -317,56 +284,72 @@ body {
 }
 
 .dark-button.ant-btn {
-  min-height: 46px !important;
-  padding: 4px 16px !important;
-  border: 1px solid #111b21 !important;
-  border-radius: 16px !important;
-  background: #111b21 !important;
-  color: #ffffff !important;
-  box-shadow: none !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em;
+  @apply !min-h-[46px] !px-4 !py-1 !border !border-[#111b21] !rounded-2xl !bg-[#111b21] !text-white !shadow-none !text-sm !font-semibold tracking-[0.02em];
 }
 
 .dark-button.ant-btn:hover,
 .dark-button.ant-btn:focus {
-  border-color: #050505 !important;
-  background: #050505 !important;
-  color: #ffffff !important;
+  @apply !border-[#050505] !bg-[#050505] !text-white;
 }
 
 .dark-button.ant-btn:active {
-  border-color: #000000 !important;
-  background: #000000 !important;
-  color: #ffffff !important;
+  @apply !border-black !bg-black !text-white;
 }
 
 .dark-button.ant-btn .ant-btn-icon {
-  font-size: 16px;
+  @apply text-base;
 }
 
 .pricing-current-button {
+  @apply flex min-h-[46px] items-center justify-center px-4 py-1 border border-[var(--color-field-border-muted)] rounded-2xl bg-white text-[var(--color-text-primary)] text-sm font-semibold tracking-[0.02em];
+}
+
+.story-calendar-shell {
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .story-calendar-shell {
+    display: flex;
+    min-height: calc(100vh - 190px);
+    flex-direction: column;
+  }
+}
+
+.story-calendar.ant-picker-calendar-full {
   display: flex;
-  min-height: 46px;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 16px;
-  border: 1px solid var(--color-field-border-muted);
-  border-radius: 16px;
-  background: #ffffff;
-  color: var(--color-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .story-calendar .ant-picker-panel {
   border: none !important;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.story-calendar .ant-picker-date-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.story-calendar .ant-picker-body {
+  flex: 1;
+  min-height: 0;
 }
 
 .story-calendar .ant-picker-content {
+  height: 100%;
   table-layout: fixed;
+}
+
+.story-calendar .ant-picker-content tbody tr {
+  height: clamp(104px, calc((100vh - 248px) / 6), 152px);
 }
 
 .story-calendar .ant-picker-content th {
@@ -381,20 +364,31 @@ body {
   padding: 0 !important;
 }
 
+.story-calendar .ant-picker-cell-inner {
+  height: 100%;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
 .story-calendar .ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-cell-inner::before,
 .story-calendar .ant-picker-cell-selected .ant-picker-cell-inner::before {
   display: none;
 }
 
 .story-calendar-cell {
-  min-height: 82px;
+  height: 100%;
+  min-height: 88px;
   border-top: 1px solid #eceae4;
 }
 
 .story-calendar-button {
   position: relative;
+  display: flex;
+  height: 100%;
   width: 100%;
-  min-height: 82px;
+  min-height: 88px;
+  flex-direction: column;
+  justify-content: flex-start;
   padding: 10px 8px 12px;
   border: none;
   background: transparent;
@@ -412,6 +406,53 @@ body {
 
 .story-calendar .ant-picker-cell-disabled .story-calendar-button {
   opacity: 0.42;
+}
+
+.story-calendar-day-badge {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #111b21;
+}
+
+.story-calendar-day-badge--past {
+  background: #24d366;
+}
+
+.story-calendar-day-badge--upcoming {
+  background: #e4e7eb;
+}
+
+@media (max-width: 1023px) {
+  .story-calendar .ant-picker-content tbody tr {
+    height: clamp(76px, 14vw, 96px);
+  }
+
+  .story-calendar .ant-picker-content th {
+    padding: 8px 8px 0 6px !important;
+    font-size: 12px;
+  }
+
+  .story-calendar-cell {
+    min-height: 76px;
+  }
+
+  .story-calendar-button {
+    min-height: 76px;
+    padding: 10px 6px 10px;
+  }
+
+  .story-calendar-day-badge {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
 }
 
 .auth-phone-field .ant-input-group {

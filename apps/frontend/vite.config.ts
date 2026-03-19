@@ -5,5 +5,8 @@ import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
+  server: {
+    port: 5173,
+  },
   plugins: [tailwindcss(), svgr(), react(), tsconfigPaths()],
 })

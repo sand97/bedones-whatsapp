@@ -1,0 +1,28 @@
+import { PAYMENT_METHODS } from './constants'
+
+export function PaymentMethodsSection() {
+  return (
+    <section className='border-t border-[var(--color-field-border-muted)] pt-6'>
+      <div className='flex flex-col items-center justify-center gap-5 text-center'>
+        <p className='m-0 text-[var(--font-size-eyebrow)] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-soft)]'>
+          Paiements acceptés
+        </p>
+
+        <div className='flex flex-wrap items-center justify-center gap-4'>
+          {PAYMENT_METHODS.map(method => (
+            <div
+              key={method.alt}
+              className='flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-none bg-white shadow-card'
+            >
+              <img
+                src={method.src}
+                alt={method.alt}
+                className='h-full w-full object-cover'
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}

@@ -26,6 +26,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   private qrCode: string | null = null;
   private connectedUserId: string | null = null;
   private wppInjected = false;
+  private pageDebugListenersAttached = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -579,6 +580,8 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    this.attachPageDebugListeners(page);
+
     try {
       // Check if WPP is already available in the page (in case it was injected elsewhere)
       const wppAlreadyExists = await page.evaluate(() => {
@@ -684,6 +687,8 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Puppeteer page is not available');
     }
 
+    this.attachPageDebugListeners(page);
+
     this.logger.debug('Executing page script in browser context');
 
     try {
@@ -703,6 +708,47 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.error('Error executing page script:', error);
       throw error;
     }
+  }
+
+  private attachPageDebugListeners(page: any) {
+    if (this.pageDebugListenersAttached) {
+      return;
+    }
+
+    page.on('console', (message: any) => {
+      const text = message?.text?.() || '';
+
+      if (!text.includes('[status/sendStatus]')) {
+        return;
+      }
+
+      const type = message?.type?.() || 'log';
+      const formattedMessage = `[PAGE:${type}] ${text}`;
+
+      if (type === 'error') {
+        this.logger.error(formattedMessage);
+        return;
+      }
+
+      if (type === 'warning') {
+        this.logger.warn(formattedMessage);
+        return;
+      }
+
+      this.logger.log(formattedMessage);
+    });
+
+    page.on('pageerror', (error: Error) => {
+      const message = error?.message || '';
+
+      if (!message.includes('[status/sendStatus]')) {
+        return;
+      }
+
+      this.logger.error(`[PAGE:error] ${message}`, error?.stack);
+    });
+
+    this.pageDebugListenersAttached = true;
   }
 
   /**
@@ -742,6 +788,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
             headers: options.headers || {},
           };
 
+          if (options.responseType) {
+            axiosConfig.responseType = options.responseType;
+          }
+
           // Gérer le body
           if (options.body) {
             if (typeof options.body === 'string') {
@@ -753,6 +803,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
 
           // Faire la requête avec axios (côté Node.js, pas de CSP!)
           const response = await this.httpService.axiosRef.request(axiosConfig);
+          const isBinaryResponse = options.responseType === 'arraybuffer';
+          const serializedData = isBinaryResponse
+            ? Buffer.from(response.data).toString('base64')
+            : response.data;
 
           // Retourner une réponse simple (pas de fonctions, elles ne peuvent pas être sérialisées)
           return {
@@ -760,7 +814,8 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
             status: response.status,
             statusText: response.statusText,
             headers: response.headers,
-            data: response.data,
+            data: serializedData,
+            responseType: isBinaryResponse ? 'base64' : 'default',
           };
         } catch (error: any) {
           this.logger.error(`[nodeFetch] Error: ${error.message}`, error.stack);
@@ -772,6 +827,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
             statusText: error.response?.statusText || 'Internal Server Error',
             headers: error.response?.headers || {},
             data: error.response?.data || { error: error.message },
+            responseType: 'default',
           };
         }
       },
@@ -787,6 +843,10 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
         return {
           ...response,
           json: async () => response.data,
+          text: async () =>
+            typeof response.data === 'string'
+              ? response.data
+              : JSON.stringify(response.data),
         };
       };
     });

@@ -45,7 +45,8 @@ export class UpdateStatusScheduleDto {
   caption?: string;
 
   @ApiPropertyOptional({
-    description: 'Public media URL or data URL for image/video statuses',
+    description:
+      'Public media URL stored in MinIO. Create/update requests may also send a data URL that will be uploaded and normalized server-side.',
     example: 'https://cdn.example.com/statuses/lookbook.jpg',
   })
   @IsOptional()

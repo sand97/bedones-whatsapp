@@ -3,6 +3,7 @@ import {
   StatusScheduleContentType,
   StatusScheduleState,
 } from '@app/generated/client';
+import * as crypto from 'crypto';
 import {
   BadRequestException,
   Injectable,
@@ -10,6 +11,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { MinioService } from '../minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppAgentService } from '../whatsapp-agent/whatsapp-agent.service';
 
@@ -26,12 +28,23 @@ type ScheduleInput = {
   mediaUrl?: string | null;
 };
 
+export type StatusScheduleDaySnapshot = {
+  day: string;
+  schedules: StatusSchedule[];
+};
+
+export type StatusScheduleMutationResult = {
+  schedule: StatusSchedule;
+  affectedDays: StatusScheduleDaySnapshot[];
+};
+
 @Injectable()
 export class StatusSchedulerService {
   private readonly logger = new Logger(StatusSchedulerService.name);
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly minioService: MinioService,
     private readonly whatsAppAgentService: WhatsAppAgentService,
   ) {}
 
@@ -64,23 +77,25 @@ export class StatusSchedulerService {
   async createForUser(
     userId: string,
     dto: CreateStatusScheduleDto,
-  ): Promise<StatusSchedule> {
+  ): Promise<StatusScheduleMutationResult> {
     await this.assertUserCanSchedule(userId);
-    const data = this.buildScheduleData(dto);
+    const data = await this.buildScheduleData(userId, dto);
 
-    return this.prisma.statusSchedule.create({
+    const schedule = await this.prisma.statusSchedule.create({
       data: {
         userId,
         ...data,
       },
     });
+
+    return this.buildMutationResult(userId, schedule, [schedule.scheduledDay]);
   }
 
   async updateForUser(
     userId: string,
     scheduleId: string,
     dto: UpdateStatusScheduleDto,
-  ): Promise<StatusSchedule> {
+  ): Promise<StatusScheduleMutationResult> {
     const existing = await this.getOwnedSchedule(scheduleId, userId);
 
     if (
@@ -92,7 +107,7 @@ export class StatusSchedulerService {
       );
     }
 
-    const data = this.buildScheduleData({
+    const data = await this.buildScheduleData(userId, {
       scheduledFor: dto.scheduledFor ?? existing.scheduledFor.toISOString(),
       timezone: dto.timezone ?? existing.timezone,
       contentType: dto.contentType ?? existing.contentType,
@@ -102,7 +117,7 @@ export class StatusSchedulerService {
       mediaUrl: dto.mediaUrl !== undefined ? dto.mediaUrl : existing.mediaUrl,
     });
 
-    return this.prisma.statusSchedule.update({
+    const schedule = await this.prisma.statusSchedule.update({
       where: { id: scheduleId },
       data: {
         ...data,
@@ -112,12 +127,17 @@ export class StatusSchedulerService {
         lastError: null,
       },
     });
+
+    return this.buildMutationResult(userId, schedule, [
+      existing.scheduledDay,
+      schedule.scheduledDay,
+    ]);
   }
 
   async cancelForUser(
     userId: string,
     scheduleId: string,
-  ): Promise<StatusSchedule> {
+  ): Promise<StatusScheduleMutationResult> {
     const existing = await this.getOwnedSchedule(scheduleId, userId);
 
     if (
@@ -129,13 +149,15 @@ export class StatusSchedulerService {
       );
     }
 
-    return this.prisma.statusSchedule.update({
+    const schedule = await this.prisma.statusSchedule.update({
       where: { id: scheduleId },
       data: {
         status: StatusScheduleState.CANCELLED,
         lastError: null,
       },
     });
+
+    return this.buildMutationResult(userId, schedule, [existing.scheduledDay]);
   }
 
   async dispatchDueSchedules(batchSize = 10) {
@@ -171,13 +193,34 @@ export class StatusSchedulerService {
       }
 
       try {
+        const normalizedMediaUrl =
+          schedule.contentType === StatusScheduleContentType.TEXT
+            ? null
+            : await this.normalizeMediaUrl(
+                schedule.userId,
+                schedule.contentType,
+                schedule.mediaUrl,
+              );
+
+        if (
+          normalizedMediaUrl &&
+          normalizedMediaUrl !== schedule.mediaUrl
+        ) {
+          await this.prisma.statusSchedule.update({
+            where: { id: schedule.id },
+            data: {
+              mediaUrl: normalizedMediaUrl,
+            },
+          });
+        }
+
         const result = await this.whatsAppAgentService.publishStatus(
           schedule.userId,
           {
             contentType: schedule.contentType,
             textContent: schedule.textContent,
             caption: schedule.caption,
-            mediaUrl: schedule.mediaUrl,
+            mediaUrl: normalizedMediaUrl,
           },
         );
 
@@ -230,6 +273,13 @@ export class StatusSchedulerService {
   }
 
   private async assertUserCanSchedule(userId: string) {
+    await this.getSchedulingContext(userId);
+  }
+
+  private async getSchedulingContext(userId: string): Promise<{
+    userId: string;
+    agentId: string;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -251,6 +301,11 @@ export class StatusSchedulerService {
         'A WhatsApp agent is required before scheduling statuses',
       );
     }
+
+    return {
+      userId: user.id,
+      agentId: user.whatsappAgent.id,
+    };
   }
 
   private async getOwnedSchedule(scheduleId: string, userId: string) {
@@ -265,7 +320,39 @@ export class StatusSchedulerService {
     return schedule;
   }
 
-  private buildScheduleData(input: ScheduleInput) {
+  private async listActiveSchedulesForDay(userId: string, day: string) {
+    return this.prisma.statusSchedule.findMany({
+      where: {
+        userId,
+        scheduledDay: day,
+        status: {
+          not: StatusScheduleState.CANCELLED,
+        },
+      },
+      orderBy: [{ scheduledFor: 'asc' }],
+    });
+  }
+
+  private async buildMutationResult(
+    userId: string,
+    schedule: StatusSchedule,
+    days: string[],
+  ): Promise<StatusScheduleMutationResult> {
+    const uniqueDays = [...new Set(days.filter(Boolean))];
+    const affectedDays = await Promise.all(
+      uniqueDays.map(async (day) => ({
+        day,
+        schedules: await this.listActiveSchedulesForDay(userId, day),
+      })),
+    );
+
+    return {
+      schedule,
+      affectedDays,
+    };
+  }
+
+  private async buildScheduleData(userId: string, input: ScheduleInput) {
     const scheduledFor = new Date(input.scheduledFor);
 
     if (Number.isNaN(scheduledFor.getTime())) {
@@ -281,7 +368,11 @@ export class StatusSchedulerService {
     const timezone = this.normalizeTimezone(input.timezone);
     const textContent = this.normalizeOptional(input.textContent);
     const caption = this.normalizeOptional(input.caption);
-    const mediaUrl = this.normalizeOptional(input.mediaUrl);
+    const mediaUrl = await this.normalizeMediaUrl(
+      userId,
+      input.contentType,
+      input.mediaUrl,
+    );
 
     if (input.contentType === StatusScheduleContentType.TEXT && !textContent) {
       throw new BadRequestException(
@@ -325,6 +416,165 @@ export class StatusSchedulerService {
   private normalizeOptional(value?: string | null) {
     const trimmed = value?.trim();
     return trimmed ? trimmed : null;
+  }
+
+  private async normalizeMediaUrl(
+    userId: string,
+    contentType: StatusScheduleContentType,
+    mediaUrl?: string | null,
+  ): Promise<string | null> {
+    if (contentType === StatusScheduleContentType.TEXT) {
+      return null;
+    }
+
+    const normalized = this.normalizeOptional(mediaUrl);
+    if (!normalized) {
+      return null;
+    }
+
+    if (this.isDataUrl(normalized)) {
+      const parsed = this.parseDataUrl(normalized);
+      const upload = await this.storeMediaBuffer(userId, {
+        buffer: parsed.buffer,
+        mimeType: parsed.mimeType,
+      });
+
+      if (upload.contentType !== contentType) {
+        throw new BadRequestException(
+          `mediaUrl must contain a ${contentType.toLowerCase()} file`,
+        );
+      }
+
+      return upload.url;
+    }
+
+    this.assertPublicMediaUrl(normalized);
+    return normalized;
+  }
+
+  private isDataUrl(value: string) {
+    return value.startsWith('data:');
+  }
+
+  private parseDataUrl(value: string): { mimeType: string; buffer: Buffer } {
+    const match = value.match(/^data:([^;]+);base64,(.+)$/s);
+
+    if (!match) {
+      throw new BadRequestException('mediaUrl must be a valid data URL');
+    }
+
+    const [, mimeType, base64Payload] = match;
+
+    try {
+      return {
+        mimeType,
+        buffer: Buffer.from(base64Payload, 'base64'),
+      };
+    } catch {
+      throw new BadRequestException('mediaUrl contains invalid base64 data');
+    }
+  }
+
+  private assertPublicMediaUrl(value: string) {
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new BadRequestException(
+          'mediaUrl must be a public http(s) URL',
+        );
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new BadRequestException('mediaUrl must be a valid URL');
+    }
+  }
+
+  private async storeMediaBuffer(
+    userId: string,
+    media: {
+      buffer: Buffer;
+      mimeType: string;
+      originalFilename?: string;
+    },
+  ): Promise<{
+    url: string;
+    contentType: Exclude<StatusScheduleContentType, 'TEXT'>;
+  }> {
+    const { agentId } = await this.getSchedulingContext(userId);
+    const resolvedContentType = this.resolveMediaContentType(media.mimeType);
+    const extension = this.resolveFileExtension(
+      media.mimeType,
+      media.originalFilename,
+    );
+    const objectKey = `${agentId}/status-schedules/${resolvedContentType.toLowerCase()}/${userId}-${crypto.randomUUID()}.${extension}`;
+
+    const result = await this.minioService.uploadBuffer(
+      media.buffer,
+      objectKey,
+      media.mimeType,
+    );
+
+    if (!result.success || !result.url) {
+      throw new BadRequestException(
+        result.error || 'Unable to upload story media',
+      );
+    }
+
+    this.logger.log(
+      `Status media uploaded for user ${userId}: ${objectKey} (${media.mimeType})`,
+    );
+
+    return {
+      url: result.url,
+      contentType: resolvedContentType,
+    };
+  }
+
+  private resolveMediaContentType(
+    mimeType: string,
+  ): Exclude<StatusScheduleContentType, 'TEXT'> {
+    if (mimeType.startsWith('image/')) {
+      return StatusScheduleContentType.IMAGE;
+    }
+
+    if (mimeType.startsWith('video/')) {
+      return StatusScheduleContentType.VIDEO;
+    }
+
+    throw new BadRequestException(
+      'Only image and video files are supported for stories',
+    );
+  }
+
+  private resolveFileExtension(mimeType: string, originalFilename?: string) {
+    const fromMime: Record<string, string> = {
+      'image/gif': 'gif',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'video/quicktime': 'mov',
+      'video/webm': 'webm',
+    };
+
+    if (fromMime[mimeType]) {
+      return fromMime[mimeType];
+    }
+
+    const filenameExtension = originalFilename?.split('.').pop()?.trim();
+    if (filenameExtension) {
+      return filenameExtension.toLowerCase();
+    }
+
+    const subtype = mimeType.split('/').pop()?.trim();
+    if (subtype) {
+      return subtype.toLowerCase();
+    }
+
+    return 'bin';
   }
 
   private getDayInTimezone(date: Date, timezone: string) {

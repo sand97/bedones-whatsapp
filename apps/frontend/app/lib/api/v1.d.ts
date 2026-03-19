@@ -1546,7 +1546,7 @@ export interface components {
              */
             caption?: string;
             /**
-             * @description Public media URL or data URL for image/video statuses
+             * @description Public media URL stored in MinIO. Create/update requests may also send a data URL that will be uploaded and normalized server-side.
              * @example https://cdn.example.com/statuses/collection-ete.mp4
              */
             mediaUrl?: string;
@@ -1579,7 +1579,7 @@ export interface components {
              */
             caption?: string;
             /**
-             * @description Public media URL or data URL for image/video statuses
+             * @description Public media URL stored in MinIO. Create/update requests may also send a data URL that will be uploaded and normalized server-side.
              * @example https://cdn.example.com/statuses/lookbook.jpg
              */
             mediaUrl?: string;

@@ -14,6 +14,13 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Limite étendue pour les stories planifiées avec media inline (data URL)
+  app.use(
+    '/users/me/status-schedules',
+    express.json({ limit: '30mb' }),
+    express.urlencoded({ limit: '30mb', extended: true }),
+  );
+
   // Limite standard
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -26,7 +33,7 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(','),
     credentials: true,
   });
 

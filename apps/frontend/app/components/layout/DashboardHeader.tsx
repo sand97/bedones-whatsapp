@@ -47,11 +47,11 @@ export function DashboardHeader({ title, right }: DashboardHeaderProps) {
           </span>
         )}
       </div>
-      {right && (
-        <div className='dashboard-header__right flex shrink-0 items-center'>
+      {right ? (
+        <div className='dashboard-header__right flex min-w-0 items-center justify-end'>
           {right}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

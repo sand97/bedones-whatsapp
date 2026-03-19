@@ -344,7 +344,7 @@ function DashboardLayoutContent() {
   }
 
   return (
-    <div className='min-h-screen bg-[#fbfafb]'>
+    <div className='min-h-screen md:bg-[#fbfafb]'>
       {contextHolder}
 
       <div className='relative flex min-h-screen w-full lg:p-4'>
@@ -352,7 +352,7 @@ function DashboardLayoutContent() {
           type='button'
           aria-label='Fermer le menu'
           onClick={() => setMobileMenuOpen(false)}
-          className={`fixed inset-0 z-30 bg-black/20 transition-opacity duration-300 lg:hidden ${
+          className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-300 lg:hidden ${
             mobileMenuOpen
               ? 'pointer-events-auto opacity-100'
               : 'pointer-events-none opacity-0'
@@ -360,7 +360,7 @@ function DashboardLayoutContent() {
         />
 
         <div
-          className={`fixed inset-y-0 left-0 z-40 lg:hidden ${
+          className={`fixed inset-y-0 left-0 z-50 lg:hidden ${
             mobileMenuOpen ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
         >

@@ -37,3 +37,4 @@ temp/
 /apps/whatsapp-agent/cropped-images/
 cropped-images/
 /apps/frontend/dist/
+/apps/backend/google_client_secret.json

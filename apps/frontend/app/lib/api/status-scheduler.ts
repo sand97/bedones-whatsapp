@@ -43,6 +43,16 @@ export interface CreateStatusSchedulePayload {
 export interface UpdateStatusSchedulePayload
   extends Partial<CreateStatusSchedulePayload> {}
 
+export interface StatusScheduleDaySnapshot {
+  day: string
+  schedules: StatusSchedule[]
+}
+
+export interface StatusScheduleMutationResponse {
+  affectedDays: StatusScheduleDaySnapshot[]
+  schedule: StatusSchedule
+}
+
 export async function getStatusSchedules(
   params: StatusScheduleRangeParams = {}
 ): Promise<StatusSchedule[]> {
@@ -58,8 +68,8 @@ export async function getStatusSchedules(
 
 export async function createStatusSchedule(
   payload: CreateStatusSchedulePayload
-): Promise<StatusSchedule> {
-  const response = await apiClient.post<StatusSchedule>(
+): Promise<StatusScheduleMutationResponse> {
+  const response = await apiClient.post<StatusScheduleMutationResponse>(
     '/users/me/status-schedules',
     payload
   )
@@ -70,8 +80,8 @@ export async function createStatusSchedule(
 export async function updateStatusSchedule(
   scheduleId: string,
   payload: UpdateStatusSchedulePayload
-): Promise<StatusSchedule> {
-  const response = await apiClient.patch<StatusSchedule>(
+): Promise<StatusScheduleMutationResponse> {
+  const response = await apiClient.patch<StatusScheduleMutationResponse>(
     `/users/me/status-schedules/${scheduleId}`,
     payload
   )
@@ -81,8 +91,8 @@ export async function updateStatusSchedule(
 
 export async function cancelStatusSchedule(
   scheduleId: string
-): Promise<StatusSchedule> {
-  const response = await apiClient.delete<StatusSchedule>(
+): Promise<StatusScheduleMutationResponse> {
+  const response = await apiClient.delete<StatusScheduleMutationResponse>(
     `/users/me/status-schedules/${scheduleId}`
   )
 
