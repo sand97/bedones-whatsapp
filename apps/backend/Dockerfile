@@ -13,11 +13,13 @@ COPY apps/backend/package.json ./apps/backend/package.json
 
 RUN pnpm install --frozen-lockfile --filter backend...
 
+COPY scripts ./scripts
 COPY packages/common ./packages/common
 COPY apps/backend ./apps/backend
 
 RUN pnpm --filter @apps/common build
-RUN pnpm --filter backend prisma generate
+RUN rm -rf apps/backend/src/generated/client
+RUN pnpm --filter backend prisma:generate
 RUN pnpm --filter backend build
 
 FROM node:20-bookworm-slim AS runtime

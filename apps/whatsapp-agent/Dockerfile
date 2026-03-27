@@ -13,12 +13,14 @@ COPY apps/whatsapp-agent/package.json ./apps/whatsapp-agent/package.json
 
 RUN pnpm install --frozen-lockfile --filter whatsapp-agent...
 
+COPY scripts ./scripts
 COPY packages/common ./packages/common
 COPY apps/backend/swagger-output ./apps/backend/swagger-output
 COPY apps/whatsapp-agent ./apps/whatsapp-agent
 
 RUN pnpm --filter @apps/common build
-RUN pnpm --filter whatsapp-agent prisma generate
+RUN rm -rf apps/whatsapp-agent/src/generated/client
+RUN pnpm --filter whatsapp-agent prisma:generate
 RUN pnpm --filter whatsapp-agent build
 
 FROM node:20-bookworm-slim AS runtime
