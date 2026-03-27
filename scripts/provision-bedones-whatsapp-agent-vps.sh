@@ -17,7 +17,6 @@ WHATSAPP_AUTOSTART_TARGET_SLOT="${WHATSAPP_AUTOSTART_TARGET_SLOT:-0}"
 PRIVATE_NETWORK_NAME="${PRIVATE_NETWORK_NAME:-bedones_private}"
 RENDERED_STACK_FILE="${RUNNER_TEMP:-/tmp}/bedones-whatsapp-agent-stack.yml"
 STACKS_JSON_FILE="${RUNNER_TEMP:-/tmp}/bedones-whatsapp-agent-stacks.json"
-SSH_KEY_PATH="${RUNNER_TEMP:-/tmp}/bedones-herznet-id_rsa"
 
 api_url="https://api.hetzner.cloud/v1"
 job_total=3
@@ -82,11 +81,6 @@ extract_server_info() {
     -H "Authorization: Bearer ${HERZNET_API_KEY}" \
     "${api_url}/servers/${server_id}"
 }
-
-if [[ -n "${SSH_PRIVATE_KEY:-}" ]]; then
-  printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_KEY_PATH}"
-  chmod 600 "${SSH_KEY_PATH}"
-fi
 
 create_payload="$(
   jq -n \
@@ -154,9 +148,6 @@ callback "running" "STACK_INSTALLING" 1
 
 mkdir -p "${HOME}/.ssh"
 ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
-if [[ -f "${SSH_KEY_PATH}" ]]; then
-  ssh_opts+=(-i "${SSH_KEY_PATH}")
-fi
 
 scp "${ssh_opts[@]}" "${RENDERED_STACK_FILE}" "root@${public_ipv4}:/root/bedones-whatsapp-agent.stack.yml"
 

@@ -11,7 +11,6 @@ STACK_INFRA_CALLBACK_SECRET="${STACK_INFRA_CALLBACK_SECRET:-}"
 HERZNET_API_KEY="${HERZNET_API_KEY:?HERZNET_API_KEY is required}"
 DELETE_SERVER_WHEN_EMPTY="${DELETE_SERVER_WHEN_EMPTY:-false}"
 PUBLIC_IPV4="${PUBLIC_IPV4:-}"
-SSH_KEY_PATH="${RUNNER_TEMP:-/tmp}/bedones-herznet-id_rsa"
 
 callback() {
   local status="$1"
@@ -31,18 +30,10 @@ callback() {
         --data-binary @-
 }
 
-if [[ -n "${SSH_PRIVATE_KEY:-}" ]]; then
-  printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_KEY_PATH}"
-  chmod 600 "${SSH_KEY_PATH}"
-fi
-
 callback "running" "STACK_RELEASING" 0
 
 if [[ -n "${PUBLIC_IPV4}" ]]; then
   ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
-  if [[ -f "${SSH_KEY_PATH}" ]]; then
-    ssh_opts+=(-i "${SSH_KEY_PATH}")
-  fi
 
   ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "
     set -euo pipefail
