@@ -43,6 +43,10 @@ export function meta() {
 
 // Fonction pour détecter si l'utilisateur est sur mobile (basée sur la largeur du navigateur)
 function isMobileDevice() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
   return window.innerWidth < 768 // Mobile si largeur < 768px (breakpoint standard)
 }
 
@@ -59,7 +63,7 @@ export default function LoginPage() {
   const [pairingToken, setPairingToken] = useState<string | null>(null)
   const [qrSessionToken, setQrSessionToken] = useState<string | null>(null)
   const [isQrMode, setIsQrMode] = useState(false)
-  const [isMobile] = useState(isMobileDevice())
+  const [isMobile, setIsMobile] = useState(false)
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isPolling, setIsPolling] = useState(false)
 
@@ -71,6 +75,10 @@ export default function LoginPage() {
     : null
 
   // Polling for QR code status and authentication check
+  useEffect(() => {
+    setIsMobile(isMobileDevice())
+  }, [])
+
   useEffect(() => {
     if (!pairingToken || !qrSessionToken || !isQrMode) return
 
