@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+**/.next
+**/.cache
+**/.DS_Store
+**/*.log
+**/.env
+**/.env.*
+apps/whatsapp-connector/data/sessions

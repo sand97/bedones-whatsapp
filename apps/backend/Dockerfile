@@ -1,74 +1,42 @@
-FROM node:18-alpine AS base
+FROM node:20-bookworm-slim AS build
 
-# Enable pnpm via Corepack
 ENV PNPM_HOME="/pnpm" \
     PATH="$PNPM_HOME:$PATH"
+
 RUN corepack enable
 
 WORKDIR /app
 
-# Copy workspace dependencies from monorepo root
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-# Copy backend package.json
-COPY apps/backend/package.json ./apps/backend/
-# Copy common package.json
-COPY packages/common/package.json ./packages/common/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/common/package.json ./packages/common/package.json
+COPY apps/backend/package.json ./apps/backend/package.json
 
-# Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile --filter backend...
 
-# Development stage
-FROM base AS development
-
-# Copy source code
-COPY apps/backend ./apps/backend
 COPY packages/common ./packages/common
+COPY apps/backend ./apps/backend
 
-# Set working directory to backend
+RUN pnpm --filter @apps/common build
+RUN pnpm --filter backend prisma generate
+RUN pnpm --filter backend build
+
+FROM node:20-bookworm-slim AS runtime
+
+ENV PNPM_HOME="/pnpm" \
+    PATH="$PNPM_HOME:$PATH" \
+    NODE_ENV=production
+
+RUN corepack enable \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=build /app /app
+
 WORKDIR /app/apps/backend
 
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
-
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
-
-# Install curl for healthchecks
-RUN apk add --no-cache curl
-
-# Expose port
 EXPOSE 3000
 
-# Start in dev mode
-CMD ["sh", "-c", "pnpm --filter @apps/common run build && pnpm run start:dev"]
-
-# Production stage
-FROM base AS production
-
-# Set production environment
-ENV NODE_ENV=production
-
-# Copy source code
-COPY apps/backend ./apps/backend
-COPY packages/common ./packages/common
-
-# Set working directory to backend
-WORKDIR /app/apps/backend
-
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
-
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
-
-# Build the application
-RUN pnpm build
-
-# Install curl for healthchecks
-RUN apk add --no-cache curl
-
-# Expose port
-EXPOSE 3000
-
-# Start the application
-CMD ["pnpm", "run", "start:prod"]
+CMD ["node", "dist/main"]

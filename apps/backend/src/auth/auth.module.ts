@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
 import { OnboardingModule } from '../onboarding/onboarding.module';
+import { StackPoolModule } from '../stack-pool/stack-pool.module';
 
 import { AuthController } from './auth.controller';
 import { AuthGateway } from './auth.gateway';
@@ -30,6 +31,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     WhatsAppAgentModule,
     ConnectorClientModule,
     forwardRef(() => OnboardingModule),
+    forwardRef(() => StackPoolModule),
   ],
   providers: [AuthService, JwtStrategy, AuthGateway],
   controllers: [AuthController],

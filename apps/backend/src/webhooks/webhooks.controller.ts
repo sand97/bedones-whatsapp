@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import * as Sentry from '@sentry/nestjs';
 
 import { AuthGateway } from '../auth/auth.gateway';
 import { AuthService } from '../auth/auth.service';
@@ -40,6 +41,18 @@ class WhatsAppEventDto {
   // On accepte n'importe quelle donnée, mais on la validera manuellement selon l'événement
   @IsOptional()
   data?: unknown;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  connectorInstanceId?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 @ApiTags('webhooks')
@@ -52,6 +65,27 @@ export class WebhooksController {
     private readonly authGateway: AuthGateway,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
+
+  private captureWebhookException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'webhooks',
+        operation,
+        service: 'backend',
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        webhook: context,
+      },
+    });
+  }
 
   @Post('whatsapp/connected')
   @ApiOperation({
@@ -106,6 +140,15 @@ export class WebhooksController {
       this.logger.error(
         `Error processing WhatsApp connection: ${error.message}`,
         error.stack,
+      );
+      this.captureWebhookException(
+        'whatsapp_connected.process_pairing_success',
+        error,
+        {
+          connectorClientId: data.id,
+          hasProfile: typeof data.profile !== 'undefined',
+          phoneNumber: data.phoneNumber,
+        },
       );
 
       return {
@@ -166,9 +209,25 @@ export class WebhooksController {
           `[${timestamp}] 🔐 QR code received from connector (length: ${qrCode.length} chars)`,
         );
 
-        // Find all active QR sessions and broadcast to them
-        // Note: In development with a single connector, we broadcast to all active sessions
-        // In production with multiple connectors, we would need to identify which connector sent this
+        if (payload.connectorInstanceId) {
+          const pairingToken = await this.cacheManager.get<string>(
+            `connector-session:${payload.connectorInstanceId}`,
+          );
+
+          if (pairingToken) {
+            this.logger.log(
+              `[${timestamp}] ➡️ Emitting targeted QR update for connector ${payload.connectorInstanceId}`,
+            );
+            this.authGateway.emitQRCode(pairingToken, qrCode);
+
+            return {
+              success: true,
+              message: 'Targeted QR code emitted successfully',
+            };
+          }
+        }
+
+        // Fallback broadcast for local/dev mode
         const keys = await this.cacheManager.store.keys?.('qr-session:*');
 
         if (keys && keys.length > 0) {
@@ -315,6 +374,17 @@ export class WebhooksController {
             `[${timestamp}] ❌ Error processing WhatsApp connection: ${error.message}`,
             error.stack,
           );
+          this.captureWebhookException(
+            'whatsapp_events.pairing_success.process_pairing_success',
+            error,
+            {
+              connectorClientId: connectionData.id,
+              event: payload.event,
+              hasProfile: typeof connectionData.profile !== 'undefined',
+              phoneNumber: connectionData.phoneNumber,
+              webhookTimestamp: payload.timestamp,
+            },
+          );
 
           return {
             success: false,
@@ -334,6 +404,25 @@ export class WebhooksController {
         `[${timestamp}] ❌ Error processing event ${payload.event}: ${error.message}`,
         error.stack,
       );
+
+      if (payload.event === 'pairing_success') {
+        const data = isRecord(payload.data) ? payload.data : null;
+        this.captureWebhookException(
+          'whatsapp_events.pairing_success.validation_or_processing',
+          error,
+          {
+            connectorClientId:
+              typeof data?.id === 'string' ? data.id : undefined,
+            event: payload.event,
+            hasData: typeof payload.data !== 'undefined',
+            phoneNumber:
+              typeof data?.phoneNumber === 'string'
+                ? data.phoneNumber
+                : undefined,
+            webhookTimestamp: payload.timestamp,
+          },
+        );
+      }
 
       return {
         success: false,

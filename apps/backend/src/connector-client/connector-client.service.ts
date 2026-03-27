@@ -192,6 +192,22 @@ export class ConnectorClientService {
   }
 
   /**
+   * Start WhatsApp client explicitly when connector autostart is disabled
+   */
+  async startClient(connectorUrl: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    this.logger.log(`[CONNECTOR] Starting client: ${connectorUrl}`);
+
+    const instance = this.getAxiosInstance(connectorUrl);
+    const response = await instance.post('/whatsapp/start');
+
+    return response.data;
+  }
+
+  /**
    * Clean and restart WhatsApp client from scratch
    * Removes .wwebjs_cache and data directories to ensure fresh authentication
    * Should ONLY be called when initiating new authentication (NOT during polling)

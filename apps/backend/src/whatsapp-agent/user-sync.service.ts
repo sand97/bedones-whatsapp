@@ -2,6 +2,7 @@ import { ConnectorClientService } from '@app/connector-client';
 import { PageScriptService } from '@app/page-scripts';
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 
 import { TokenService } from '../common/services/token.service';
 import { MinioService } from '../minio/minio.service';
@@ -37,6 +38,27 @@ export class UserSyncService {
     @Inject(forwardRef(() => OnboardingService))
     private readonly onboardingService: OnboardingService,
   ) {}
+
+  private captureUserSyncException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'user_sync',
+        operation,
+        service: 'backend',
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        userSync: context,
+      },
+    });
+  }
 
   /**
    * Update sync progress in WhatsAppAgent and emit WebSocket event
@@ -149,6 +171,15 @@ export class UserSyncService {
         this.logger.error(
           `⚠️ Client info sync failed for ${phoneNumber}: ${error.message}`,
         );
+        this.captureUserSyncException(
+          'synchronize_user_data.client_info',
+          error,
+          {
+            phoneNumber: cleanedPhoneNumber,
+            rawPhoneNumber: phoneNumber,
+            userId: user.id,
+          },
+        );
       }
 
       // Step 2: Execute catalog script (collections, products, images)
@@ -159,6 +190,11 @@ export class UserSyncService {
         this.logger.error(
           `⚠️ Catalog sync failed for ${phoneNumber}: ${error.message}`,
         );
+        this.captureUserSyncException('synchronize_user_data.catalog', error, {
+          phoneNumber: cleanedPhoneNumber,
+          rawPhoneNumber: phoneNumber,
+          userId: user.id,
+        });
       }
 
       if (!clientInfoFailed && !catalogFailed) {
@@ -185,6 +221,16 @@ export class UserSyncService {
                 `Failed to perform initial AI evaluation for user ${user.id}: ${error.message}`,
                 error.stack,
               );
+              this.captureUserSyncException(
+                'synchronize_user_data.initial_evaluation',
+                error,
+                {
+                  phoneNumber: cleanedPhoneNumber,
+                  rawPhoneNumber: phoneNumber,
+                  threadMessageCount: existingThread?.messages.length || 0,
+                  userId: user.id,
+                },
+              );
             });
         } else {
           this.logger.log(
@@ -201,6 +247,11 @@ export class UserSyncService {
         `❌ [ERROR] User data synchronization failed for ${phoneNumber}: ${error.message}`,
         error.stack,
       );
+      this.captureUserSyncException('synchronize_user_data', error, {
+        phoneNumber: cleanedPhoneNumber,
+        rawPhoneNumber: phoneNumber,
+        userId: user.id,
+      });
 
       // Mark sync as failed
       const agent = await this.whatsappAgentService.getAgentForUser(user.id);

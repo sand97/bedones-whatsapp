@@ -1,0 +1,109 @@
+name: Provision Bedones WhatsApp Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_record_id:
+        description: Backend workflow record id
+        required: true
+        type: string
+      server_record_id:
+        description: Backend server record id
+        required: true
+        type: string
+      server_name:
+        description: Hetzner server name
+        required: true
+        type: string
+      server_type:
+        description: Hetzner server type
+        required: false
+        default: CPX21
+        type: string
+      location:
+        description: Hetzner location
+        required: false
+        default: fsn1
+        type: string
+      stacks_per_vps:
+        description: Number of stacks to deploy
+        required: false
+        default: "2"
+        type: string
+      requested_phone_number:
+        description: Optional end-user phone number
+        required: false
+        default: ""
+        type: string
+      target_device_type:
+        description: mobile or desktop
+        required: false
+        default: ""
+        type: string
+      backend_callback_url:
+        description: Backend callback endpoint
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  provision:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        if: secrets.HERZNET_SSH_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          printf '%s\n' "${{ secrets.HERZNET_SSH_PRIVATE_KEY }}" > "${RUNNER_TEMP}/bedones-herznet-id_rsa"
+          chmod 600 "${RUNNER_TEMP}/bedones-herznet-id_rsa"
+
+      - name: Provision VPS and deploy stack
+        shell: bash
+        env:
+          AGENT_INTERNAL_JWT_SECRET: ${{ secrets.AGENT_INTERNAL_JWT_SECRET }}
+          BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          CONNECTOR_SECRET: ${{ secrets.CONNECTOR_SECRET }}
+          FALLBACK_MODEL: ${{ vars.FALLBACK_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USERNAME: ${{ vars.GHCR_USERNAME || github.repository_owner }}
+          HERZNET_API_KEY: ${{ secrets.HERZNET_API_KEY }}
+          HERZNET_PRIVATE_NETWORK_ID: ${{ vars.HERZNET_PRIVATE_NETWORK_ID }}
+          HERZNET_SSH_KEY_NAMES: ${{ vars.HERZNET_SSH_KEY_NAMES }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_BUCKET: ${{ vars.MINIO_BUCKET }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_PORT: ${{ vars.MINIO_PORT }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          MINIO_USE_SSL: ${{ vars.MINIO_USE_SSL }}
+          PRIMARY_MODEL: ${{ vars.PRIMARY_MODEL }}
+          PRIVATE_NETWORK_NAME: ${{ vars.PRIVATE_NETWORK_NAME }}
+          PUPPETEER_EXECUTABLE_PATH: ${{ vars.PUPPETEER_EXECUTABLE_PATH }}
+          RENDERED_STACK_FILE: ${{ runner.temp }}/bedones-whatsapp-agent-stack.yml
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SERVER_LOCATION: ${{ inputs.location }}
+          SERVER_NAME: ${{ inputs.server_name }}
+          SERVER_RECORD_ID: ${{ inputs.server_record_id }}
+          SERVER_TYPE: ${{ inputs.server_type }}
+          STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
+          STACKS_PER_VPS: ${{ inputs.stacks_per_vps }}
+          WHATSAPP_AGENT_DATABASE_URL_TEMPLATE: ${{ secrets.WHATSAPP_AGENT_DATABASE_URL_TEMPLATE }}
+          WHATSAPP_AGENT_IMAGE: ${{ vars.WHATSAPP_AGENT_IMAGE }}
+          WHATSAPP_AUTOSTART_TARGET_SLOT: 0
+          WHATSAPP_CONNECTOR_IMAGE: ${{ vars.WHATSAPP_CONNECTOR_IMAGE }}
+          WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL }}
+        run: bash scripts/provision-bedones-whatsapp-agent-vps.sh

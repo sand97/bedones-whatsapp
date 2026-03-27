@@ -16,6 +16,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -85,6 +86,8 @@ function addMonths(date: Date, months: number) {
   return next;
 }
 
+type PaymentLogAttributeValue = boolean | number | string | null | undefined;
+
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -94,7 +97,94 @@ export class BillingService {
     private readonly configService: ConfigService,
   ) {}
 
+  private logPaymentOperation(
+    operation: string,
+    attributes: Record<string, PaymentLogAttributeValue> = {},
+  ) {
+    const normalizedAttributes = Object.fromEntries(
+      Object.entries(attributes).filter(([, value]) => value !== null && value !== undefined),
+    );
+
+    Sentry.logger.info(operation, {
+      ...normalizedAttributes,
+      domain: 'billing',
+      service: 'backend',
+    });
+  }
+
+  private captureBillingException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'billing',
+        operation,
+        service: 'backend',
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        billing: context,
+      },
+    });
+  }
+
+  private async captureBillingExceptionForReference(
+    operation: string,
+    error: unknown,
+    reference: string | null | undefined,
+    context: Record<string, unknown> = {},
+  ) {
+    let paymentContext: {
+      paymentMethod: BillingPaymentMethod;
+      provider: BillingProvider;
+      status: BillingPaymentStatus;
+      subscriptionTier: SubscriptionTier;
+      userId: string;
+    } | null = null;
+
+    if (reference) {
+      try {
+        paymentContext = await this.prisma.billingPayment.findUnique({
+          where: { reference },
+          select: {
+            paymentMethod: true,
+            provider: true,
+            status: true,
+            subscriptionTier: true,
+            userId: true,
+          },
+        });
+      } catch {
+        paymentContext = null;
+      }
+    }
+
+    this.captureBillingException(operation, error, {
+      ...context,
+      currentStatus: paymentContext?.status,
+      paymentMethod: paymentContext?.paymentMethod,
+      provider: paymentContext?.provider || context.provider,
+      reference,
+      subscriptionTier: paymentContext?.subscriptionTier,
+      userId:
+        paymentContext?.userId ||
+        (typeof context.userId === 'string' ? context.userId : undefined),
+    });
+  }
+
   async createCheckout(userId: string, dto: CreateCheckoutDto) {
+    this.logPaymentOperation('billing.checkout.requested', {
+      durationMonths: dto.durationMonths,
+      paymentMethod: dto.paymentMethod,
+      planKey: dto.planKey,
+      userId,
+    });
+
     if (!isBillingPlanKey(dto.planKey)) {
       throw new BadRequestException('Plan de souscription invalide.');
     }
@@ -149,7 +239,25 @@ export class BillingService {
       },
     });
 
+    this.logPaymentOperation('billing.checkout.payment_created', {
+      amount: pricing.amount,
+      creditsAmount: pricing.creditsAmount,
+      currency: pricing.currency,
+      durationMonths: dto.durationMonths,
+      paymentMethod: dto.paymentMethod,
+      provider: pricing.provider,
+      reference: payment.reference,
+      subscriptionTier: pricing.tier,
+      userId,
+    });
+
     try {
+      this.logPaymentOperation('billing.checkout.provider_initialization_started', {
+        provider: pricing.provider,
+        reference: payment.reference,
+        userId,
+      });
+
       const checkout =
         pricing.provider === BillingProvider.STRIPE
           ? await this.createStripeCheckoutSession(payment.reference, user, {
@@ -173,6 +281,15 @@ export class BillingService {
         },
       });
 
+      this.logPaymentOperation('billing.checkout.initialized', {
+        paymentMethod: dto.paymentMethod,
+        provider: pricing.provider,
+        providerPaymentId: checkout.providerPaymentId,
+        providerSessionId: checkout.providerSessionId,
+        reference: payment.reference,
+        userId,
+      });
+
       return {
         amount: pricing.amount,
         checkoutUrl: checkout.checkoutUrl,
@@ -186,6 +303,22 @@ export class BillingService {
         `Failed to initialize checkout for payment ${payment.reference}`,
         error,
       );
+      this.captureBillingException('create_checkout', error, {
+        durationMonths: dto.durationMonths,
+        paymentMethod: dto.paymentMethod,
+        planKey: dto.planKey,
+        provider: pricing.provider,
+        reference: payment.reference,
+        userId,
+      });
+
+      this.logPaymentOperation('billing.checkout.initialization_failed', {
+        errorMessage:
+          error instanceof Error ? error.message : 'Checkout initialization failed',
+        provider: pricing.provider,
+        reference: payment.reference,
+        userId,
+      });
 
       await this.prisma.billingPayment.update({
         where: { id: payment.id },
@@ -214,6 +347,12 @@ export class BillingService {
       cancelledValue === 'canceled';
     const fallbackReference = reference || 'unknown';
 
+    this.logPaymentOperation('billing.stripe.return.received', {
+      cancelled: isCancelled,
+      reference: fallbackReference,
+      sessionId,
+    });
+
     try {
       if (isCancelled) {
         if (reference) {
@@ -222,6 +361,10 @@ export class BillingService {
             metadata: query,
           });
         }
+
+        this.logPaymentOperation('billing.stripe.return.cancelled', {
+          reference: fallbackReference,
+        });
 
         return this.buildFrontendRedirectUrl(
           'cancelled',
@@ -232,6 +375,12 @@ export class BillingService {
       }
 
       if (!reference || !sessionId) {
+        this.logPaymentOperation('billing.stripe.return.invalid_query', {
+          hasReference: Boolean(reference),
+          hasSessionId: Boolean(sessionId),
+          reference: fallbackReference,
+        });
+
         return this.buildFrontendRedirectUrl(
           'failed',
           BillingProvider.STRIPE,
@@ -244,10 +393,22 @@ export class BillingService {
       const sessionReference =
         session.client_reference_id || session.metadata?.reference;
 
+      this.logPaymentOperation('billing.stripe.return.session_loaded', {
+        paymentStatus: session.payment_status,
+        reference,
+        sessionId: session.id,
+        sessionReference,
+        sessionStatus: session.status,
+      });
+
       if (sessionReference !== reference) {
         this.logger.warn(
           `Stripe return reference mismatch: expected ${reference}, got ${sessionReference}`,
         );
+        this.logPaymentOperation('billing.stripe.return.reference_mismatch', {
+          reference,
+          sessionReference,
+        });
         return this.buildFrontendRedirectUrl(
           'failed',
           BillingProvider.STRIPE,
@@ -269,6 +430,15 @@ export class BillingService {
           providerSessionId: session.id,
         });
 
+        this.logPaymentOperation('billing.stripe.return.succeeded', {
+          providerPaymentId:
+            typeof session.payment_intent === 'string'
+              ? session.payment_intent
+              : null,
+          reference,
+          sessionId: session.id,
+        });
+
         return this.buildFrontendRedirectUrl(
           'success',
           BillingProvider.STRIPE,
@@ -281,6 +451,11 @@ export class BillingService {
           failureReason: 'Session Stripe expirée.',
           metadata: session,
           providerSessionId: session.id,
+        });
+
+        this.logPaymentOperation('billing.stripe.return.expired', {
+          reference,
+          sessionId: session.id,
         });
 
         return this.buildFrontendRedirectUrl(
@@ -296,6 +471,13 @@ export class BillingService {
         providerSessionId: session.id,
       });
 
+      this.logPaymentOperation('billing.stripe.return.pending', {
+        paymentStatus: session.payment_status,
+        reference,
+        sessionId: session.id,
+        sessionStatus: session.status,
+      });
+
       return this.buildFrontendRedirectUrl(
         'pending',
         BillingProvider.STRIPE,
@@ -306,6 +488,21 @@ export class BillingService {
         `Stripe return failed for reference ${fallbackReference}`,
         error instanceof Error ? error.stack : undefined,
       );
+      await this.captureBillingExceptionForReference(
+        'handle_stripe_return',
+        error,
+        reference || null,
+        {
+          cancelled: isCancelled,
+          fallbackReference,
+          sessionId,
+        },
+      );
+
+      this.logPaymentOperation('billing.stripe.return.failed', {
+        errorMessage: error instanceof Error ? error.message : 'unknown_error',
+        reference: fallbackReference,
+      });
 
       return this.buildFrontendRedirectUrl(
         'failed',
@@ -319,9 +516,20 @@ export class BillingService {
   async handleNotchReturn(query: NotchReturnQuery) {
     const parsed = this.parseNotchReturnQuery(query);
     const fallbackReference = parsed.internalReference || 'unknown';
+    let localPaymentReference: string | null = null;
+
+    this.logPaymentOperation('billing.notch.return.received', {
+      providerReferenceCount: parsed.providerReferences.length,
+      reference: fallbackReference,
+      status: parsed.status,
+    });
 
     try {
       if (!parsed.internalReference) {
+        this.logPaymentOperation('billing.notch.return.invalid_query', {
+          reason: 'no_reference',
+        });
+
         return this.buildFrontendRedirectUrl(
           'failed',
           BillingProvider.NOTCH_PAY,
@@ -333,11 +541,15 @@ export class BillingService {
       const payment = await this.findNotchPaymentByAnyReference(
         parsed.internalReference,
       );
+      localPaymentReference = payment?.reference || null;
 
       if (!payment) {
         this.logger.warn(
           `Notch Pay return: local payment not found for ${parsed.internalReference}`,
         );
+        this.logPaymentOperation('billing.notch.return.payment_not_found', {
+          reference: parsed.internalReference,
+        });
         return this.buildFrontendRedirectUrl(
           'failed',
           BillingProvider.NOTCH_PAY,
@@ -357,6 +569,12 @@ export class BillingService {
       const status =
         verification.transaction?.status?.toLowerCase() || parsed.status;
 
+      this.logPaymentOperation('billing.notch.return.verified', {
+        paymentReference: payment.reference,
+        reference: verifiedReference,
+        verifiedStatus: status,
+      });
+
       if (
         status === 'complete' ||
         status === 'completed' ||
@@ -367,6 +585,12 @@ export class BillingService {
             query,
             verification,
           },
+          providerPaymentId: verification.transaction?.id || verifiedReference,
+          providerSessionId: verifiedReference,
+        });
+
+        this.logPaymentOperation('billing.notch.return.succeeded', {
+          paymentReference: payment.reference,
           providerPaymentId: verification.transaction?.id || verifiedReference,
           providerSessionId: verifiedReference,
         });
@@ -385,6 +609,12 @@ export class BillingService {
             query,
             verification,
           },
+          providerPaymentId: verification.transaction?.id || verifiedReference,
+          providerSessionId: verifiedReference,
+        });
+
+        this.logPaymentOperation('billing.notch.return.failed', {
+          paymentReference: payment.reference,
           providerPaymentId: verification.transaction?.id || verifiedReference,
           providerSessionId: verifiedReference,
         });
@@ -413,6 +643,12 @@ export class BillingService {
           },
         );
 
+        this.logPaymentOperation('billing.notch.return.cancelled', {
+          paymentReference: payment.reference,
+          providerPaymentId: verification.transaction?.id || verifiedReference,
+          providerSessionId: verifiedReference,
+        });
+
         return this.buildFrontendRedirectUrl(
           'cancelled',
           BillingProvider.NOTCH_PAY,
@@ -434,6 +670,13 @@ export class BillingService {
         },
       );
 
+      this.logPaymentOperation('billing.notch.return.pending', {
+        paymentReference: payment.reference,
+        providerPaymentId: verification.transaction?.id || verifiedReference,
+        providerSessionId: verifiedReference,
+        status,
+      });
+
       return this.buildFrontendRedirectUrl(
         'pending',
         BillingProvider.NOTCH_PAY,
@@ -444,6 +687,21 @@ export class BillingService {
         `Notch Pay return failed for reference ${fallbackReference}`,
         error instanceof Error ? error.stack : undefined,
       );
+      await this.captureBillingExceptionForReference(
+        'handle_notch_return',
+        error,
+        localPaymentReference || parsed.internalReference || null,
+        {
+          fallbackReference,
+          providerReferenceCount: parsed.providerReferences.length,
+          status: parsed.status,
+        },
+      );
+
+      this.logPaymentOperation('billing.notch.return.exception', {
+        errorMessage: error instanceof Error ? error.message : 'unknown_error',
+        reference: fallbackReference,
+      });
 
       return this.buildFrontendRedirectUrl(
         'failed',
@@ -455,13 +713,24 @@ export class BillingService {
   }
 
   async handleStripeWebhook(rawPayload: Buffer, signatureHeader?: string) {
+    this.logPaymentOperation('billing.stripe.webhook.received', {
+      hasSignature: Boolean(signatureHeader),
+      payloadSize: rawPayload.length,
+    });
+
     if (!signatureHeader) {
+      this.logPaymentOperation('billing.stripe.webhook.rejected', {
+        reason: 'missing_signature',
+      });
       throw new BadRequestException('Stripe-Signature manquant.');
     }
 
     const payload = rawPayload.toString('utf8');
 
     if (!this.verifyStripeWebhookSignature(payload, signatureHeader)) {
+      this.logPaymentOperation('billing.stripe.webhook.rejected', {
+        reason: 'invalid_signature',
+      });
       throw new BadRequestException('Signature Stripe invalide.');
     }
 
@@ -472,6 +741,9 @@ export class BillingService {
       : null;
 
     if (!dataObject) {
+      this.logPaymentOperation('billing.stripe.webhook.ignored', {
+        reason: 'missing_data_object',
+      });
       return { received: true };
     }
 
@@ -481,8 +753,18 @@ export class BillingService {
 
     if (!reference) {
       this.logger.warn(`Stripe webhook ${eventType} ignored: missing reference`);
+      this.logPaymentOperation('billing.stripe.webhook.ignored', {
+        eventType,
+        reason: 'missing_reference',
+      });
       return { received: true };
     }
+
+    this.logPaymentOperation('billing.stripe.webhook.parsed', {
+      eventType,
+      reference,
+      sessionId: session.id,
+    });
 
     switch (eventType) {
       case 'checkout.session.completed':
@@ -493,12 +775,24 @@ export class BillingService {
             typeof session.payment_intent === 'string' ? session.payment_intent : null,
           providerSessionId: session.id,
         });
+        this.logPaymentOperation('billing.stripe.webhook.succeeded', {
+          eventType,
+          providerPaymentId:
+            typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          reference,
+          sessionId: session.id,
+        });
         break;
       case 'checkout.session.async_payment_failed':
         await this.updatePaymentStatus(reference, BillingPaymentStatus.FAILED, {
           failureReason: 'Paiement Stripe refusé.',
           metadata: dataObject,
           providerSessionId: session.id,
+        });
+        this.logPaymentOperation('billing.stripe.webhook.failed', {
+          eventType,
+          reference,
+          sessionId: session.id,
         });
         break;
       case 'checkout.session.expired':
@@ -507,8 +801,18 @@ export class BillingService {
           metadata: dataObject,
           providerSessionId: session.id,
         });
+        this.logPaymentOperation('billing.stripe.webhook.expired', {
+          eventType,
+          reference,
+          sessionId: session.id,
+        });
         break;
       default:
+        this.logPaymentOperation('billing.stripe.webhook.ignored', {
+          eventType,
+          reason: 'unsupported_event',
+          reference,
+        });
         break;
     }
 
@@ -516,13 +820,24 @@ export class BillingService {
   }
 
   async handleNotchWebhook(rawPayload: Buffer, signatureHeader?: string) {
+    this.logPaymentOperation('billing.notch.webhook.received', {
+      hasSignature: Boolean(signatureHeader),
+      payloadSize: rawPayload.length,
+    });
+
     if (!signatureHeader) {
+      this.logPaymentOperation('billing.notch.webhook.rejected', {
+        reason: 'missing_signature',
+      });
       throw new BadRequestException('x-notch-signature manquant.');
     }
 
     const payload = rawPayload.toString('utf8');
 
     if (!this.verifyNotchSignature(payload, signatureHeader)) {
+      this.logPaymentOperation('billing.notch.webhook.rejected', {
+        reason: 'invalid_signature',
+      });
       throw new BadRequestException('Signature Notch Pay invalide.');
     }
 
@@ -535,8 +850,16 @@ export class BillingService {
       : '';
 
     if (!reference) {
+      this.logPaymentOperation('billing.notch.webhook.ignored', {
+        reason: 'missing_reference',
+      });
       return { received: true };
     }
+
+    this.logPaymentOperation('billing.notch.webhook.parsed', {
+      providerReference: reference,
+      status,
+    });
 
     const payment = await this.findNotchPaymentByAnyReference(reference);
 
@@ -544,6 +867,9 @@ export class BillingService {
       this.logger.warn(
         `Notch Pay webhook ignored: no local payment for reference ${reference}`,
       );
+      this.logPaymentOperation('billing.notch.webhook.payment_not_found', {
+        providerReference: reference,
+      });
       return { received: true };
     }
 
@@ -554,6 +880,11 @@ export class BillingService {
           typeof transaction?.id === 'string' ? transaction.id : reference,
         providerSessionId: reference,
       });
+      this.logPaymentOperation('billing.notch.webhook.succeeded', {
+        paymentReference: payment.reference,
+        providerReference: reference,
+        status,
+      });
     } else if (status === 'failed') {
       await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.FAILED, {
         failureReason: 'Paiement Notch Pay échoué.',
@@ -561,6 +892,11 @@ export class BillingService {
         providerPaymentId:
           typeof transaction?.id === 'string' ? transaction.id : reference,
         providerSessionId: reference,
+      });
+      this.logPaymentOperation('billing.notch.webhook.failed', {
+        paymentReference: payment.reference,
+        providerReference: reference,
+        status,
       });
     } else if (status === 'cancelled' || status === 'canceled') {
       await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.CANCELED, {
@@ -570,12 +906,22 @@ export class BillingService {
           typeof transaction?.id === 'string' ? transaction.id : reference,
         providerSessionId: reference,
       });
+      this.logPaymentOperation('billing.notch.webhook.cancelled', {
+        paymentReference: payment.reference,
+        providerReference: reference,
+        status,
+      });
     } else {
       await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.PROCESSING, {
         metadata: event,
         providerPaymentId:
           typeof transaction?.id === 'string' ? transaction.id : reference,
         providerSessionId: reference,
+      });
+      this.logPaymentOperation('billing.notch.webhook.pending', {
+        paymentReference: payment.reference,
+        providerReference: reference,
+        status,
       });
     }
 
@@ -600,6 +946,15 @@ export class BillingService {
     if (!secretKey) {
       throw new Error('STRIPE_SECRET_KEY is not configured');
     }
+
+    this.logPaymentOperation('billing.stripe.checkout_session.create_started', {
+      amountInCents: input.amountInCents,
+      durationMonths: input.durationMonths,
+      planKey: input.planKey,
+      reference,
+      tier: input.tier,
+      userId: user.id,
+    });
 
     const checkoutUrl = `${this.getBackendUrl()}/billing/stripe/return`;
     const params = new URLSearchParams();
@@ -644,15 +999,28 @@ export class BillingService {
       body: params,
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      throw new Error(await response.text());
+      this.logPaymentOperation('billing.stripe.checkout_session.create_rejected', {
+        reference,
+        statusCode: response.status,
+      });
+      throw new Error(responseText);
     }
 
-    const data = safeJsonParse<StripeCheckoutSession>(await response.text());
+    const data = safeJsonParse<StripeCheckoutSession>(responseText);
 
     if (!data.url) {
       throw new Error('Stripe checkout URL missing.');
     }
+
+    this.logPaymentOperation('billing.stripe.checkout_session.created', {
+      providerPaymentId:
+        typeof data.payment_intent === 'string' ? data.payment_intent : null,
+      providerSessionId: data.id,
+      reference,
+    });
 
     return {
       checkoutUrl: data.url,
@@ -670,6 +1038,10 @@ export class BillingService {
       throw new Error('STRIPE_SECRET_KEY is not configured');
     }
 
+    this.logPaymentOperation('billing.stripe.checkout_session.fetch_started', {
+      sessionId,
+    });
+
     const response = await fetch(
       `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
       {
@@ -679,11 +1051,26 @@ export class BillingService {
       },
     );
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      throw new Error(await response.text());
+      this.logPaymentOperation('billing.stripe.checkout_session.fetch_rejected', {
+        sessionId,
+        statusCode: response.status,
+      });
+      throw new Error(responseText);
     }
 
-    return safeJsonParse<StripeCheckoutSession>(await response.text());
+    const session = safeJsonParse<StripeCheckoutSession>(responseText);
+
+    this.logPaymentOperation('billing.stripe.checkout_session.fetched', {
+      paymentStatus: session.payment_status,
+      reference: session.client_reference_id || session.metadata?.reference,
+      sessionId: session.id,
+      status: session.status,
+    });
+
+    return session;
   }
 
   private async createNotchPayment(
@@ -702,6 +1089,13 @@ export class BillingService {
     if (!apiKey) {
       throw new Error('NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured');
     }
+
+    this.logPaymentOperation('billing.notch.payment.create_started', {
+      amountInXaf: input.amountInXaf,
+      hasPhoneNumber: Boolean(input.phoneNumber),
+      reference,
+      userId: user.id,
+    });
 
     const payload = {
       amount: input.amountInXaf,
@@ -723,16 +1117,30 @@ export class BillingService {
       body: JSON.stringify(payload),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      throw new Error(await response.text());
+      this.logPaymentOperation('billing.notch.payment.create_rejected', {
+        reference,
+        statusCode: response.status,
+      });
+      throw new Error(responseText);
     }
 
-    const data = safeJsonParse<NotchPaymentResponse>(await response.text());
+    const data = safeJsonParse<NotchPaymentResponse>(responseText);
     const checkoutUrl = data.authorization_url || data.payment_url;
 
     if (!checkoutUrl) {
       throw new Error('Notch Pay checkout URL missing.');
     }
+
+    this.logPaymentOperation('billing.notch.payment.created', {
+      providerReference:
+        typeof data.transaction?.reference === 'string'
+          ? data.transaction.reference
+          : null,
+      reference,
+    });
 
     return {
       checkoutUrl,
@@ -755,6 +1163,10 @@ export class BillingService {
       throw new Error('NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured');
     }
 
+    this.logPaymentOperation('billing.notch.payment.verify_started', {
+      reference,
+    });
+
     const response = await fetch(
       `https://api.notchpay.co/payments/${encodeURIComponent(reference)}`,
       {
@@ -764,11 +1176,25 @@ export class BillingService {
       },
     );
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      throw new Error(await response.text());
+      this.logPaymentOperation('billing.notch.payment.verify_rejected', {
+        reference,
+        statusCode: response.status,
+      });
+      throw new Error(responseText);
     }
 
-    return safeJsonParse<NotchVerifyResponse>(await response.text());
+    const verification = safeJsonParse<NotchVerifyResponse>(responseText);
+
+    this.logPaymentOperation('billing.notch.payment.verified', {
+      providerPaymentId: verification.transaction?.id,
+      reference,
+      status: verification.transaction?.status,
+    });
+
+    return verification;
   }
 
   private async verifyNotchPaymentByCandidates(references: Array<string | null | undefined>) {
@@ -784,6 +1210,9 @@ export class BillingService {
 
     for (const candidate of candidates) {
       try {
+        this.logPaymentOperation('billing.notch.payment.verify_candidate', {
+          candidate,
+        });
         const verification = await this.verifyNotchPayment(candidate);
 
         return {
@@ -792,6 +1221,10 @@ export class BillingService {
         };
       } catch (error) {
         lastError = error;
+        this.logPaymentOperation('billing.notch.payment.verify_candidate_failed', {
+          candidate,
+          errorMessage: error instanceof Error ? error.message : 'unknown_error',
+        });
       }
     }
 
@@ -806,6 +1239,12 @@ export class BillingService {
       providerSessionId?: string | null;
     },
   ) {
+    this.logPaymentOperation('billing.payment.process_success_started', {
+      providerPaymentId: details.providerPaymentId,
+      providerSessionId: details.providerSessionId,
+      reference,
+    });
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         const payment = await tx.billingPayment.findUnique({
@@ -816,10 +1255,18 @@ export class BillingService {
         });
 
         if (!payment) {
+          this.logPaymentOperation('billing.payment.process_success_missing', {
+            reference,
+          });
           throw new NotFoundException('Paiement introuvable.');
         }
 
         if (payment.creditGrant) {
+          this.logPaymentOperation('billing.payment.process_success_skipped', {
+            reason: 'already_processed',
+            reference,
+            userId: payment.userId,
+          });
           return payment;
         }
 
@@ -890,7 +1337,7 @@ export class BillingService {
           },
         });
 
-        return tx.billingPayment.update({
+        const updatedPayment = await tx.billingPayment.update({
           where: { id: payment.id },
           data: {
             failedAt: null,
@@ -904,17 +1351,45 @@ export class BillingService {
             status: BillingPaymentStatus.SUCCEEDED,
           },
         });
+
+        this.logPaymentOperation('billing.payment.process_success_completed', {
+          creditsAmount: payment.creditsAmount,
+          provider: payment.provider,
+          reference: payment.reference,
+          subscriptionTier: payment.subscriptionTier,
+          userId: payment.userId,
+        });
+
+        return updatedPayment;
       });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        this.logPaymentOperation('billing.payment.process_success_deduplicated', {
+          reference,
+        });
         return this.prisma.billingPayment.findUnique({
           where: { reference },
         });
       }
 
+      await this.captureBillingExceptionForReference(
+        'process_successful_payment',
+        error,
+        reference,
+        {
+          hasMetadata: typeof details.metadata !== 'undefined',
+          providerPaymentId: details.providerPaymentId,
+          providerSessionId: details.providerSessionId,
+        },
+      );
+
+      this.logPaymentOperation('billing.payment.process_success_failed', {
+        errorMessage: error instanceof Error ? error.message : 'unknown_error',
+        reference,
+      });
       throw error;
     }
   }
@@ -934,10 +1409,16 @@ export class BillingService {
     });
 
     if (!payment || payment.status === BillingPaymentStatus.SUCCEEDED) {
+      this.logPaymentOperation('billing.payment.status_update_skipped', {
+        currentStatus: payment?.status,
+        nextStatus: status,
+        reason: payment ? 'already_succeeded' : 'payment_not_found',
+        reference,
+      });
       return payment;
     }
 
-    return this.prisma.billingPayment.update({
+    const updatedPayment = await this.prisma.billingPayment.update({
       where: { id: payment.id },
       data: {
         failedAt:
@@ -955,6 +1436,16 @@ export class BillingService {
         status,
       },
     });
+
+    this.logPaymentOperation('billing.payment.status_updated', {
+      currentStatus: payment.status,
+      nextStatus: updatedPayment.status,
+      provider: payment.provider,
+      reference,
+      userId: payment.userId,
+    });
+
+    return updatedPayment;
   }
 
   private verifyStripeWebhookSignature(payload: string, signatureHeader: string) {
@@ -1102,6 +1593,12 @@ export class BillingService {
         'Failed to build frontend redirect URL, falling back to localhost frontend.',
         error instanceof Error ? error.stack : undefined,
       );
+      this.captureBillingException('build_frontend_redirect_url', error, {
+        payment,
+        provider,
+        reason,
+        reference,
+      });
 
       return appendSearchParams(new URL('/pricing', 'http://localhost:5173'));
     }

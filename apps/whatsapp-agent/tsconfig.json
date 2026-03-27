@@ -14,17 +14,25 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+
     "paths": {
       "@apps/common": ["../../packages/common/dist/src"],
       "@app/*": ["./src/*"]
     },
+
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "inlineSources": true,
+
+    // Set `sourceRoot` to  "/" to strip the build path prefix
+    // from generated source code references.
+    // This improves issue grouping in Sentry.
+    "sourceRoot": "/"
   },
   "exclude": ["node_modules", "dist", "src/generated/*/**"]
 }

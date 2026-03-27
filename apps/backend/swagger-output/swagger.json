@@ -1354,6 +1354,20 @@
         ]
       }
     },
+    "/auth/debug-sentry": {
+      "get": {
+        "operationId": "AuthController_getError",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/logout": {
       "post": {
         "operationId": "AuthController_logout",

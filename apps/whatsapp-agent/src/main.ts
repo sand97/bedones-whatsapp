@@ -1,9 +1,14 @@
+// IMPORTANT: Make sure to import `instrument.ts` at the top of your file.
+// If you're using CommonJS (CJS) syntax, use `require("./instrument.ts");`
+import '@app/instrument';
+
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import { AppModule } from '@app/app.module';
+import { AllExceptionsFilter } from '@app/exception-filter';
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as express from 'express';
 
@@ -34,6 +39,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  const { httpAdapter } = app.get(HttpAdapterHost);
+
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapter));
 
   // Swagger configuration
   const config = new DocumentBuilder()

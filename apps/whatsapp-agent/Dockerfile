@@ -1,74 +1,43 @@
-FROM node:18-alpine AS base
+FROM node:20-bookworm-slim AS build
 
-# Enable pnpm via Corepack
 ENV PNPM_HOME="/pnpm" \
     PATH="$PNPM_HOME:$PATH"
+
 RUN corepack enable
 
 WORKDIR /app
 
-# Copy workspace dependencies from monorepo root
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-# Copy backend package.json
-COPY apps/backend/package.json ./apps/backend/
-# Copy common package.json
-COPY packages/common/package.json ./packages/common/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/common/package.json ./packages/common/package.json
+COPY apps/whatsapp-agent/package.json ./apps/whatsapp-agent/package.json
 
-# Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile --filter whatsapp-agent...
 
-# Development stage
-FROM base AS development
-
-# Copy source code
-COPY apps/backend ./apps/backend
 COPY packages/common ./packages/common
+COPY apps/backend/swagger-output ./apps/backend/swagger-output
+COPY apps/whatsapp-agent ./apps/whatsapp-agent
 
-# Set working directory to backend
-WORKDIR /app/apps/backend
+RUN pnpm --filter @apps/common build
+RUN pnpm --filter whatsapp-agent prisma generate
+RUN pnpm --filter whatsapp-agent build
 
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
+FROM node:20-bookworm-slim AS runtime
 
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
+ENV PNPM_HOME="/pnpm" \
+    PATH="$PNPM_HOME:$PATH" \
+    NODE_ENV=production
 
-# Install curl for healthchecks
-RUN apk add --no-cache curl
+RUN corepack enable \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose port
-EXPOSE 3000
+WORKDIR /app
 
-# Start in dev mode
-CMD ["sh", "-c", "pnpm --filter @apps/common run build && pnpm run start:dev"]
+COPY --from=build /app /app
 
-# Production stage
-FROM base AS production
+WORKDIR /app/apps/whatsapp-agent
 
-# Set production environment
-ENV NODE_ENV=production
+EXPOSE 3002
 
-# Copy source code
-COPY apps/backend ./apps/backend
-COPY packages/common ./packages/common
-
-# Set working directory to backend
-WORKDIR /app/apps/backend
-
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
-
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
-
-# Build the application
-RUN pnpm build
-
-# Install curl for healthchecks
-RUN apk add --no-cache curl
-
-# Expose port
-EXPOSE 3000
-
-# Start the application
-CMD ["pnpm", "run", "start:prod"]
+CMD ["node", "dist/main"]

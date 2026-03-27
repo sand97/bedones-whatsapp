@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import { firstValueFrom } from 'rxjs';
 
 import { BaseWebhookPayload } from './types/webhook-events.types';
@@ -25,6 +26,27 @@ export class WebhookService {
    */
   setWhatsAppClientService(service: any) {
     this.whatsappClientService = service;
+  }
+
+  private captureWebhookDispatchException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'webhook_dispatch',
+        operation,
+        service: 'whatsapp-connector',
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        webhookDispatch: context,
+      },
+    });
   }
 
   private loadWebhookUrls() {
@@ -62,6 +84,8 @@ export class WebhookService {
     const userId = this.whatsappClientService?.getConnectedUserId?.() || null;
 
     const payload: BaseWebhookPayload<T> = {
+      connectorInstanceId:
+        this.configService.get<string>('CONNECTOR_INSTANCE_ID') || undefined,
       event: eventName,
       timestamp: new Date().toISOString(),
       data,
@@ -90,6 +114,13 @@ export class WebhookService {
           `Failed to send event "${eventName}" to ${url}:`,
           error.message,
         );
+        this.captureWebhookDispatchException('send_event', error, {
+          dataLength: Array.isArray(payload.data) ? payload.data.length : null,
+          dataType: Array.isArray(payload.data) ? 'array' : typeof payload.data,
+          eventName,
+          userId,
+          webhookUrl: url,
+        });
       }),
     );
 

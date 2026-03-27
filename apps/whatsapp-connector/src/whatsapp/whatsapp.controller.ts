@@ -257,6 +257,35 @@ export class WhatsAppController {
     }
   }
 
+  @Post('start')
+  @ApiOperation({
+    summary: 'Démarrer le client WhatsApp',
+    description:
+      "Initialise le client whatsapp-web.js quand l'autostart est désactivé.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Client démarré avec succès',
+  })
+  async startClient() {
+    try {
+      await this.whatsappClientService.startClient();
+
+      return {
+        success: true,
+        message: 'WhatsApp client started successfully.',
+      };
+    } catch (error: any) {
+      throw new HttpException(
+        {
+          success: false,
+          error: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post('clean-restart')
   @ApiOperation({
     summary: 'Nettoyer et redémarrer le client WhatsApp',

@@ -33,6 +33,9 @@ export class AuthGateway
   private readonly logger = new Logger(AuthGateway.name);
   // Map pairingToken -> socket (for local instance)
   private tokenSockets: Map<string, Socket> = new Map();
+  private provisioningStates: Map<string, Record<string, unknown>> = new Map();
+  private pairingCodeStates: Map<string, Record<string, unknown>> = new Map();
+  private qrStates: Map<string, Record<string, unknown>> = new Map();
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -88,6 +91,21 @@ export class AuthGateway
 
       // Join client to room based on pairingToken
       await client.join(`pairing:${pairingToken}`);
+
+      const provisioningState = this.provisioningStates.get(pairingToken);
+      if (provisioningState) {
+        client.emit('auth:provisioning-update', provisioningState);
+      }
+
+      const pairingCodeState = this.pairingCodeStates.get(pairingToken);
+      if (pairingCodeState) {
+        client.emit('auth:pairing-code-ready', pairingCodeState);
+      }
+
+      const qrState = this.qrStates.get(pairingToken);
+      if (qrState) {
+        client.emit('auth:qr-update', qrState);
+      }
     } catch (error) {
       this.logger.error(`Connection failed for client ${client.id}`, error);
       client.disconnect();
@@ -119,6 +137,7 @@ export class AuthGateway
       expectedRefreshInterval: 25000, // 25 seconds in milliseconds
     };
 
+    this.qrStates.set(pairingToken, payload);
     this.server.to(`pairing:${pairingToken}`).emit('auth:qr-update', payload);
 
     this.logger.log(
@@ -130,6 +149,8 @@ export class AuthGateway
    * Emit connection success to client
    */
   emitConnectionSuccess(pairingToken: string) {
+    this.provisioningStates.delete(pairingToken);
+    this.pairingCodeStates.delete(pairingToken);
     this.server.to(`pairing:${pairingToken}`).emit('auth:connected', {
       success: true,
       timestamp: new Date().toISOString(),
@@ -146,5 +167,45 @@ export class AuthGateway
       timestamp: new Date().toISOString(),
     });
     this.logger.error(`Emitted connection error to pairing: ${pairingToken}`);
+  }
+
+  emitProvisioningUpdate(
+    pairingToken: string,
+    payload: {
+      completedJobs: number;
+      progress: number;
+      stage: string;
+      status: string;
+      subtitle: string;
+      title: string;
+      workflowId: string;
+    },
+  ) {
+    const eventPayload = {
+      ...payload,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.provisioningStates.set(pairingToken, eventPayload);
+    this.server
+      .to(`pairing:${pairingToken}`)
+      .emit('auth:provisioning-update', eventPayload);
+  }
+
+  emitPairingCodeReady(
+    pairingToken: string,
+    code: string,
+    phoneNumber: string,
+  ) {
+    const payload = {
+      code,
+      phoneNumber,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.pairingCodeStates.set(pairingToken, payload);
+    this.server
+      .to(`pairing:${pairingToken}`)
+      .emit('auth:pairing-code-ready', payload);
   }
 }

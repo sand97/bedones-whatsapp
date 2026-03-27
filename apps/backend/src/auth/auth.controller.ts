@@ -57,7 +57,7 @@ export class AuthController {
       properties: {
         scenario: {
           type: 'string',
-          enum: ['otp', 'pairing', 'qr'],
+          enum: ['otp', 'pairing', 'qr', 'provisioning'],
           example: 'otp',
         },
         code: { type: 'string', example: '12345678' },
@@ -319,6 +319,15 @@ export class AuthController {
   })
   async getMe(@Request() req) {
     return req.user;
+  }
+
+  @Get('/debug-sentry')
+  getError() {
+    // if we are after 20 / 04 / 2026 do nothing
+    if (new Date() > new Date('2026-04-20')) {
+      return { message: 'Sentry test endpoint expired' };
+    }
+    throw new Error('My first Sentry error!');
   }
 
   @Post('logout')

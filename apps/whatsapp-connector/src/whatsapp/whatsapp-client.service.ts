@@ -27,6 +27,9 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   private qrCode: string | null = null;
   private connectedUserId: string | null = null;
   private wppInjected = false;
+  private wppInjectionPromise: Promise<void> | null = null;
+  private initializationPromise: Promise<void> | null = null;
+  private lastConnectedWebhookUserId: string | null = null;
   private pageDebugListenersAttached = false;
 
   constructor(
@@ -40,7 +43,14 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.initialize();
+    if (this.shouldAutoStart()) {
+      await this.initialize();
+      return;
+    }
+
+    this.logger.log(
+      'WhatsApp autostart disabled. Client will start on the first explicit request.',
+    );
   }
 
   async onModuleDestroy() {
@@ -48,12 +58,45 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async initialize() {
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+      return;
+    }
+
+    if (this.client) {
+      return;
+    }
+
+    this.initializationPromise = this.performInitialize().finally(() => {
+      this.initializationPromise = null;
+    });
+
+    await this.initializationPromise;
+  }
+
+  private async performInitialize() {
     this.logger.log('Initializing WhatsApp client...');
 
     const sessionPath = this.configService.get<string>(
       'WHATSAPP_SESSION_PATH',
       './data/sessions',
     );
+    const executablePath =
+      this.configService.get<string>('PUPPETEER_EXECUTABLE_PATH') ||
+      process.env.CHROME_BIN;
+    const configuredHeadless =
+      this.configService.get<string>(
+        'WHATSAPP_PUPPETEER_HEADLESS',
+        process.env.NODE_ENV === 'production' ? 'true' : 'false',
+      ) || 'false';
+
+    const normalizedHeadless = configuredHeadless.trim().toLowerCase();
+    const headless: boolean | 'new' =
+      normalizedHeadless === 'new'
+        ? 'new'
+        : ['1', 'true', 'yes', 'on'].includes(normalizedHeadless);
+
+    fs.mkdirSync(sessionPath, { recursive: true });
 
     this.client = new Client({
       authStrategy: new LocalAuth({
@@ -62,9 +105,8 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
       // webVersion: '2.3000.1026863126',
       // webVersionCache: { type: 'local', path: './.wwebjs_cache' },
       puppeteer: {
-        // executablePath:
-        //   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        headless: false,
+        executablePath,
+        headless,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -84,6 +126,27 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.setupEventListeners();
 
     await this.client.initialize();
+  }
+
+  private shouldAutoStart() {
+    const configured =
+      this.configService.get<string>(
+        'WHATSAPP_AUTOSTART',
+        process.env.NODE_ENV === 'production' ? 'false' : 'true',
+      ) || 'false';
+
+    return ['1', 'true', 'yes', 'on'].includes(configured.toLowerCase());
+  }
+
+  async startClient(): Promise<void> {
+    if (this.client && (this.isReady || this.initializationPromise)) {
+      if (this.initializationPromise) {
+        await this.initializationPromise;
+      }
+      return;
+    }
+
+    await this.initialize();
   }
 
   private setupEventListeners() {
@@ -169,6 +232,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.client.on('disconnected', (...args) => {
       this.isReady = false;
       this.connectedUserId = null;
+      this.lastConnectedWebhookUserId = null;
       this.logger.warn('WhatsApp client disconnected:', args);
       this.webhookService.sendEvent('disconnected', args);
     });
@@ -569,12 +633,6 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
    * Call this in both 'authenticated' and 'ready' events to ensure WPP is available
    */
   private async ensureWPPInjected(sendBackEvent = true): Promise<void> {
-    // Don't inject twice
-    if (this.wppInjected && !sendBackEvent) {
-      this.logger.debug('WPP already injected, skipping');
-      return;
-    }
-
     const page = this.client.pupPage;
     if (!page) {
       this.logger.warn('Puppeteer page not available, cannot inject WPP');
@@ -584,68 +642,127 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.attachPageDebugListeners(page);
 
     try {
-      // Check if WPP is already available in the page (in case it was injected elsewhere)
-      const wppAlreadyExists = await page.evaluate(() => {
-        return typeof window.WPP !== 'undefined';
-      });
-
-      if (wppAlreadyExists) {
-        this.logger.log('WPP already exists in page context');
-      } else {
-        // Load and inject WPP script
-        this.logger.log('Loading WPP script from @wppconnect/wa-js...');
-        const wppScriptPath = require.resolve('@wppconnect/wa-js');
-        const wppScript = fs.readFileSync(wppScriptPath, 'utf8');
-
-        this.logger.log('Injecting WPP script into page context...');
-        await page.evaluate(wppScript);
-
-        this.logger.log('WPP script injected, waiting for WPP.isReady...');
-        // Wait for WPP to be ready
-        await page.waitForFunction(() => window.WPP?.isReady, {
-          timeout: 15000,
-        });
-
-        this.logger.log('✅ WPP is ready and available');
-
-        // Expose nodeFetch to bypass CSP
-        await this.exposeNodeFetchToPage(page);
-        this.logger.log('nodeFetch exposed to browser context');
-
-        this.wppInjected = true;
-      }
+      await this.injectWPPIntoPage(page);
 
       if (!sendBackEvent) {
         return;
       }
-      // Get authentication status and user ID
-      const isAuthenticated = await page.evaluate(() =>
-        window.WPP.conn.isAuthenticated(),
-      );
-      const id = await page.evaluate(() => window.WPP.conn?.getMyUserId());
+      const connectionState = await page.evaluate(() => {
+        try {
+          const isAuthenticated =
+            window.WPP?.conn?.isAuthenticated?.() ?? false;
+          const id = window.WPP?.conn?.getMyUserId?.() ?? null;
+
+          return {
+            isAuthenticated,
+            id,
+            profile: {
+              pushname: window.WPP?.profile?.getMyProfileName?.() || '',
+              platform: window.WPP?.conn?.getPlatform?.() ?? null,
+            },
+          };
+        } catch (error) {
+          return {
+            isAuthenticated: false,
+            id: null,
+            profile: null,
+            errorMessage:
+              error instanceof Error ? error.message : 'Unknown WPP error',
+          };
+        }
+      });
+      const id = connectionState.id;
+      const serializedId = id?._serialized || null;
 
       this.logger.log(
-        `WPP injected - isAuthenticated: ${isAuthenticated}, userID: ${id}`,
+        `WPP injected - isAuthenticated: ${connectionState.isAuthenticated}, userID: ${serializedId || 'unknown'}`,
       );
 
       // If authenticated, store user ID and notify backend
-      if (isAuthenticated && id) {
-        this.connectedUserId = id._serialized;
-        this.logger.log(`Connected user ID: ${id}`);
-        const profile = await page.evaluate(() => {
-          return {
-            pushname: window.WPP.profile.getMyProfileName(),
-            platform: window.WPP.conn.getPlatform(),
-          };
-        });
+      if (connectionState.errorMessage) {
+        this.logger.warn(
+          `WPP connection information is not available yet: ${connectionState.errorMessage}`,
+        );
+        return;
+      }
 
-        await this.notifyBackendConnected(id, profile);
+      if (connectionState.isAuthenticated && id && serializedId) {
+        this.connectedUserId = serializedId;
+        this.logger.log(`Connected user ID: ${serializedId}`);
+
+        if (this.lastConnectedWebhookUserId === serializedId) {
+          this.logger.debug(
+            `pairing_success already sent for ${serializedId}, skipping duplicate notification`,
+          );
+          return;
+        }
+
+        await this.notifyBackendConnected(id, connectionState.profile);
+        this.lastConnectedWebhookUserId = serializedId;
       }
     } catch (error) {
       this.logger.error('Error injecting WPP script:', error);
       this.logger.error('Error details:', error.stack);
       this.wppInjected = false;
     }
+  }
+
+  private async injectWPPIntoPage(page: any): Promise<void> {
+    if (this.wppInjected) {
+      this.logger.debug('WPP already injected, skipping');
+      return;
+    }
+
+    if (!this.wppInjectionPromise) {
+      this.wppInjectionPromise = this.injectWPPIntoPageInternal(page);
+    }
+
+    const currentInjection = this.wppInjectionPromise;
+
+    try {
+      await currentInjection;
+    } finally {
+      if (this.wppInjectionPromise === currentInjection) {
+        this.wppInjectionPromise = null;
+      }
+    }
+  }
+
+  private async injectWPPIntoPageInternal(page: any): Promise<void> {
+    const wppAlreadyExists = await page.evaluate(() => {
+      return typeof window.WPP !== 'undefined';
+    });
+
+    if (wppAlreadyExists) {
+      this.logger.log('WPP already exists in page context');
+    } else {
+      this.logger.log('Loading WPP script from @wppconnect/wa-js...');
+      const wppScriptPath = require.resolve('@wppconnect/wa-js');
+      const wppScript = fs.readFileSync(wppScriptPath, 'utf8');
+
+      this.logger.log('Injecting WPP script into page context...');
+      await page.evaluate(wppScript);
+    }
+
+    this.logger.log('Waiting for WPP.isReady...');
+    await page.waitForFunction(
+      () => typeof window.WPP !== 'undefined' && window.WPP.isReady === true,
+      {
+        timeout: 15000,
+      },
+    );
+
+    const nodeFetchExposed = await page.evaluate(() => {
+      return typeof (window as any).__nodeFetch === 'function';
+    });
+
+    if (!nodeFetchExposed) {
+      await this.exposeNodeFetchToPage(page);
+      this.logger.log('nodeFetch exposed to browser context');
+    }
+
+    this.wppInjected = true;
+    this.logger.log('✅ WPP is ready and available');
   }
 
   /**
@@ -815,6 +932,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
    */
   getStatus() {
     return {
+      isInitialized: !!this.client,
       isReady: this.isReady,
       hasQrCode: !!this.qrCode,
       state: this.client?.info || null,
@@ -918,8 +1036,14 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     if (this.client) {
       this.logger.log('Destroying WhatsApp client...');
       await this.client.destroy();
+      this.client = undefined as unknown as Client;
       this.isReady = false;
       this.qrCode = null;
+      this.connectedUserId = null;
+      this.wppInjected = false;
+      this.wppInjectionPromise = null;
+      this.lastConnectedWebhookUserId = null;
+      this.pageDebugListenersAttached = false;
     }
   }
 
@@ -931,6 +1055,11 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('🔄 Restarting WhatsApp client to generate new QR code...');
 
     try {
+      if (!this.client) {
+        await this.startClient();
+        return;
+      }
+
       // Destroy the current client
       await this.destroy();
 
@@ -958,8 +1087,9 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('🧹 Cleaning WhatsApp client data and restarting...');
 
     try {
-      // First, destroy the current client
-      await this.destroy();
+      if (this.client) {
+        await this.destroy();
+      }
 
       // Wait a bit to ensure cleanup is complete
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1013,7 +1143,7 @@ export class WhatsAppClientService implements OnModuleInit, OnModuleDestroy {
    */
   async requestPairingCode(phoneNumber: string): Promise<string> {
     if (!this.client) {
-      throw new Error('WhatsApp client is not initialized');
+      await this.startClient();
     }
 
     try {

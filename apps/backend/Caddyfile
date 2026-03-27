@@ -1,4 +1,4 @@
-whatsapp.bedones.org {
+chat.bedones.com {
 	# Enable automatic HTTPS with self-signed certificate for local development
 	tls internal
 
@@ -6,7 +6,7 @@ whatsapp.bedones.org {
 	reverse_proxy localhost:5173
 }
 
-api-whatsapp.bedones.org {
+api-chat.bedones.com {
 	# Enable automatic HTTPS with self-signed certificate for local development
 	tls internal
 

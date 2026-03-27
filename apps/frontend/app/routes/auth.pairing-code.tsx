@@ -1,5 +1,6 @@
 import { CheckCircleOutlined } from '@ant-design/icons'
 import { useAuth } from '@app/hooks/useAuth'
+import { trackFirstLoginSignUp } from '@app/lib/analytics/google-analytics'
 import apiClient from '@app/lib/api/client'
 import { App, Card, Typography, Steps, Button } from 'antd'
 import { useEffect, useState } from 'react'
@@ -76,6 +77,11 @@ export default function PairingCodePage() {
 
       // Save user data (cookie is set by backend)
       if (response.data.accessToken) {
+        trackFirstLoginSignUp({
+          authFlow: 'pairing',
+          isFirstLogin: Boolean(response.data.isFirstLogin),
+          userId: response.data.user?.id,
+        })
         login(response.data.user)
       }
 

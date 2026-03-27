@@ -1,5 +1,6 @@
 import { ArrowRightOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import { useAuth } from '@app/hooks/useAuth'
+import { trackFirstLoginSignUp } from '@app/lib/analytics/google-analytics'
 import apiClient from '@app/lib/api/client'
 import { App, Button, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
@@ -9,6 +10,7 @@ const { Text, Link } = Typography
 
 interface VerifyOtpResponse {
   accessToken: string
+  isFirstLogin?: boolean
   redirectTo?: string
   user: {
     id: string
@@ -76,6 +78,11 @@ export default function VerifyOtpPage() {
       )
 
       // Save user data (cookie is set by backend)
+      trackFirstLoginSignUp({
+        authFlow: isOtpScenario ? 'otp' : 'pairing',
+        isFirstLogin: Boolean(response.data.isFirstLogin),
+        userId: response.data.user?.id,
+      })
       login(response.data.user)
 
       notification.success({
@@ -249,15 +256,9 @@ export default function VerifyOtpPage() {
                 className='block text-center text-sm leading-6'
               >
                 En cliquant sur continuer, vous acceptez notre{' '}
-                <Link
-                  href='/auth/privacy'
-                >
-                  politique de confidentialité
-                </Link>{' '}
+                <Link href='/auth/privacy'>politique de confidentialité</Link>{' '}
                 et nos{' '}
-                <Link
-                  href='/auth/terms'
-                >
+                <Link href='/auth/terms'>
                   conditions générales d&apos;utilisation
                 </Link>
                 .

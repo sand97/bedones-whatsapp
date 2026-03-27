@@ -1,0 +1,63 @@
+name: Release Bedones WhatsApp Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_record_id:
+        description: Backend workflow record id
+        required: true
+        type: string
+      server_record_id:
+        description: Backend server record id
+        required: true
+        type: string
+      server_name:
+        description: Hetzner server name
+        required: true
+        type: string
+      provider_server_id:
+        description: Hetzner server id
+        required: false
+        default: ""
+        type: string
+      public_ipv4:
+        description: Public IPv4 used for SSH teardown
+        required: false
+        default: ""
+        type: string
+      delete_server_when_empty:
+        description: Delete the VPS after stopping the stack
+        required: false
+        default: "true"
+        type: string
+      backend_callback_url:
+        description: Backend callback endpoint
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Release stack
+        shell: bash
+        env:
+          BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
+          DELETE_SERVER_WHEN_EMPTY: ${{ inputs.delete_server_when_empty }}
+          HERZNET_API_KEY: ${{ secrets.HERZNET_API_KEY }}
+          PROVIDER_SERVER_ID: ${{ inputs.provider_server_id }}
+          PUBLIC_IPV4: ${{ inputs.public_ipv4 }}
+          SERVER_NAME: ${{ inputs.server_name }}
+          SERVER_RECORD_ID: ${{ inputs.server_record_id }}
+          STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
+          WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
+        run: bash scripts/release-bedones-whatsapp-agent-vps.sh

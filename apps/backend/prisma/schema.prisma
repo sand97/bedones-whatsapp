@@ -108,6 +108,38 @@ enum SyncImageStatus {
   FAILED // Échec de la synchronisation des images
 }
 
+enum StackAssignmentStatus {
+  FREE
+  RESERVED
+  ALLOCATED
+  RELEASING
+  ERROR
+}
+
+enum VpsProvisioningStatus {
+  REQUESTED
+  PROVISIONING
+  READY
+  DEGRADED
+  RELEASE_REQUESTED
+  RELEASED
+  ERROR
+}
+
+enum ProvisioningWorkflowType {
+  PROVISION_CAPACITY
+  RELEASE_CAPACITY
+}
+
+enum ProvisioningWorkflowStatus {
+  PENDING
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 enum GoogleContactSyncStatus {
   CREATED
   LINKED
@@ -169,6 +201,7 @@ model User {
   customerContacts  CustomerContact[]
   dailyStats        UserDailyStat[]
   statusSchedules   StatusSchedule[]
+  requestedProvisioningWorkflowRuns ProvisioningWorkflowRun[] @relation("RequestedByUser")
 
   @@index([phoneNumber])
   @@index([status])
@@ -178,6 +211,8 @@ model WhatsAppAgent {
   id     String  @id @unique @default(cuid())
   userId String? @unique
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId String?
+  server   ProvisioningServer? @relation(fields: [serverId], references: [id], onDelete: SetNull)
 
   // Configuration serveur
   ipAddress         String
@@ -204,6 +239,13 @@ model WhatsAppAgent {
 
   // Métadonnées (JSON pour flexibilité)
   metadata Json? // { containerId, vpsProvider, region, etc. }
+  stackSlot Int?
+  stackLabel String?
+  assignmentStatus   StackAssignmentStatus @default(FREE)
+  reservationExpiresAt DateTime?
+  allocatedAt DateTime?
+  releasedAt DateTime?
+  releaseReason String? @db.Text
 
   // Configuration IA
   testPhoneNumbers  String[] @default([]) // Numéros de téléphone de test
@@ -219,6 +261,80 @@ model WhatsAppAgent {
   @@index([userId])
   @@index([status])
   @@index([syncStatus])
+  @@index([assignmentStatus])
+  @@index([serverId])
+  @@unique([serverId, stackSlot])
+}
+
+model ProvisioningServer {
+  id String @id @unique @default(cuid())
+
+  provider         String @default("hetzner")
+  providerServerId String? @unique
+  name             String  @unique
+  serverType       String
+  location         String?
+  networkId        String?
+  publicIpv4       String?
+  publicIpv6       String?
+  privateIpv4      String?
+  privateSubnet    String?
+  provisioningStatus VpsProvisioningStatus @default(REQUESTED)
+  plannedStacksCount Int @default(0)
+  metadata Json?
+
+  requestedAt DateTime @default(now())
+  readyAt     DateTime?
+  releasedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stacks       WhatsAppAgent[]
+  workflowRuns ProvisioningWorkflowRun[]
+
+  @@index([provisioningStatus])
+  @@index([providerServerId])
+}
+
+model ProvisioningWorkflowRun {
+  id String @id @unique @default(cuid())
+
+  type   ProvisioningWorkflowType
+  status ProvisioningWorkflowStatus @default(PENDING)
+
+  githubWorkflowFile String
+  githubRef          String?
+  githubRunId        String? @unique
+  githubRunUrl       String?
+
+  requestedByUserId String?
+  requestedByUser   User? @relation("RequestedByUser", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  serverId String?
+  server   ProvisioningServer? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  requestedPhoneNumber String?
+  pairingToken         String?
+  targetDeviceType     String?
+  requestedVpsCount    Int @default(0)
+  requestedStacksPerVps Int @default(2)
+  totalJobs            Int @default(3)
+  completedJobs        Int @default(0)
+  progressPercent      Int @default(0)
+  currentStage         String?
+  errorMessage         String? @db.Text
+  payload              Json?
+  metadata             Json?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([pairingToken])
+  @@index([requestedByUserId])
+  @@index([serverId])
 }
 
 model OnboardingThread {

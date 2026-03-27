@@ -5,24 +5,37 @@ import {
   MobileOutlined,
 } from '@ant-design/icons'
 import { DashboardHeader } from '@app/components/layout'
+import { CountryPhoneInput } from '@app/components/ui'
 import { useAuth } from '@app/hooks/useAuth'
+import {
+  getAnalyticsPagePath,
+  trackEvent,
+  trackEventOnce,
+} from '@app/lib/analytics/google-analytics'
 import {
   createCheckoutSession,
   type BillingPaymentMethod,
+  type BillingProvider,
   type BillingPlanKey,
 } from '@app/lib/api/billing'
 import { resolveCurrentPlanKey } from '@app/lib/current-plan'
+import { DEFAULT_PHONE_COUNTRY_CODE } from '@app/lib/phone/phone-country-rules'
+import {
+  buildPhoneE164,
+  getCountryPhoneValidationError,
+  normalizeCountryPhoneValue,
+  type CountryPhoneValue,
+} from '@app/lib/phone/phone-utils'
 import { App, Button, Form, Modal, Radio, Segmented } from 'antd'
 import FormItem from 'antd/es/form/FormItem'
-import PhoneInput, { type PhoneNumber } from 'antd-phone-input'
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 
 import {
   BILLING_OPTIONS,
@@ -45,13 +58,18 @@ const LAST_PHONE_KEY = 'whatsapp-agent-last-phone'
 const LAST_CHECKOUT_SELECTION_KEY = 'whatsapp-agent-last-checkout-selection'
 
 type CheckoutFormValues = {
-  phone: PhoneNumber
+  phone: CountryPhoneValue
 }
 
 type LastCheckoutSelection = {
+  amount?: number
+  creditsAmount?: number
+  currency?: string
   duration: BillingDuration
   paymentMethod: BillingPaymentMethod
   planKey: BillingPlanKey
+  provider?: BillingProvider
+  reference?: string
 }
 
 type PaymentResultStatus = 'cancelled' | 'failed' | 'pending' | 'success'
@@ -61,32 +79,6 @@ type PaymentResultState = {
   reason?: string | null
   reference?: string | null
   status: PaymentResultStatus
-}
-
-function getPhoneCountryLabel(value: PhoneNumber | string | undefined) {
-  const fallbackLabel = 'Cameroun'
-
-  if (typeof value === 'object' && value?.isoCode) {
-    try {
-      return (
-        new Intl.DisplayNames(['fr-FR'], { type: 'region' }).of(
-          value.isoCode.toUpperCase()
-        ) || fallbackLabel
-      )
-    } catch {
-      return fallbackLabel
-    }
-  }
-
-  return fallbackLabel
-}
-
-function buildPhoneNumber(value?: PhoneNumber) {
-  if (!value?.phoneNumber) {
-    return null
-  }
-
-  return `+${value.countryCode}${value.areaCode}${value.phoneNumber}`
 }
 
 function isCameroonEligible(user: ReturnType<typeof useAuth>['user']) {
@@ -128,6 +120,80 @@ function buildPaymentResultState(input: {
 
 function formatCreditsCount(value: number) {
   return value.toLocaleString('fr-FR')
+}
+
+function getCreditsRemaining(user: ReturnType<typeof useAuth>['user']) {
+  if (
+    typeof user?.subscription?.creditsIncluded === 'number' &&
+    typeof user?.subscription?.creditsUsed === 'number'
+  ) {
+    return Math.max(
+      user.subscription.creditsIncluded - user.subscription.creditsUsed,
+      0
+    )
+  }
+
+  if (typeof user?.credits === 'number') {
+    return Math.max(user.credits, 0)
+  }
+
+  return null
+}
+
+function getAnalyticsPaymentType(paymentMethod: BillingPaymentMethod) {
+  return paymentMethod === 'CARD' ? 'card' : 'mobile_money'
+}
+
+function getAnalyticsProvider(provider?: BillingProvider | string | null) {
+  if (!provider) {
+    return undefined
+  }
+
+  return provider.toString().toLowerCase()
+}
+
+function buildCheckoutAnalyticsItem(input: {
+  amount?: number
+  duration: BillingDuration
+  planKey: BillingPlanKey
+}) {
+  return {
+    item_category: 'subscription',
+    item_id: `${input.planKey}_${input.duration}m`,
+    item_name: getPlanLabel(input.planKey),
+    item_variant: `${input.duration}_months`,
+    price: input.amount,
+    quantity: 1,
+  }
+}
+
+function readLastCheckoutSelection() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const rawSelection = window.localStorage.getItem(LAST_CHECKOUT_SELECTION_KEY)
+
+  if (!rawSelection) {
+    return null
+  }
+
+  try {
+    return JSON.parse(rawSelection) as LastCheckoutSelection
+  } catch {
+    return null
+  }
+}
+
+function persistLastCheckoutSelection(selection: LastCheckoutSelection) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(
+    LAST_CHECKOUT_SELECTION_KEY,
+    JSON.stringify(selection)
+  )
 }
 
 function PaymentChoiceCard({
@@ -198,11 +264,10 @@ export function meta() {
 
 export default function PricingPage() {
   const { notification } = App.useApp()
-  const { user, checkAuth } = useAuth()
+  const { user, checkAuth, isLoading } = useAuth()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [form] = Form.useForm<CheckoutFormValues>()
-  const phoneFieldValue = Form.useWatch('phone', form)
-  const phoneCountryLabel = getPhoneCountryLabel(phoneFieldValue)
   const [duration, setDuration] = useState<BillingDuration>(6)
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false)
   const [selectedPlanKey, setSelectedPlanKey] = useState<BillingPlanKey | null>(
@@ -214,10 +279,12 @@ export default function PricingPage() {
     null
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const trackedPricingViewRef = useRef<string | null>(null)
   const paymentSearchKey = searchParams.toString()
 
   const currentPlan = useMemo(() => resolveCurrentPlanKey(user), [user])
   const mobileMoneyEnabled = useMemo(() => isCameroonEligible(user), [user])
+  const creditsRemaining = getCreditsRemaining(user)
   const selectedPlan = selectedPlanKey ? PLAN_CONTENT[selectedPlanKey] : null
   const selectedPlanLabel = selectedPlanKey ? getPlanLabel(selectedPlanKey) : ''
   const selectedPlanTotal = selectedPlan
@@ -304,6 +371,70 @@ export default function PricingPage() {
   }, [paymentResult, user])
 
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
+
+    const trackingPath = getAnalyticsPagePath(location)
+    if (trackedPricingViewRef.current === trackingPath) {
+      return
+    }
+
+    trackedPricingViewRef.current = trackingPath
+
+    trackEvent('pricing_page_view', {
+      credits_remaining: creditsRemaining ?? undefined,
+      current_plan: currentPlan,
+      is_authenticated: Boolean(user),
+    })
+  }, [creditsRemaining, currentPlan, isLoading, location, user])
+
+  useEffect(() => {
+    if (!paymentResult || paymentResult.status !== 'success') {
+      return
+    }
+
+    const selection = readLastCheckoutSelection()
+    const transactionId = paymentResult.reference || selection?.reference
+    const provider =
+      getAnalyticsProvider(paymentResult.provider) ||
+      getAnalyticsProvider(selection?.provider)
+    const purchaseParams = {
+      billing_duration_months: selection?.duration,
+      credits_amount: selection?.creditsAmount,
+      credits_remaining_after_purchase: creditsRemaining ?? undefined,
+      currency: selection?.currency,
+      items: selection
+        ? [
+            buildCheckoutAnalyticsItem({
+              amount: selection.amount,
+              duration: selection.duration,
+              planKey: selection.planKey,
+            }),
+          ]
+        : undefined,
+      payment_method: selection?.paymentMethod,
+      payment_provider: provider,
+      payment_type: selection
+        ? getAnalyticsPaymentType(selection.paymentMethod)
+        : undefined,
+      plan_key: selection?.planKey,
+      transaction_id: transactionId,
+      value: selection?.amount,
+    }
+    const purchaseKey = transactionId
+      ? `purchase:${transactionId}`
+      : 'purchase:success_without_reference'
+
+    trackEventOnce(purchaseKey, 'purchase', purchaseParams)
+    trackEventOnce(
+      `payment_success_modal_view:${purchaseKey}`,
+      'payment_success_modal_view',
+      purchaseParams
+    )
+  }, [creditsRemaining, paymentResult])
+
+  useEffect(() => {
     if (!isCheckoutModalOpen || typeof window === 'undefined') {
       return
     }
@@ -314,8 +445,14 @@ export default function PricingPage() {
     }
 
     try {
-      const phoneValue = JSON.parse(savedPhone) as PhoneNumber
-      form.setFieldsValue({ phone: phoneValue })
+      const phoneValue = normalizeCountryPhoneValue(
+        JSON.parse(savedPhone),
+        DEFAULT_PHONE_COUNTRY_CODE
+      )
+
+      if (phoneValue) {
+        form.setFieldsValue({ phone: phoneValue })
+      }
     } catch {
       // Ignore stale local storage values
     }
@@ -390,6 +527,20 @@ export default function PricingPage() {
   }
 
   function openCheckoutModal(planKey: BillingPlanKey) {
+    trackEvent('payment_cta_click', {
+      billing_duration_months: duration,
+      credits_remaining: creditsRemaining ?? undefined,
+      current_plan: currentPlan,
+      plan_key: planKey,
+    })
+    trackEvent('begin_checkout', {
+      billing_duration_months: duration,
+      credits_remaining: creditsRemaining ?? undefined,
+      current_plan: currentPlan,
+      items: [buildCheckoutAnalyticsItem({ duration, planKey })],
+      plan_key: planKey,
+    })
+
     setSelectedPlanKey(planKey)
     setPaymentMethod('CARD')
     setIsCheckoutModalOpen(true)
@@ -413,31 +564,60 @@ export default function PricingPage() {
   function retryPaymentFromResult() {
     closePaymentResultModal()
 
-    if (typeof window === 'undefined') {
+    const selection = readLastCheckoutSelection()
+
+    if (!selection) {
       return
     }
 
-    const rawSelection = window.localStorage.getItem(
-      LAST_CHECKOUT_SELECTION_KEY
+    setDuration(selection.duration)
+    setSelectedPlanKey(selection.planKey)
+    setPaymentMethod(
+      selection.paymentMethod === 'MOBILE_MONEY' && !mobileMoneyEnabled
+        ? 'CARD'
+        : selection.paymentMethod
     )
+    setIsCheckoutModalOpen(true)
 
-    if (!rawSelection) {
+    trackEvent('begin_checkout', {
+      billing_duration_months: selection.duration,
+      credits_remaining: creditsRemaining ?? undefined,
+      current_plan: currentPlan,
+      items: [
+        buildCheckoutAnalyticsItem({
+          amount: selection.amount,
+          duration: selection.duration,
+          planKey: selection.planKey,
+        }),
+      ],
+      plan_key: selection.planKey,
+      retry_from_payment_result: true,
+    })
+  }
+
+  function handlePaymentMethodSelection(
+    nextPaymentMethod: BillingPaymentMethod
+  ) {
+    if (
+      nextPaymentMethod === 'MOBILE_MONEY' &&
+      (!mobileMoneyEnabled || paymentMethod === 'MOBILE_MONEY')
+    ) {
       return
     }
 
-    try {
-      const selection = JSON.parse(rawSelection) as LastCheckoutSelection
-      setDuration(selection.duration)
-      setSelectedPlanKey(selection.planKey)
-      setPaymentMethod(
-        selection.paymentMethod === 'MOBILE_MONEY' && !mobileMoneyEnabled
-          ? 'CARD'
-          : selection.paymentMethod
-      )
-      setIsCheckoutModalOpen(true)
-    } catch {
-      // Ignore stale local storage values
+    if (nextPaymentMethod === 'CARD' && paymentMethod === 'CARD') {
+      return
     }
+
+    setPaymentMethod(nextPaymentMethod)
+
+    trackEvent('payment_method_selected', {
+      billing_duration_months: duration,
+      credits_remaining: creditsRemaining ?? undefined,
+      payment_method: nextPaymentMethod,
+      payment_type: getAnalyticsPaymentType(nextPaymentMethod),
+      plan_key: selectedPlanKey || undefined,
+    })
   }
 
   async function handleCheckout() {
@@ -449,7 +629,7 @@ export default function PricingPage() {
 
     if (paymentMethod === 'MOBILE_MONEY') {
       const values = await form.validateFields()
-      const formatted = buildPhoneNumber(values.phone)
+      const formatted = buildPhoneE164(values.phone, DEFAULT_PHONE_COUNTRY_CODE)
 
       if (!formatted) {
         notification.error({
@@ -466,16 +646,11 @@ export default function PricingPage() {
     setIsSubmitting(true)
 
     try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(
-          LAST_CHECKOUT_SELECTION_KEY,
-          JSON.stringify({
-            duration,
-            paymentMethod,
-            planKey: selectedPlanKey,
-          } satisfies LastCheckoutSelection)
-        )
-      }
+      persistLastCheckoutSelection({
+        duration,
+        paymentMethod,
+        planKey: selectedPlanKey,
+      })
 
       const checkout = await createCheckoutSession({
         durationMonths: duration,
@@ -483,8 +658,58 @@ export default function PricingPage() {
         phoneNumber,
         planKey: selectedPlanKey,
       })
+      const checkoutCreditsAmount = PLAN_CONTENT[selectedPlanKey].monthlyCredits
+        ? PLAN_CONTENT[selectedPlanKey].monthlyCredits * duration
+        : undefined
 
-      window.location.assign(checkout.checkoutUrl)
+      persistLastCheckoutSelection({
+        amount: checkout.amount,
+        creditsAmount: checkoutCreditsAmount,
+        currency: checkout.currency,
+        duration,
+        paymentMethod,
+        planKey: selectedPlanKey,
+        provider: checkout.provider,
+        reference: checkout.reference,
+      })
+
+      const checkoutItem = buildCheckoutAnalyticsItem({
+        amount: checkout.amount,
+        duration,
+        planKey: selectedPlanKey,
+      })
+      const analyticsParams = {
+        billing_duration_months: duration,
+        credits_amount: checkoutCreditsAmount,
+        credits_remaining: creditsRemaining ?? undefined,
+        currency: checkout.currency,
+        items: [checkoutItem],
+        payment_method: paymentMethod,
+        payment_provider: getAnalyticsProvider(checkout.provider),
+        payment_type: getAnalyticsPaymentType(paymentMethod),
+        plan_key: selectedPlanKey,
+        reference: checkout.reference,
+        value: checkout.amount,
+      }
+      let hasRedirected = false
+
+      const redirectToCheckout = () => {
+        if (hasRedirected) {
+          return
+        }
+
+        hasRedirected = true
+        window.location.assign(checkout.checkoutUrl)
+      }
+
+      trackEvent('add_payment_info', analyticsParams)
+      trackEvent('payment_initialized', {
+        ...analyticsParams,
+        event_callback: redirectToCheckout,
+        event_timeout: 1000,
+      })
+
+      window.setTimeout(redirectToCheckout, 1200)
     } catch (error) {
       const description =
         error instanceof Error
@@ -657,7 +882,7 @@ export default function PricingPage() {
               title='Carte'
               icon={<CreditCardOutlined />}
               description='Visa / Mastercard'
-              onClick={() => setPaymentMethod('CARD')}
+              onClick={() => handlePaymentMethodSelection('CARD')}
             />
 
             <PaymentChoiceCard
@@ -670,11 +895,7 @@ export default function PricingPage() {
                   ? 'Orange Money / MTN Mobile Money'
                   : 'Disponible uniquement pour les numéros du Cameroun.'
               }
-              onClick={() => {
-                if (mobileMoneyEnabled) {
-                  setPaymentMethod('MOBILE_MONEY')
-                }
-              }}
+              onClick={() => handlePaymentMethodSelection('MOBILE_MONEY')}
             />
           </div>
 
@@ -684,21 +905,23 @@ export default function PricingPage() {
                 label='Numéro Mobile Money'
                 name='phone'
                 className='auth-phone-field w-full'
-                style={
-                  {
-                    '--phone-country-label': `"${phoneCountryLabel}"`,
-                  } as CSSProperties
-                }
                 rules={[
-                  { required: true, message: 'Veuillez entrer votre numéro' },
+                  {
+                    validator: (_, value?: CountryPhoneValue) => {
+                      const error = getCountryPhoneValidationError(value, {
+                        defaultCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
+                        requiredMessage: 'Veuillez entrer votre numéro.',
+                      })
+
+                      return error
+                        ? Promise.reject(new Error(error))
+                        : Promise.resolve()
+                    },
+                  },
                 ]}
               >
-                <PhoneInput
-                  country='cm'
-                  enableSearch
-                  enableArrow
-                  disableParentheses
-                  preferredCountries={['cm']}
+                <CountryPhoneInput
+                  defaultCountryCode={DEFAULT_PHONE_COUNTRY_CODE}
                 />
               </FormItem>
               <p className='m-0 text-sm leading-6 text-[var(--color-text-secondary)]'>

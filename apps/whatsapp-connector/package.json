@@ -29,6 +29,7 @@
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/swagger": "^7.4.2",
     "@nestjs/terminus": "^10.2.3",
+    "@sentry/cli": "^2.58.5",
     "@wppconnect/wa-js": "^3.22.1",
     "axios": "^1.7.2",
     "class-transformer": "^0.5.1",

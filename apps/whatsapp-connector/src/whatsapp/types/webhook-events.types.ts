@@ -14,6 +14,7 @@ export interface BaseWebhookPayload<T = unknown> {
   timestamp: string;
   data: T;
   userId?: string; // ID of the connected WhatsApp account (e.g., "237657888690@c.us")
+  connectorInstanceId?: string;
 }
 
 // Specific event payloads

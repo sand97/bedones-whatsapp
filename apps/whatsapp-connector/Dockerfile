@@ -1,74 +1,55 @@
-FROM node:18-alpine AS base
+FROM node:20-bookworm-slim AS build
 
-# Enable pnpm via Corepack
 ENV PNPM_HOME="/pnpm" \
-    PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+    PATH="$PNPM_HOME:$PATH" \
+    PUPPETEER_SKIP_DOWNLOAD=true
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
 
 WORKDIR /app
 
-# Copy workspace dependencies from monorepo root
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-# Copy backend package.json
-COPY apps/backend/package.json ./apps/backend/
-# Copy common package.json
-COPY packages/common/package.json ./packages/common/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/common/package.json ./packages/common/package.json
+COPY apps/whatsapp-connector/package.json ./apps/whatsapp-connector/package.json
 
-# Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile --filter whatsapp-connector...
 
-# Development stage
-FROM base AS development
-
-# Copy source code
-COPY apps/backend ./apps/backend
 COPY packages/common ./packages/common
+COPY apps/whatsapp-connector ./apps/whatsapp-connector
 
-# Set working directory to backend
-WORKDIR /app/apps/backend
+RUN pnpm --filter @apps/common build
+RUN pnpm --filter whatsapp-connector build
 
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
+FROM node:20-bookworm-slim AS runtime
 
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
+ENV PNPM_HOME="/pnpm" \
+    PATH="$PNPM_HOME:$PATH" \
+    NODE_ENV=production \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    CHROME_BIN=/usr/bin/chromium
 
-# Install curl for healthchecks
-RUN apk add --no-cache curl
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      chromium \
+      curl \
+      dumb-init \
+      fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
 
-# Expose port
-EXPOSE 3000
+WORKDIR /app
 
-# Start in dev mode
-CMD ["sh", "-c", "pnpm --filter @apps/common run build && pnpm run start:dev"]
+COPY --from=build /app /app
 
-# Production stage
-FROM base AS production
+RUN mkdir -p /app/apps/whatsapp-connector/data/sessions
 
-# Set production environment
-ENV NODE_ENV=production
+WORKDIR /app/apps/whatsapp-connector
 
-# Copy source code
-COPY apps/backend ./apps/backend
-COPY packages/common ./packages/common
+EXPOSE 3001
 
-# Set working directory to backend
-WORKDIR /app/apps/backend
-
-# Build common package from backend directory
-RUN pnpm --filter @apps/common run build
-
-# Generate Prisma client
-RUN pnpx prisma@6.16.2 generate
-
-# Build the application
-RUN pnpm build
-
-# Install curl for healthchecks
-RUN apk add --no-cache curl
-
-# Expose port
-EXPOSE 3000
-
-# Start the application
-CMD ["pnpm", "run", "start:prod"]
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main"]

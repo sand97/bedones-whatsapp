@@ -1,0 +1,100 @@
+  __STACK_NAME___redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--port", "6379"]
+    restart: unless-stopped
+    volumes:
+      - __STACK_NAME___redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bedones_private
+
+  __STACK_NAME___qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - __STACK_NAME___qdrant:/qdrant/storage
+    networks:
+      - bedones_private
+
+  __STACK_NAME___agent:
+    image: __WHATSAPP_AGENT_IMAGE__
+    restart: unless-stopped
+    depends_on:
+      __STACK_NAME___redis:
+        condition: service_healthy
+      __STACK_NAME___qdrant:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "__AGENT_PORT__"
+      DATABASE_URL: "__WHATSAPP_AGENT_DATABASE_URL__"
+      REDIS_HOST: __STACK_NAME___redis
+      REDIS_PORT: "6379"
+      REDIS_URL: redis://__STACK_NAME___redis:6379
+      QDRANT_URL: http://__STACK_NAME___qdrant:6333
+      QDRANT_HOST: __STACK_NAME___qdrant
+      QDRANT_PORT: "6333"
+      AGENT_INTERNAL_JWT_SECRET: "__AGENT_INTERNAL_JWT_SECRET__"
+      BACKEND_URL: "__BACKEND_URL__"
+      CONNECTOR_URL: http://__STACK_NAME___connector:__CONNECTOR_PORT__
+      MINIO_ENDPOINT: "__MINIO_ENDPOINT__"
+      MINIO_PORT: "__MINIO_PORT__"
+      MINIO_USE_SSL: "__MINIO_USE_SSL__"
+      MINIO_ACCESS_KEY: "__MINIO_ACCESS_KEY__"
+      MINIO_SECRET_KEY: "__MINIO_SECRET_KEY__"
+      MINIO_BUCKET: "__MINIO_BUCKET__"
+      GEMINI_API_KEY: "__GEMINI_API_KEY__"
+      GEMINI_MODEL: "__GEMINI_MODEL__"
+      XAI_API_KEY: "__XAI_API_KEY__"
+      XAI_MODEL: "__XAI_MODEL__"
+      PRIMARY_MODEL: "__PRIMARY_MODEL__"
+      FALLBACK_MODEL: "__FALLBACK_MODEL__"
+      SENTRY_AUTH_TOKEN: "__SENTRY_AUTH_TOKEN__"
+      SENTRY_DSN: "__SENTRY_DSN__"
+      SENTRY_ENVIRONMENT: production
+      SERVICE_NAME: __STACK_LABEL__
+    ports:
+      - "__AGENT_PORT__:__AGENT_PORT__"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:__AGENT_PORT__/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bedones_private
+
+  __STACK_NAME___connector:
+    image: __WHATSAPP_CONNECTOR_IMAGE__
+    restart: unless-stopped
+    depends_on:
+      __STACK_NAME___agent:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "__CONNECTOR_PORT__"
+      BACKEND_URL: "__BACKEND_URL__"
+      WEBHOOK_URLS: "__BACKEND_URL__/webhooks/whatsapp/events,__BACKEND_URL__/webhooks/whatsapp/connected"
+      CONNECTOR_SECRET: "__CONNECTOR_SECRET__"
+      CONNECTOR_INSTANCE_ID: "__STACK_LABEL__"
+      WHATSAPP_AUTOSTART: "__WHATSAPP_AUTOSTART__"
+      WHATSAPP_SESSION_PATH: /data/sessions
+      WHATSAPP_PUPPETEER_HEADLESS: "true"
+      PUPPETEER_EXECUTABLE_PATH: "__PUPPETEER_EXECUTABLE_PATH__"
+      SENTRY_AUTH_TOKEN: "__SENTRY_AUTH_TOKEN__"
+      SENTRY_DSN: "__SENTRY_DSN__"
+      SENTRY_ENVIRONMENT: production
+    volumes:
+      - __STACK_NAME___connector:/data
+    ports:
+      - "__CONNECTOR_PORT__:__CONNECTOR_PORT__"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:__CONNECTOR_PORT__/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bedones_private

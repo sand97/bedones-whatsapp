@@ -3,7 +3,6 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AudioMessageHandlerService } from './handlers/audio-message-handler.service';
 import { ImageMessageHandlerService } from './handlers/image-message-handler.service';
-import { PairingSuccessHandlerService } from './handlers/pairing-success-handler.service';
 import { TextMessageHandlerService } from './handlers/text-message-handler.service';
 
 @ApiTags('Webhook')
@@ -15,7 +14,6 @@ export class WebhookController {
     private readonly textMessageHandler: TextMessageHandlerService,
     private readonly audioMessageHandler: AudioMessageHandlerService,
     private readonly imageMessageHandler: ImageMessageHandlerService,
-    private readonly pairingSuccessHandler: PairingSuccessHandlerService,
   ) {}
 
   @Post('message')
@@ -63,8 +61,13 @@ export class WebhookController {
       }
 
       if (event === 'pairing_success') {
-        await this.pairingSuccessHandler.handle(data);
-        return { success: true, event, processed: true };
+        this.logger.debug('Ignoring pairing_success event on agent webhook', {
+          event,
+          timestamp,
+          userId,
+        });
+
+        return { success: true, event, processed: false, ignored: true };
       }
 
       this.logger.log(`Event received: ${event}`, {

@@ -9,6 +9,7 @@ import { PrismaService } from '@app/prisma/prisma.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 
 interface WhatsAppProduct {
   id: string;
@@ -65,6 +66,23 @@ export class CatalogSyncService {
         '🔄 Catalog sync optimization disabled (will always sync)',
       );
     }
+  }
+
+  private captureCatalogSyncException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'catalog_sync',
+        operation,
+        service: 'whatsapp-agent',
+      },
+      contexts: {
+        catalogSync: context,
+      },
+    });
   }
 
   /**
@@ -153,6 +171,9 @@ export class CatalogSyncService {
       await this.syncCatalog();
     } catch (error) {
       this.logger.error(`Scheduled sync failed: ${error.message}`);
+      this.captureCatalogSyncException('scheduled_sync', error, {
+        lastSyncTime: this.lastSyncTime?.toISOString(),
+      });
     }
   }
 
@@ -174,6 +195,10 @@ export class CatalogSyncService {
         message: `Synced at ${this.lastSyncTime?.toISOString()}`,
       };
     } catch (error) {
+      this.captureCatalogSyncException('trigger_manual_sync', error, {
+        isSyncing: this.isSyncing,
+        lastSyncTime: this.lastSyncTime?.toISOString(),
+      });
       return {
         success: false,
         message: error.message,
@@ -204,10 +229,27 @@ export class CatalogSyncService {
       this.logger.error(
         `Background catalog+image sync failed: ${errorMessage}`,
       );
+      this.captureCatalogSyncException(
+        'trigger_manual_sync_in_background',
+        error,
+        {
+          isSyncing: this.isSyncing,
+          lastSyncTime: this.lastSyncTime?.toISOString(),
+        },
+      );
 
       await this.imageIndexingQueueService
         .markCatalogImageSyncFailed(errorMessage)
-        .catch(() => undefined);
+        .catch((markError) => {
+          this.captureCatalogSyncException(
+            'trigger_manual_sync_in_background.mark_failed',
+            markError,
+            {
+              originalErrorMessage: errorMessage,
+            },
+          );
+          return undefined;
+        });
     });
 
     return {

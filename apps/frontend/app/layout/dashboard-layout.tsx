@@ -15,11 +15,20 @@ import SubscribeIcon from '@app/assets/SubscribreIcon.svg?react'
 import { LayoutProvider, useLayout } from '@app/contexts/LayoutContext'
 import { useAuth } from '@app/hooks/useAuth'
 import { getPlanLabel, resolveCurrentPlanKey } from '@app/lib/current-plan'
-import { Avatar, Layout, Menu, Modal, Spin } from 'antd'
-import { useEffect, useRef } from 'react'
+import Avatar from 'antd/es/avatar'
+import Layout from 'antd/es/layout'
+import Menu from 'antd/es/menu'
+import Modal from 'antd/es/modal'
+import Spin from 'antd/es/spin'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 const { Sider } = Layout
+const LazySupportFeedbackModal = lazy(() =>
+  import('@app/components/support/SupportFeedbackModal').then(module => ({
+    default: module.SupportFeedbackModal,
+  }))
+)
 
 const DESKTOP_SIDER_WIDTH = 280
 const DESKTOP_COLLAPSED_WIDTH = 80
@@ -130,7 +139,9 @@ const menuSections = [
 
 type DashboardSidebarContentProps = {
   collapsed: boolean
+  isDashboardHome: boolean
   isContextIncomplete: boolean
+  onOpenHomeSupportModal: () => void
   selectedKeys: string[]
   onLogout: () => void
   onNavigate: (path: string) => void
@@ -139,7 +150,9 @@ type DashboardSidebarContentProps = {
 
 function DashboardSidebarContent({
   collapsed,
+  isDashboardHome,
   isContextIncomplete,
+  onOpenHomeSupportModal,
   selectedKeys,
   onLogout,
   onNavigate,
@@ -190,14 +203,32 @@ function DashboardSidebarContent({
           selectedKeys={selectedKeys}
           items={menuSections.map(section => ({
             type: 'group' as const,
-            label: section.title,
+            label:
+              section.title === 'Aides' && isDashboardHome ? (
+                <button
+                  type='button'
+                  onClick={onOpenHomeSupportModal}
+                  className='w-full cursor-pointer border-none bg-transparent p-0 text-left transition-opacity hover:opacity-80'
+                >
+                  {section.title}
+                </button>
+              ) : (
+                section.title
+              ),
             children: section.items.map(item => ({
               key: item.key,
               icon: item.icon,
               label: item.label,
               disabled:
                 isContextIncomplete && !CONTEXT_OPTIONAL_KEYS.has(item.key),
-              onClick: () => onNavigate(item.path),
+              onClick: () => {
+                if (isDashboardHome && item.key === 'support') {
+                  onOpenHomeSupportModal()
+                  return
+                }
+
+                onNavigate(item.path)
+              },
             })),
           }))}
           className='border-none'
@@ -230,6 +261,7 @@ function DashboardLayoutContent() {
   const navigate = useNavigate()
   const location = useLocation()
   const [modal, contextHolder] = Modal.useModal()
+  const [isHomeSupportModalOpen, setIsHomeSupportModalOpen] = useState(false)
   const isNavigatingRef = useRef(false)
 
   useEffect(() => {
@@ -317,6 +349,7 @@ function DashboardLayoutContent() {
   }
 
   const isContextIncomplete = hasContextScore ? contextScore < 80 : false
+  const isDashboardHome = location.pathname === '/dashboard'
 
   const getSelectedKey = () => {
     for (const section of menuSections) {
@@ -338,6 +371,14 @@ function DashboardLayoutContent() {
     navigate(path)
   }
 
+  const handleOpenHomeSupportModal = () => {
+    if (!isDesktop) {
+      setMobileMenuOpen(false)
+    }
+
+    setIsHomeSupportModalOpen(true)
+  }
+
   if (isLoading || !isAuthenticated) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-[#fdfdfd]'>
@@ -349,6 +390,19 @@ function DashboardLayoutContent() {
   return (
     <div className='min-h-screen'>
       {contextHolder}
+      {isHomeSupportModalOpen ? (
+        <Suspense fallback={null}>
+          <LazySupportFeedbackModal
+            open={isHomeSupportModalOpen}
+            onClose={() => setIsHomeSupportModalOpen(false)}
+            appArea='dashboard-home-aides'
+            initialCategory='amelioration'
+            subject="Besoin partagé depuis l'accueil"
+            title='Dites-nous ce dont vous avez besoin'
+            description='Votre retour nous aide à prioriser les évolutions les plus utiles.'
+          />
+        </Suspense>
+      ) : null}
 
       <div className='relative flex min-h-screen w-full lg:p-4'>
         <button
@@ -385,7 +439,9 @@ function DashboardLayoutContent() {
             >
               <DashboardSidebarContent
                 collapsed={false}
+                isDashboardHome={isDashboardHome}
                 isContextIncomplete={isContextIncomplete}
+                onOpenHomeSupportModal={handleOpenHomeSupportModal}
                 selectedKeys={getSelectedKey()}
                 onLogout={handleLogout}
                 onNavigate={handleNavigate}
@@ -411,7 +467,9 @@ function DashboardLayoutContent() {
           >
             <DashboardSidebarContent
               collapsed={collapsed}
+              isDashboardHome={isDashboardHome}
               isContextIncomplete={isContextIncomplete}
+              onOpenHomeSupportModal={handleOpenHomeSupportModal}
               selectedKeys={getSelectedKey()}
               onLogout={handleLogout}
               onNavigate={handleNavigate}

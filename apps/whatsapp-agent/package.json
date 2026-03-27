@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && pnpm openapi:generate && node scripts/post-openapi.js && nest build",
+    "build": "pnpm openapi:generate && node scripts/post-openapi.js && nest build && pnpm sentry:sourcemaps",
     "start": "nest start",
     "start:dev": "prisma generate && nest start --watch",
     "start:debug": "prisma generate && nest start --debug --watch",
@@ -25,7 +25,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "openapi:generate": "openapi-ts"
+    "openapi:generate": "openapi-ts",
+    "sentry:sourcemaps": "sh ../../scripts/upload-sentry-sourcemaps.sh bedones-whatsapp-agent ./dist"
   },
   "dependencies": {
     "@apps/common": "workspace:*",
@@ -39,13 +40,14 @@
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^11.1.6",
-    "minio": "^8.0.6",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^7.4.2",
     "@nestjs/terminus": "^10.2.3",
     "@prisma/client": "^6.16.2",
     "@qdrant/js-client-rest": "^1.16.2",
+    "@sentry/cli": "^2.58.5",
+    "@sentry/nestjs": "^10.12.0",
     "@xenova/transformers": "^2.17.2",
     "axios": "^1.7.2",
     "bull": "^4.16.5",
@@ -54,6 +56,7 @@
     "form-data": "^4.0.5",
     "ioredis": "^5.8.2",
     "langchain": "^1.2.13",
+    "minio": "^8.0.6",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",

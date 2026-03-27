@@ -2,6 +2,7 @@ import { CryptoService } from '@app/common/crypto.service';
 import { ConnectorClientService } from '@app/connector-client';
 import { UserStatus, ConnectionStatus } from '@app/generated/client';
 import { PrismaService } from '@app/prisma/prisma.service';
+import { StackPoolService } from '@app/stack-pool/stack-pool.service';
 import { UserSyncService } from '@app/whatsapp-agent/user-sync.service';
 import { WhatsAppAgentService } from '@app/whatsapp-agent/whatsapp-agent.service';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
@@ -16,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import * as Sentry from '@sentry/nestjs';
 
 import { OnboardingService } from '../onboarding/onboarding.service';
 
@@ -31,12 +33,33 @@ export class AuthService {
     private readonly cryptoService: CryptoService,
     private readonly configService: ConfigService,
     private readonly whatsappAgentService: WhatsAppAgentService,
+    private readonly stackPoolService: StackPoolService,
     private readonly connectorClientService: ConnectorClientService,
     private readonly userSyncService: UserSyncService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     @Inject(forwardRef(() => OnboardingService))
     private readonly onboardingService: OnboardingService,
   ) {}
+
+  private captureAuthException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'auth',
+        operation,
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        auth: context,
+      },
+    });
+  }
 
   /**
    * Request a pairing code for WhatsApp authentication
@@ -50,7 +73,7 @@ export class AuthService {
     pairingToken: string;
     qrSessionToken?: string;
     message: string;
-    scenario: 'pairing' | 'otp' | 'qr';
+    scenario: 'pairing' | 'otp' | 'qr' | 'provisioning';
   }> {
     try {
       // Check if user exists
@@ -87,6 +110,15 @@ export class AuthService {
             `Failed to check authentication status for ${phoneNumber}`,
             error,
           );
+          this.captureAuthException(
+            'request_pairing_code.check_authentication',
+            error,
+            {
+              connectorUrl,
+              phoneNumber,
+              userId: user?.id,
+            },
+          );
         }
       }
 
@@ -114,12 +146,6 @@ export class AuthService {
         this.logger.log(`Created new user with phone number: ${phoneNumber}`);
       }
 
-      // Provision WhatsApp agent if not exists
-      if (!agent) {
-        agent = await this.whatsappAgentService.provisionAgent(user.id);
-        this.logger.log(`Provisioned WhatsApp agent for user: ${user.id}`);
-      }
-
       // Generate unique pairing token (valid for 5 minutes)
       const pairingToken = this.cryptoService.generateRandomToken(32);
       const pairingTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -134,14 +160,61 @@ export class AuthService {
         },
       });
 
-      // Scenario 2a: Desktop device -> Return QR scenario (don't request pairing code)
+      let qrSessionToken: string | undefined;
+
       if (deviceType === 'desktop') {
-        this.logger.log(
-          `Desktop device detected, returning QR scenario for: ${phoneNumber}`,
-        );
-        const qrSessionToken = await this.generateQrSessionToken(
+        qrSessionToken = await this.generateQrSessionToken(
           phoneNumber,
           pairingToken,
+        );
+      }
+
+      if (!agent) {
+        const reservation = await this.stackPoolService.reserveStackForLogin({
+          deviceType,
+          pairingToken,
+          phoneNumber,
+          userId: user.id,
+        });
+
+        if (reservation.state === 'provisioning') {
+          if (deviceType === 'desktop') {
+            await this.storeQrSessionMapping(phoneNumber, pairingToken);
+          }
+
+          return {
+            message:
+              deviceType === 'desktop'
+                ? 'Nous préparons votre serveur et récupérerons le code QR dès que la stack sera prête.'
+                : 'Nous préparons votre serveur avant de générer le code de pairing.',
+            pairingToken,
+            qrSessionToken,
+            scenario: 'provisioning',
+          };
+        }
+
+        agent = reservation.agent;
+      } else {
+        await this.stackPoolService.reserveStackForLogin({
+          deviceType,
+          pairingToken,
+          phoneNumber,
+          userId: user.id,
+        });
+      }
+
+      // Scenario 2a: Desktop device -> Return QR scenario (don't request pairing code)
+      if (deviceType === 'desktop') {
+        if (agent) {
+          await this.storeQrSessionMapping(
+            phoneNumber,
+            pairingToken,
+            agent.stackLabel || agent.id,
+          );
+        }
+
+        this.logger.log(
+          `Desktop device detected, returning QR scenario for: ${phoneNumber}`,
         );
         return {
           pairingToken,
@@ -155,6 +228,8 @@ export class AuthService {
       // Get connector URL
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
+
+      await this.connectorClientService.startClient(connectorUrl);
 
       // Clean and restart connector to ensure fresh state
       // This removes .wwebjs_cache and data directories and restarts the client
@@ -172,6 +247,15 @@ export class AuthService {
         this.logger.error(
           `Failed to clean and restart connector, continuing anyway`,
           error,
+        );
+        this.captureAuthException(
+          'request_pairing_code.clean_restart_connector',
+          error,
+          {
+            connectorUrl,
+            phoneNumber,
+            userId: user.id,
+          },
         );
       }
 
@@ -307,6 +391,8 @@ export class AuthService {
             connectionStatus: ConnectionStatus.CONNECTED,
           },
         });
+
+        await this.stackPoolService.markUserStackConnected(user.id);
       }
 
       // Generate JWT token
@@ -347,6 +433,7 @@ export class AuthService {
     otpCode?: string,
   ): Promise<{
     accessToken: string;
+    isFirstLogin: boolean;
     redirectTo: string;
     user: any;
   }> {
@@ -359,6 +446,8 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedException('Invalid pairing token');
       }
+
+      const isFirstLogin = !user.lastLoginAt;
 
       // Check if token is expired
       if (
@@ -431,6 +520,7 @@ export class AuthService {
 
         return {
           accessToken,
+          isFirstLogin,
           redirectTo,
           user: {
             id: updatedUser.id,
@@ -475,6 +565,7 @@ export class AuthService {
       // New users always go through onboarding
       return {
         accessToken,
+        isFirstLogin,
         redirectTo: '/context',
         user: {
           id: updatedUser.id,
@@ -653,6 +744,15 @@ export class AuthService {
         },
       });
 
+      await Promise.all(
+        expiredUsers.map((expiredUser) =>
+          this.stackPoolService.releaseCapacity({
+            reason: 'pairing-expired',
+            userId: expiredUser.id,
+          }),
+        ),
+      );
+
       this.logger.log(
         `Cleaned up ${expiredUsers.length} expired pairing sessions`,
       );
@@ -687,12 +787,10 @@ export class AuthService {
     user?: any;
   }> {
     try {
-      // Check if user exists
       let user = await this.prisma.user.findUnique({
         where: { phoneNumber },
       });
 
-      // Create user if doesn't exist
       if (!user) {
         user = await this.prisma.user.create({
           data: {
@@ -703,11 +801,17 @@ export class AuthService {
         this.logger.log(`Created new user for QR code auth: ${phoneNumber}`);
       }
 
-      // Generate unique pairing token (valid for 5 minutes)
-      const pairingToken = this.cryptoService.generateRandomToken(32);
-      const pairingTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      const hasValidExistingToken =
+        user.pairingToken &&
+        user.pairingTokenExpiresAt &&
+        user.pairingTokenExpiresAt > new Date() &&
+        user.status === UserStatus.PAIRING;
+      const pairingToken =
+        user.pairingToken || this.cryptoService.generateRandomToken(32);
+      const pairingTokenExpiresAt = hasValidExistingToken
+        ? user.pairingTokenExpiresAt!
+        : new Date(Date.now() + 5 * 60 * 1000);
 
-      // Update user with pairing token and change status to PAIRING
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {
@@ -717,16 +821,44 @@ export class AuthService {
         },
       });
 
-      // Provision WhatsApp agent if not exists
       let agent = await this.whatsappAgentService.getAgentForUser(user.id);
       if (!agent) {
-        agent = await this.whatsappAgentService.provisionAgent(user.id);
-        this.logger.log(`Provisioned WhatsApp agent for QR code: ${user.id}`);
+        const reservation = await this.stackPoolService.reserveStackForLogin({
+          deviceType: 'desktop',
+          pairingToken,
+          phoneNumber,
+          userId: user.id,
+        });
+
+        if (reservation.state === 'provisioning') {
+          const qrSessionToken = await this.generateQrSessionToken(
+            phoneNumber,
+            pairingToken,
+          );
+          await this.storeQrSessionMapping(phoneNumber, pairingToken);
+
+          return {
+            message:
+              'Nous préparons votre stack. Le code QR sera poussé dès que le connector sera prêt.',
+            pairingToken,
+            qrSessionToken,
+          };
+        }
+
+        agent = reservation.agent;
       }
+
+      await this.storeQrSessionMapping(
+        phoneNumber,
+        pairingToken,
+        agent.stackLabel || agent.id,
+      );
 
       // Get connector URL
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
+
+      await this.connectorClientService.startClient(connectorUrl);
 
       // Clean and restart connector to ensure fresh state
       // This removes .wwebjs_cache and data directories and restarts the client
@@ -745,6 +877,11 @@ export class AuthService {
           `Failed to clean and restart connector, continuing anyway`,
           error,
         );
+        this.captureAuthException('request_qr.clean_restart_connector', error, {
+          connectorUrl,
+          phoneNumber,
+          userId: user.id,
+        });
       }
 
       this.logger.log(`Requesting QR code from: ${connectorUrl}`);
@@ -779,13 +916,6 @@ export class AuthService {
 
       this.logger.log(`QR code retrieved successfully for: ${phoneNumber}`);
 
-      // Store phoneNumber -> pairingToken mapping in cache for webhook routing
-      const cacheKey = `qr-session:${phoneNumber}`;
-      await this.cacheManager.set(cacheKey, pairingToken, 300000); // 5 minutes
-      this.logger.log(
-        `Stored QR session mapping for ${phoneNumber} -> ${pairingToken}`,
-      );
-
       const qrSessionToken = await this.generateQrSessionToken(
         phoneNumber,
         pairingToken,
@@ -810,6 +940,10 @@ export class AuthService {
                   pairingTokenExpiresAt: null,
                 },
               });
+              await this.stackPoolService.releaseCapacity({
+                reason: 'qr-session-expired',
+                userId: user.id,
+              });
               this.logger.log(`QR code session expired for user: ${user.id}`);
             }
           } catch (error) {
@@ -817,6 +951,10 @@ export class AuthService {
               `Error during QR code session cleanup for user ${user.id}`,
               error,
             );
+            this.captureAuthException('request_qr.session_cleanup', error, {
+              phoneNumber,
+              userId: user.id,
+            });
           }
         },
         5 * 60 * 1000,
@@ -847,6 +985,7 @@ export class AuthService {
     pairingToken: string,
     qrSessionToken: string,
   ): Promise<{
+    isFirstLogin?: boolean;
     qrCode?: string;
     pairingToken?: string;
     qrSessionToken?: string;
@@ -905,6 +1044,8 @@ export class AuthService {
         this.logger.log(
           `Connector already authenticated for ${user.phoneNumber}, checking pairing status`,
         );
+
+        const isFirstLogin = !user.lastLoginAt;
 
         // Check if user is PAIRED (webhook was called)
         if (
@@ -966,6 +1107,7 @@ export class AuthService {
           return {
             scenario: 'connected',
             accessToken,
+            isFirstLogin,
             redirectTo,
             message: 'Connexion réussie',
             user: {
@@ -1015,6 +1157,11 @@ export class AuthService {
           `Failed to get QR code for ${user.phoneNumber}, may be connecting`,
           error,
         );
+        this.captureAuthException('refresh_qr.fetch_current_qr', error, {
+          connectorUrl,
+          phoneNumber: user.phoneNumber,
+          userId: user.id,
+        });
       }
 
       // If QR code is not available (e.g., during connection process)
@@ -1024,6 +1171,25 @@ export class AuthService {
     } catch (error) {
       this.logger.error(`Error refreshing QR code`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Generate a short-lived JWT used only for QR refresh validation
+   */
+  private async storeQrSessionMapping(
+    phoneNumber: string,
+    pairingToken: string,
+    connectorInstanceId?: string,
+  ) {
+    await this.cacheManager.set(`qr-session:${phoneNumber}`, pairingToken, 300000);
+
+    if (connectorInstanceId) {
+      await this.cacheManager.set(
+        `connector-session:${connectorInstanceId}`,
+        pairingToken,
+        300000,
+      );
     }
   }
 

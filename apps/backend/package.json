@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && nest build",
+    "build": "nest build && pnpm sentry:sourcemaps",
     "start": "nest start",
     "start:dev": "prisma generate && nest start --watch",
     "start:debug": "prisma generate && nest start --debug --watch",
@@ -26,7 +26,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "sentry:sourcemaps": "sh ../../scripts/upload-sentry-sourcemaps.sh bedones-whatsapp-api ./dist"
   },
   "dependencies": {
     "@apps/common": "workspace:*",
@@ -49,6 +50,7 @@
     "@nestjs/terminus": "^10.2.3",
     "@nestjs/websockets": "^11.1.9",
     "@prisma/client": "^6.16.2",
+    "@sentry/cli": "^2.58.5",
     "@sentry/nestjs": "^10.12.0",
     "@sentry/node": "^10.12.0",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -60,6 +62,7 @@
     "cache-manager-redis-store": "^3.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "cookie-parser": "^1.4.7",
     "date-fns": "^4.1.0",
     "express": "^4.19.2",
     "ioredis": "^5.8.2",
@@ -73,14 +76,14 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
-    "zod": "^3.25.76",
-    "cookie-parser": "^1.4.7"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.1.6",
     "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.7",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.10",
@@ -103,8 +106,7 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.0.18",
-    "@types/cookie-parser": "^1.4.7"
+    "vitest": "^4.0.18"
   },
   "jest": {
     "moduleFileExtensions": [

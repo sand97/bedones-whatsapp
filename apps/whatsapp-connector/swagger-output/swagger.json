@@ -166,6 +166,17 @@
         }
       }
     },
+    "/health/debug-sentry": {
+      "get": {
+        "operationId": "HealthController_debugSentry",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/whatsapp/execute": {
       "post": {
         "operationId": "WhatsAppController_executeMethod",

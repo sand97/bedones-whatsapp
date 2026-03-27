@@ -10,4 +10,13 @@ export class HealthController {
   check() {
     return this.health.check([]);
   }
+
+  @Get('debug-sentry')
+  debugSentry() {
+    if (new Date() > new Date('2026-04-20')) {
+      return { message: 'Sentry test endpoint expired' };
+    }
+
+    throw new Error('My first Sentry error!');
+  }
 }

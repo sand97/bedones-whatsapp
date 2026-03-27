@@ -4,15 +4,23 @@ import {
   DollarOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons'
+import { CountryPhoneInput } from '@app/components/ui'
 import { featuresConfig } from '@app/data/features'
 import { useAuth } from '@app/hooks/useAuth'
+import { trackFirstLoginSignUp } from '@app/lib/analytics/google-analytics'
 import apiClient from '@app/lib/api/client'
+import { DEFAULT_PHONE_COUNTRY_CODE } from '@app/lib/phone/phone-country-rules'
+import {
+  buildPhoneE164,
+  getCountryPhoneValidationError,
+  normalizeCountryPhoneValue,
+  type CountryPhoneValue,
+} from '@app/lib/phone/phone-utils'
 import { App, Button, Modal, Spin, Typography } from 'antd'
 import Form from 'antd/es/form'
 import FormItem from 'antd/es/form/FormItem'
-import PhoneInput, { type PhoneNumber } from 'antd-phone-input'
 import { QRCodeSVG } from 'qrcode.react'
-import { useEffect, useState, useRef, type CSSProperties } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const { Text, Link } = Typography
@@ -20,25 +28,7 @@ const { Text, Link } = Typography
 const LAST_PHONE_KEY = 'whatsapp-agent-last-phone'
 
 interface FormValues {
-  phone: PhoneNumber
-}
-
-function getPhoneCountryLabel(value: PhoneNumber | string | undefined) {
-  const fallbackLabel = 'Cameroun'
-
-  if (typeof value === 'object' && value?.isoCode) {
-    try {
-      return (
-        new Intl.DisplayNames(['fr-FR'], { type: 'region' }).of(
-          value.isoCode.toUpperCase()
-        ) || fallbackLabel
-      )
-    } catch {
-      return fallbackLabel
-    }
-  }
-
-  return fallbackLabel
+  phone: CountryPhoneValue
 }
 
 export function meta() {
@@ -61,8 +51,6 @@ export default function LoginPage() {
   const { notification } = App.useApp()
   const { login } = useAuth()
   const [form] = Form.useForm<FormValues>()
-  const phoneFieldValue = Form.useWatch('phone', form)
-  const phoneCountryLabel = getPhoneCountryLabel(phoneFieldValue)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedFeatureKey, setSelectedFeatureKey] = useState<string | null>(
     null
@@ -111,6 +99,11 @@ export default function LoginPage() {
 
             // Login and redirect
             if (response.data.accessToken) {
+              trackFirstLoginSignUp({
+                authFlow: 'qr',
+                isFirstLogin: Boolean(response.data.isFirstLogin),
+                userId: response.data.user?.id,
+              })
               login(response.data.user)
 
               setTimeout(() => {
@@ -166,9 +159,9 @@ export default function LoginPage() {
 
   const handleContinue = async (values: FormValues) => {
     const { phone } = values
-    const fullPhoneNumber = `+${phone.countryCode}${phone.areaCode}${phone.phoneNumber}`
+    const fullPhoneNumber = buildPhoneE164(phone, DEFAULT_PHONE_COUNTRY_CODE)
 
-    if (!phone.phoneNumber) {
+    if (!fullPhoneNumber) {
       notification.error({
         message: 'Erreur',
         description: 'Veuillez entrer un numéro de téléphone valide',
@@ -192,7 +185,7 @@ export default function LoginPage() {
         // Save phone for later
         localStorage.setItem(LAST_PHONE_KEY, JSON.stringify(phone))
 
-        const { scenario, pairingToken, code } = response.data
+        const { scenario, pairingToken, code, qrSessionToken } = response.data
 
         // Scénario 1: OTP (utilisateur déjà connecté)
         if (scenario === 'otp') {
@@ -228,6 +221,23 @@ export default function LoginPage() {
           return
         }
 
+        if (scenario === 'provisioning') {
+          notification.info({
+            message: 'Préparation de votre stack',
+            description:
+              response.data.message || 'Nous mettons votre instance en route...',
+          })
+          navigate('/auth/provisioning', {
+            state: {
+              deviceType,
+              pairingToken,
+              phoneNumber: fullPhoneNumber,
+              qrSessionToken,
+            },
+          })
+          return
+        }
+
         // Scénario 3: QR Code (desktop, nouvel utilisateur)
         if (scenario === 'qr') {
           // Demander le QR code au backend
@@ -244,6 +254,11 @@ export default function LoginPage() {
               })
 
               if (qrResponse.data.accessToken) {
+                trackFirstLoginSignUp({
+                  authFlow: 'qr',
+                  isFirstLogin: Boolean(qrResponse.data.isFirstLogin),
+                  userId: qrResponse.data.user?.id,
+                })
                 login(qrResponse.data.user)
 
                 setTimeout(() => {
@@ -307,8 +322,14 @@ export default function LoginPage() {
     const savedPhone = localStorage.getItem(LAST_PHONE_KEY)
     if (savedPhone) {
       try {
-        const phoneValue = JSON.parse(savedPhone) as PhoneNumber
-        form.setFieldsValue({ phone: phoneValue })
+        const phoneValue = normalizeCountryPhoneValue(
+          JSON.parse(savedPhone),
+          DEFAULT_PHONE_COUNTRY_CODE
+        )
+
+        if (phoneValue) {
+          form.setFieldsValue({ phone: phoneValue })
+        }
       } catch {
         // Ignore parsing errors for saved phone
       }
@@ -403,21 +424,23 @@ export default function LoginPage() {
               <FormItem
                 name='phone'
                 className='auth-phone-field w-full max-w-[320px]'
-                style={
-                  {
-                    '--phone-country-label': `"${phoneCountryLabel}"`,
-                  } as CSSProperties
-                }
                 rules={[
-                  { required: true, message: 'Veuillez entrer votre numéro' },
+                  {
+                    validator: (_, value?: CountryPhoneValue) => {
+                      const error = getCountryPhoneValidationError(value, {
+                        defaultCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
+                        requiredMessage: 'Veuillez entrer votre numéro.',
+                      })
+
+                      return error
+                        ? Promise.reject(new Error(error))
+                        : Promise.resolve()
+                    },
+                  },
                 ]}
               >
-                <PhoneInput
-                  country='cm'
-                  enableSearch
-                  enableArrow
-                  disableParentheses
-                  preferredCountries={['cm']}
+                <CountryPhoneInput
+                  defaultCountryCode={DEFAULT_PHONE_COUNTRY_CODE}
                 />
               </FormItem>
 
@@ -439,15 +462,9 @@ export default function LoginPage() {
                 className='block max-w-[420px] text-center text-sm leading-6'
               >
                 En cliquant sur continuer, vous acceptez notre{' '}
-                <Link
-                  href='/auth/privacy'
-                >
-                  politique de confidentialité
-                </Link>{' '}
+                <Link href='/auth/privacy'>politique de confidentialité</Link>{' '}
                 et nos{' '}
-                <Link
-                  href='/auth/terms'
-                >
+                <Link href='/auth/terms'>
                   conditions générales d&apos;utilisation
                 </Link>
                 .

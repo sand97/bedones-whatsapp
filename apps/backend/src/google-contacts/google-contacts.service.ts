@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 
 import {
   CustomerContact,
@@ -73,6 +74,27 @@ export class GoogleContactsService {
     private readonly httpService: HttpService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
+
+  private captureGoogleContactsException(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) {
+    const userId =
+      typeof context.userId === 'string' ? context.userId : undefined;
+
+    Sentry.captureException(error, {
+      tags: {
+        domain: 'google_contacts',
+        operation,
+        service: 'backend',
+      },
+      user: userId ? { id: userId } : undefined,
+      contexts: {
+        googleContacts: context,
+      },
+    });
+  }
 
   async createAuthorizeUrl(userId: string): Promise<{ authorizeUrl: string }> {
     const { client_id: clientId } = this.getClientSecretConfig();
@@ -264,6 +286,15 @@ export class GoogleContactsService {
       this.logger.warn(
         `Google contact sync failed for user ${userId}: ${error.message || error}`,
       );
+      this.captureGoogleContactsException('sync_contact_for_agent', error, {
+        agentId,
+        displayName,
+        organizationName,
+        phoneNumber: normalizedPhoneNumber,
+        userId,
+        whatsappChatId: dto.whatsappChatId,
+        whatsappContactId: dto.whatsappContactId,
+      });
 
       return {
         success: false,
