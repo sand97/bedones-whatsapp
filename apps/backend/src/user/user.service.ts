@@ -182,7 +182,7 @@ export class UserService {
   }
 
   async submitSupportFeedback(
-    userId: string,
+    userId: string | null,
     payload: CreateSupportFeedbackDto,
   ): Promise<SupportFeedbackResponseDto> {
     const parsedDsn = parseDsn(payload.sentry.dsn.trim());
@@ -200,6 +200,12 @@ export class UserService {
       ? `${trimmedSubject}\n\n${trimmedMessage}`
       : trimmedMessage;
     const requestUrl = payload.context?.url;
+    const feedbackSource = userId ? 'support-page' : 'landing-page';
+    const sentryUser = {
+      email: payload.email,
+      ...(userId ? { id: userId } : {}),
+      username: payload.name,
+    };
     const sentryPayload: Record<string, unknown> = {
       contexts: {
         app: {
@@ -213,7 +219,7 @@ export class UserService {
           contact_email: payload.email,
           message: feedbackMessage,
           name: payload.name,
-          source: 'support-page',
+          source: feedbackSource,
           url: requestUrl,
         },
       },
@@ -228,18 +234,14 @@ export class UserService {
           }
         : undefined,
       tags: {
-        app_area: payload.context?.appArea || 'dashboard',
+        app_area: payload.context?.appArea || (userId ? 'dashboard' : 'landing'),
         category: payload.category,
         current_plan: payload.context?.currentPlan,
         feature: 'support-feedback',
       },
       timestamp: Math.floor(Date.now() / 1000),
       type: 'feedback',
-      user: {
-        email: payload.email,
-        id: userId,
-        username: payload.name,
-      },
+      user: sentryUser,
     };
 
     try {
@@ -255,7 +257,7 @@ export class UserService {
         const responseBody = await response.text();
 
         this.logger.error(
-          `Sentry rejected support feedback for user ${userId} with status ${response.status}: ${responseBody}`,
+          `Sentry rejected support feedback for user ${userId ?? 'public'} with status ${response.status}: ${responseBody}`,
         );
 
         throw new InternalServerErrorException(
@@ -270,7 +272,7 @@ export class UserService {
       }
 
       this.logger.error(
-        `Failed to relay support feedback for user ${userId}`,
+        `Failed to relay support feedback for user ${userId ?? 'public'}`,
         error,
       );
 

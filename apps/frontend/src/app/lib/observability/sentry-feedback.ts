@@ -25,6 +25,7 @@ export interface SendSupportFeedbackParams {
   email: string
   message: string
   name: string
+  endpoint?: string
   subject?: string
   context?: SupportFeedbackContext
 }
@@ -82,6 +83,7 @@ export function getSentryFeedbackConfig() {
 export async function sendSupportFeedback({
   category,
   email,
+  endpoint,
   message,
   name,
   subject,
@@ -96,7 +98,7 @@ export async function sendSupportFeedback({
   }
 
   const response = await apiClient.post<{ eventId: string }>(
-    '/users/me/support-feedback',
+    endpoint || '/users/me/support-feedback',
     {
       category,
       context,

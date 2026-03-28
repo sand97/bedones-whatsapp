@@ -17,6 +17,9 @@ import {
 import * as express from 'express';
 
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { CreateSupportFeedbackDto } from '../user/dto/create-support-feedback.dto';
+import { SupportFeedbackResponseDto } from '../user/dto/support-feedback-response.dto';
+import { UserService } from '../user/user.service';
 
 import { AuthService } from './auth.service';
 import { ConfirmPairingDto } from './dto/confirm-pairing.dto';
@@ -31,7 +34,10 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly userService: UserService,
+  ) {}
 
   private setAuthCookie(res: express.Response, token: string): void {
     res.cookie(COOKIE_NAME, token, {
@@ -284,6 +290,28 @@ export class AuthController {
       this.setAuthCookie(res, result.accessToken);
     }
     return result;
+  }
+
+  @Post('support-feedback')
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Submit public support feedback' })
+  @ApiResponse({
+    status: 201,
+    description: 'Support feedback submitted successfully',
+    type: SupportFeedbackResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid feedback payload' })
+  @ApiResponse({
+    status: 500,
+    description: 'Support feedback relay failed',
+  })
+  async submitSupportFeedback(
+    @Body() createSupportFeedbackDto: CreateSupportFeedbackDto,
+  ): Promise<SupportFeedbackResponseDto> {
+    return this.userService.submitSupportFeedback(
+      null,
+      createSupportFeedbackDto,
+    );
   }
 
   @Get('me')

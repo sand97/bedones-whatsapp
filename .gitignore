@@ -39,3 +39,4 @@ cropped-images/
 /apps/frontend/dist/
 /apps/backend/google_client_secret.json
 /.vscode/
+/apps/frontend/.cloudflare-pages/

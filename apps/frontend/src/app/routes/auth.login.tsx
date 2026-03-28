@@ -4,6 +4,7 @@ import {
   DollarOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons'
+import { SupportFeedbackModal } from '@app/components/support'
 import { CountryPhoneInput } from '@app/components/ui'
 import { featuresConfig } from '@app/data/features'
 import { useAuth } from '@app/hooks/useAuth'
@@ -59,6 +60,7 @@ export default function LoginPage() {
   const [selectedFeatureKey, setSelectedFeatureKey] = useState<string | null>(
     null
   )
+  const [supportModalOpen, setSupportModalOpen] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [pairingToken, setPairingToken] = useState<string | null>(null)
   const [qrSessionToken, setQrSessionToken] = useState<string | null>(null)
@@ -499,7 +501,7 @@ export default function LoginPage() {
           <Button
             type='default'
             size='large'
-            onClick={() => setSelectedFeatureKey('Réponses aux questions')}
+            onClick={() => setSupportModalOpen(true)}
             icon={<CustomerServiceOutlined />}
             iconPosition={'end'}
           >
@@ -578,6 +580,17 @@ export default function LoginPage() {
           </p>
         )}
       </Modal>
+
+      <SupportFeedbackModal
+        open={supportModalOpen}
+        onClose={() => setSupportModalOpen(false)}
+        endpoint='/auth/support-feedback'
+        appArea='landing-help'
+        initialCategory='amelioration'
+        subject="Besoin partagé depuis la page d'accueil"
+        title='Dites-nous ce dont vous avez besoin'
+        description='Expliquez votre besoin et nous reviendrons vers vous rapidement.'
+      />
     </div>
   )
 }

@@ -21,6 +21,7 @@ import { useLocation } from 'react-router-dom'
 type SupportFeedbackModalProps = {
   appArea?: string
   description?: string
+  endpoint?: string
   initialCategory?: string
   onClose: () => void
   open: boolean
@@ -44,6 +45,7 @@ const CATEGORY_OPTIONS = [
 export function SupportFeedbackModal({
   appArea = 'dashboard-support',
   description = 'Nous vous répondrons dans les 24h',
+  endpoint,
   initialCategory = 'question',
   onClose,
   open,
@@ -84,12 +86,17 @@ export function SupportFeedbackModal({
     setIsSubmitting(true)
 
     try {
-      const phoneLabel = buildPhoneE164(values.phone, defaultPhoneCountryCode) || ''
+      const phoneLabel =
+        buildPhoneE164(values.phone, defaultPhoneCountryCode) || ''
+      const normalizedPhoneToken =
+        phoneLabel.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'visitor'
       const fallbackEmail =
-        user?.email?.trim() || `${user?.id || 'support'}@whatsapp-agent.local`
+        user?.email?.trim() ||
+        `${user?.id || normalizedPhoneToken}@whatsapp-agent.local`
       const fallbackName =
         user?.businessInfo?.profile_name ||
         user?.whatsappProfile?.pushname ||
+        phoneLabel ||
         'Utilisateur WhatsApp Agent'
 
       const eventId = await sendSupportFeedback({
@@ -110,6 +117,7 @@ export function SupportFeedbackModal({
           userId: user?.id,
         },
         email: fallbackEmail,
+        endpoint,
         message: `${phoneLabel ? `Téléphone de rappel : ${phoneLabel}\n\n` : ''}${values.message.trim()}`,
         name: fallbackName,
         subject: subject?.trim(),

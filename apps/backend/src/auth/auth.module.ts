@@ -8,6 +8,7 @@ import { PassportModule } from '@nestjs/passport';
 
 import { OnboardingModule } from '../onboarding/onboarding.module';
 import { StackPoolModule } from '../stack-pool/stack-pool.module';
+import { UserModule } from '../user/user.module';
 
 import { AuthController } from './auth.controller';
 import { AuthGateway } from './auth.gateway';
@@ -30,6 +31,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     PrismaModule,
     WhatsAppAgentModule,
     ConnectorClientModule,
+    UserModule,
     forwardRef(() => OnboardingModule),
     forwardRef(() => StackPoolModule),
   ],
