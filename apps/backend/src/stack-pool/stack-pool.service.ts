@@ -558,7 +558,10 @@ export class StackPoolService implements OnModuleInit {
       this.prisma.provisioningServer.findMany({
         where: {
           provisioningStatus: {
-            in: [VpsProvisioningStatus.PROVISIONING, VpsProvisioningStatus.REQUESTED],
+            in: [
+              VpsProvisioningStatus.PROVISIONING,
+              VpsProvisioningStatus.REQUESTED,
+            ],
           },
         },
         select: {
@@ -769,7 +772,8 @@ export class StackPoolService implements OnModuleInit {
     dto: WorkflowCallbackDto,
   ) {
     const currentServer = workflow.server;
-    const serverName = dto.server?.name || currentServer?.name || this.buildServerName();
+    const serverName =
+      dto.server?.name || currentServer?.name || this.buildServerName();
 
     const server = currentServer
       ? await this.prisma.provisioningServer.update({
@@ -780,16 +784,15 @@ export class StackPoolService implements OnModuleInit {
             name: serverName,
             networkId: dto.server?.networkId ?? currentServer.networkId,
             privateIpv4: dto.server?.privateIpv4 ?? currentServer.privateIpv4,
-            privateSubnet: dto.server?.privateSubnet ?? currentServer.privateSubnet,
+            privateSubnet:
+              dto.server?.privateSubnet ?? currentServer.privateSubnet,
             providerServerId:
               dto.server?.providerServerId ?? currentServer.providerServerId,
             provisioningStatus: this.mapServerStatus(dto.status),
             publicIpv4: dto.server?.publicIpv4 ?? currentServer.publicIpv4,
             publicIpv6: dto.server?.publicIpv6 ?? currentServer.publicIpv6,
             readyAt:
-              dto.status === 'success'
-                ? new Date()
-                : currentServer.readyAt,
+              dto.status === 'success' ? new Date() : currentServer.readyAt,
             serverType: dto.server?.serverType ?? currentServer.serverType,
           },
         })
@@ -799,7 +802,8 @@ export class StackPoolService implements OnModuleInit {
             metadata: this.toJsonInput(dto.metadata),
             name: serverName,
             networkId: dto.server?.networkId,
-            plannedStacksCount: dto.stacks?.length ?? workflow.requestedStacksPerVps,
+            plannedStacksCount:
+              dto.stacks?.length ?? workflow.requestedStacksPerVps,
             privateIpv4: dto.server?.privateIpv4,
             privateSubnet: dto.server?.privateSubnet,
             providerServerId: dto.server?.providerServerId,
@@ -854,7 +858,10 @@ export class StackPoolService implements OnModuleInit {
                 : existing.assignmentStatus,
             connectorPort: stack.connectorPort,
             ipAddress:
-              stack.privateIpv4 || server.privateIpv4 || server.publicIpv4 || '0.0.0.0',
+              stack.privateIpv4 ||
+              server.privateIpv4 ||
+              server.publicIpv4 ||
+              '0.0.0.0',
             metadata: {
               ...(this.asObject(existing.metadata) || {}),
               ...baseMetadata,
@@ -874,9 +881,14 @@ export class StackPoolService implements OnModuleInit {
           assignmentStatus: StackAssignmentStatus.FREE,
           connectionStatus: ConnectionStatus.PAIRING_REQUIRED,
           connectorPort: stack.connectorPort,
-          encryptedPassword: this.cryptoService.encrypt(this.generateRandomPassword()),
+          encryptedPassword: this.cryptoService.encrypt(
+            this.generateRandomPassword(),
+          ),
           ipAddress:
-            stack.privateIpv4 || server.privateIpv4 || server.publicIpv4 || '0.0.0.0',
+            stack.privateIpv4 ||
+            server.privateIpv4 ||
+            server.publicIpv4 ||
+            '0.0.0.0',
           metadata: baseMetadata,
           port: stack.agentPort,
           serverId: server.id,
@@ -1060,7 +1072,9 @@ export class StackPoolService implements OnModuleInit {
     workflowFile: string,
     inputs: Record<string, string>,
   ) {
-    const repository = this.configService.get<string>('GITHUB_ACTIONS_REPOSITORY');
+    const repository = this.configService.get<string>(
+      'GITHUB_ACTIONS_REPOSITORY',
+    );
     const token = this.configService.get<string>('GITHUB_ACTIONS_TOKEN');
 
     if (!repository || !token) {
@@ -1198,11 +1212,17 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private getDefaultServerType() {
-    return this.configService.get<string>('STACK_POOL_DEFAULT_SERVER_TYPE', 'CPX21');
+    return this.configService.get<string>(
+      'STACK_POOL_DEFAULT_SERVER_TYPE',
+      'CPX21',
+    );
   }
 
   private getDefaultLocation() {
-    return this.configService.get<string>('STACK_POOL_DEFAULT_LOCATION', 'fsn1');
+    return this.configService.get<string>(
+      'STACK_POOL_DEFAULT_LOCATION',
+      'fsn1',
+    );
   }
 
   private getWorkflowCallbackUrl() {
@@ -1248,7 +1268,10 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private buildReservationExpiry() {
-    const ttlMinutes = this.getNumberConfig('STACK_POOL_RESERVATION_TTL_MINUTES', 15);
+    const ttlMinutes = this.getNumberConfig(
+      'STACK_POOL_RESERVATION_TTL_MINUTES',
+      15,
+    );
     return new Date(Date.now() + ttlMinutes * 60_000);
   }
 

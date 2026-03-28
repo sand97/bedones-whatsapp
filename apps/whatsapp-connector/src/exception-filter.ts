@@ -1,17 +1,34 @@
-import { Catch, type ArgumentsHost } from '@nestjs/common';
+import { Catch, ArgumentsHost } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import { SentryExceptionCaptured } from '@sentry/nestjs';
+import * as Sentry from '@sentry/nestjs';
+import { AxiosError } from 'axios';
 
 @Catch()
 export class AllExceptionsFilter extends BaseExceptionFilter {
-  @SentryExceptionCaptured()
   catch(exception: unknown, host: ArgumentsHost) {
+    super.catch(exception, host);
     const name = exception?.constructor?.name;
+
+    const dev = process.env.MODE === 'DEV';
 
     if (name === 'AxiosError') {
       console.log('AxiosError data', (exception as any)?.response?.data);
     }
 
-    return super.catch(exception, host);
+    if (name !== 'HttpException' && !dev) {
+      Sentry.captureException(exception, {
+        extra: {
+          data:
+            name === 'AxiosError'
+              ? (exception as AxiosError)?.response?.data
+              : undefined,
+          error_data:
+            name === 'AxiosError'
+              ? (exception as any)?.response?.data?.error
+              : undefined,
+          host,
+        },
+      });
+    }
   }
 }

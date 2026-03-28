@@ -11,15 +11,11 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
 
     const dev = process.env.MODE === 'DEV';
 
-    // if(dev) {
-    // console.log(exception);
-    // }
     if (name === 'AxiosError') {
       console.log('AxiosError data', (exception as any)?.response?.data);
     }
 
     if (name !== 'HttpException' && !dev) {
-      console.log('Exception captured by Sentry:');
       Sentry.captureException(exception, {
         extra: {
           data:
