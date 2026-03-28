@@ -25,7 +25,7 @@ async function bootstrap() {
     express.raw({ type: 'application/json' }),
   );
 
-  // Limite étendue pour les stories planifiées avec media inline (data URL)
+  // Limite étendue pour les stories planifiées avec media inline
   app.use(
     '/users/me/status-schedules',
     express.json({ limit: '30mb' }),
