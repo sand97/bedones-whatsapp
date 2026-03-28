@@ -5,8 +5,9 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/client"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -186,21 +187,21 @@ model User {
   lastLoginAt DateTime?
 
   // Relations
-  whatsappAgent     WhatsAppAgent?
-  businessInfo      BusinessInfo?
-  onboardingThread  OnboardingThread?
-  collections       Collection[]
-  products          Product[]
-  deliveryLocations DeliveryLocation[]
-  paymentMethods    PaymentMethod[]
-  orders            Order[]
-  creditHistory     Credit[]
-  billingPayments   BillingPayment[]
-  subscription      Subscription?
-  groups            Group[]
-  customerContacts  CustomerContact[]
-  dailyStats        UserDailyStat[]
-  statusSchedules   StatusSchedule[]
+  whatsappAgent                     WhatsAppAgent?
+  businessInfo                      BusinessInfo?
+  onboardingThread                  OnboardingThread?
+  collections                       Collection[]
+  products                          Product[]
+  deliveryLocations                 DeliveryLocation[]
+  paymentMethods                    PaymentMethod[]
+  orders                            Order[]
+  creditHistory                     Credit[]
+  billingPayments                   BillingPayment[]
+  subscription                      Subscription?
+  groups                            Group[]
+  customerContacts                  CustomerContact[]
+  dailyStats                        UserDailyStat[]
+  statusSchedules                   StatusSchedule[]
   requestedProvisioningWorkflowRuns ProvisioningWorkflowRun[] @relation("RequestedByUser")
 
   @@index([phoneNumber])
@@ -208,18 +209,18 @@ model User {
 }
 
 model WhatsAppAgent {
-  id     String  @id @unique @default(cuid())
-  userId String? @unique
-  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String              @id @unique @default(cuid())
+  userId   String?             @unique
+  user     User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
   serverId String?
   server   ProvisioningServer? @relation(fields: [serverId], references: [id], onDelete: SetNull)
 
   // Configuration serveur
-  ipAddress         String
-  port              Int // Port de l'agent WhatsApp
-  connectorPort     Int // Port du connector WhatsApp
-  encryptedPassword String // Mot de passe chiffré pour accéder à l'agent
-  encryptedGoogleContactsToken String? @db.Text
+  ipAddress                    String
+  port                         Int // Port de l'agent WhatsApp
+  connectorPort                Int // Port du connector WhatsApp
+  encryptedPassword            String // Mot de passe chiffré pour accéder à l'agent
+  encryptedGoogleContactsToken String?   @db.Text
   googleContactsConnectedAt    DateTime?
 
   // Statuts
@@ -227,25 +228,25 @@ model WhatsAppAgent {
   connectionStatus ConnectionStatus    @default(PAIRING_REQUIRED)
 
   // Synchronisation des données WhatsApp
-  syncStatus          SyncStatus @default(PENDING)
-  syncProgress        Json? // { clientInfo: { status, progress, timestamp }, catalog: { status, progress, details } }
-  lastCatalogSyncedAt DateTime? // Dernière synchronisation du catalogue
-  syncImageStatus     SyncImageStatus @default(PENDING)
-  lastImageSyncDate   DateTime?
-  lastImageSyncError  String?
-  customDescriptionPrompt    String? @db.Text
+  syncStatus                 SyncStatus      @default(PENDING)
+  syncProgress               Json? // { clientInfo: { status, progress, timestamp }, catalog: { status, progress, details } }
+  lastCatalogSyncedAt        DateTime? // Dernière synchronisation du catalogue
+  syncImageStatus            SyncImageStatus @default(PENDING)
+  lastImageSyncDate          DateTime?
+  lastImageSyncError         String?
+  customDescriptionPrompt    String?         @db.Text
   promptGeneratedAt          DateTime?
   promptBasedOnProductsCount Int?
 
   // Métadonnées (JSON pour flexibilité)
-  metadata Json? // { containerId, vpsProvider, region, etc. }
-  stackSlot Int?
-  stackLabel String?
-  assignmentStatus   StackAssignmentStatus @default(FREE)
+  metadata             Json? // { containerId, vpsProvider, region, etc. }
+  stackSlot            Int?
+  stackLabel           String?
+  assignmentStatus     StackAssignmentStatus @default(FREE)
   reservationExpiresAt DateTime?
-  allocatedAt DateTime?
-  releasedAt DateTime?
-  releaseReason String? @db.Text
+  allocatedAt          DateTime?
+  releasedAt           DateTime?
+  releaseReason        String?               @db.Text
 
   // Configuration IA
   testPhoneNumbers  String[] @default([]) // Numéros de téléphone de test
@@ -258,36 +259,36 @@ model WhatsAppAgent {
   updatedAt         DateTime  @updatedAt
   lastHealthCheckAt DateTime?
 
+  @@unique([serverId, stackSlot])
   @@index([userId])
   @@index([status])
   @@index([syncStatus])
   @@index([assignmentStatus])
   @@index([serverId])
-  @@unique([serverId, stackSlot])
 }
 
 model ProvisioningServer {
   id String @id @unique @default(cuid())
 
-  provider         String @default("hetzner")
-  providerServerId String? @unique
-  name             String  @unique
-  serverType       String
-  location         String?
-  networkId        String?
-  publicIpv4       String?
-  publicIpv6       String?
-  privateIpv4      String?
-  privateSubnet    String?
+  provider           String                @default("hetzner")
+  providerServerId   String?               @unique
+  name               String                @unique
+  serverType         String
+  location           String?
+  networkId          String?
+  publicIpv4         String?
+  publicIpv6         String?
+  privateIpv4        String?
+  privateSubnet      String?
   provisioningStatus VpsProvisioningStatus @default(REQUESTED)
-  plannedStacksCount Int @default(0)
-  metadata Json?
+  plannedStacksCount Int                   @default(0)
+  metadata           Json?
 
-  requestedAt DateTime @default(now())
+  requestedAt DateTime  @default(now())
   readyAt     DateTime?
   releasedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   stacks       WhatsAppAgent[]
   workflowRuns ProvisioningWorkflowRun[]
@@ -308,27 +309,27 @@ model ProvisioningWorkflowRun {
   githubRunUrl       String?
 
   requestedByUserId String?
-  requestedByUser   User? @relation("RequestedByUser", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  requestedByUser   User?   @relation("RequestedByUser", fields: [requestedByUserId], references: [id], onDelete: SetNull)
 
   serverId String?
   server   ProvisioningServer? @relation(fields: [serverId], references: [id], onDelete: SetNull)
 
-  requestedPhoneNumber String?
-  pairingToken         String?
-  targetDeviceType     String?
-  requestedVpsCount    Int @default(0)
-  requestedStacksPerVps Int @default(2)
-  totalJobs            Int @default(3)
-  completedJobs        Int @default(0)
-  progressPercent      Int @default(0)
-  currentStage         String?
-  errorMessage         String? @db.Text
-  payload              Json?
-  metadata             Json?
-  startedAt            DateTime?
-  completedAt          DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  requestedPhoneNumber  String?
+  pairingToken          String?
+  targetDeviceType      String?
+  requestedVpsCount     Int       @default(0)
+  requestedStacksPerVps Int       @default(2)
+  totalJobs             Int       @default(3)
+  completedJobs         Int       @default(0)
+  progressPercent       Int       @default(0)
+  currentStage          String?
+  errorMessage          String?   @db.Text
+  payload               Json?
+  metadata              Json?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@index([status])
   @@index([type])
@@ -463,14 +464,14 @@ model Product {
   collection          Collection? @relation(fields: [collection_id], references: [id], onDelete: SetNull)
 
   // Informations de base
-  name        String
-  description String?
+  name                  String
+  description           String?
   coverImageDescription String?
-  needsTextIndexing Boolean @default(true)
-  price       Float?
-  currency    String?
-  category    String?
-  retailer_id String? // Retailer ID depuis WhatsApp
+  needsTextIndexing     Boolean @default(true)
+  price                 Float?
+  currency              String?
+  category              String?
+  retailer_id           String? // Retailer ID depuis WhatsApp
 
   // Stock et disponibilité
   availability  String? // "in stock", "out of stock"
@@ -515,13 +516,13 @@ model ProductImage {
   product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   // Informations de l'image
-  url            String // URL dans MinIO
-  original_url   String? // URL originale WhatsApp complète (avec query params)
-  normalized_url String? // URL normalisée (partie stable sans query params) pour comparaison
+  url                 String // URL dans MinIO
+  original_url        String? // URL originale WhatsApp complète (avec query params)
+  normalized_url      String? // URL normalisée (partie stable sans query params) pour comparaison
   whatsapp_image_hash String? // Hash WhatsApp de l'image (plus stable que l'URL)
-  image_type     String  @default("main") // "main" ou "additional"
-  image_index    Int     @default(0) // Index de l'image
-  needsImageIndexing Boolean @default(true)
+  image_type          String  @default("main") // "main" ou "additional"
+  image_index         Int     @default(0) // Index de l'image
+  needsImageIndexing  Boolean @default(true)
 
   // Dates
   created_at DateTime @default(now())
@@ -641,13 +642,13 @@ model Order {
 }
 
 model Credit {
-  id     String     @id @unique @default(cuid())
-  userId String
-  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paymentId String? @unique
+  id        String          @id @unique @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentId String?         @unique
   payment   BillingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  amount Int // Positif = ajout, négatif = décompte
-  type   CreditType
+  amount    Int // Positif = ajout, négatif = décompte
+  type      CreditType
 
   description String
 
@@ -669,15 +670,15 @@ model BillingPayment {
   paymentMethod BillingPaymentMethod
   status        BillingPaymentStatus @default(PENDING)
 
-  reference          String  @unique
-  providerSessionId  String? @unique
-  providerPaymentId  String?
+  reference           String  @unique
+  providerSessionId   String? @unique
+  providerPaymentId   String?
   providerCheckoutUrl String? @db.Text
 
-  amount        Float
-  currency      String
+  amount         Float
+  currency       String
   durationMonths Int
-  creditsAmount Int
+  creditsAmount  Int
 
   subscriptionTier SubscriptionTier
   phoneNumber      String?
@@ -687,7 +688,7 @@ model BillingPayment {
 
   processedAt   DateTime?
   failedAt      DateTime?
-  failureReason String?  @db.Text
+  failureReason String?   @db.Text
 
   creditGrant Credit?
 
@@ -745,12 +746,12 @@ model CustomerContact {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  phoneNumber       String
-  whatsappChatId    String
-  whatsappContactId String
-  displayName       String
-  whatsappPushName  String?
-  organizationName  String?
+  phoneNumber        String
+  whatsappChatId     String
+  whatsappContactId  String
+  displayName        String
+  whatsappPushName   String?
+  organizationName   String?
   googleResourceName String?
   googleSyncStatus   GoogleContactSyncStatus
 
@@ -810,16 +811,16 @@ model UserDailyStat {
 
   day String @db.VarChar(10)
 
-  messages              Int @default(0)
-  messagesHandled       Int @default(0)
-  imageMessages         Int @default(0)
-  imageMessagesHandled  Int @default(0)
-  audioMessages         Int @default(0)
-  audioMessagesHandled  Int @default(0)
-  textMessages          Int @default(0)
-  textMessagesHandled   Int @default(0)
-  conversations         Int @default(0)
-  tokens                Int @default(0)
+  messages             Int @default(0)
+  messagesHandled      Int @default(0)
+  imageMessages        Int @default(0)
+  imageMessagesHandled Int @default(0)
+  audioMessages        Int @default(0)
+  audioMessagesHandled Int @default(0)
+  textMessages         Int @default(0)
+  textMessagesHandled  Int @default(0)
+  conversations        Int @default(0)
+  tokens               Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -835,7 +836,7 @@ model StatusSchedule {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   scheduledFor DateTime
-  scheduledDay String @db.VarChar(10)
+  scheduledDay String   @db.VarChar(10)
   timezone     String
 
   contentType StatusScheduleContentType
