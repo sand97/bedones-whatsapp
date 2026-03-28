@@ -15,12 +15,6 @@ export const LegacyHomePage = createLegacyRouteComponent(
   <HomeRouteSkeleton />
 )
 
-export const LegacyAuthLoginPage = createLegacyRouteComponent(
-  () => import('@app/routes/auth.login'),
-  <AuthRouteSkeleton />,
-  'auth'
-)
-
 export const LegacyAuthPairingCodePage = createLegacyRouteComponent(
   () => import('@app/routes/auth.pairing-code'),
   <AuthRouteSkeleton />,
