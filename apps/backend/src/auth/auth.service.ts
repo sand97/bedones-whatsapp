@@ -23,6 +23,20 @@ import { OnboardingService } from '../onboarding/onboarding.service';
 
 import { AuthenticatedUser } from './types/authenticated-user.type';
 
+type RequestPairingCodeResult = {
+  code?: string;
+  pairingToken?: string;
+  pricingUrl?: string;
+  qrSessionToken?: string;
+  message: string;
+  scenario:
+    | 'pairing'
+    | 'otp'
+    | 'qr'
+    | 'provisioning'
+    | 'payment_required';
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -63,18 +77,12 @@ export class AuthService {
 
   /**
    * Request a pairing code for WhatsApp authentication
-   * Handles three scenarios: OTP (already connected), pairing (mobile), QR (desktop)
+   * Handles OTP, pairing, QR, provisioning and payment-required scenarios.
    */
   async requestPairingCode(
     phoneNumber: string,
     deviceType: 'mobile' | 'desktop' = 'mobile',
-  ): Promise<{
-    code?: string;
-    pairingToken: string;
-    qrSessionToken?: string;
-    message: string;
-    scenario: 'pairing' | 'otp' | 'qr' | 'provisioning';
-  }> {
+  ): Promise<RequestPairingCodeResult> {
     try {
       // Check if user exists
       let user = await this.prisma.user.findUnique({
@@ -94,7 +102,9 @@ export class AuthService {
 
         try {
           const authResult =
-            await this.connectorClientService.isAuthenticated(connectorUrl);
+            await this.connectorClientService.isAuthenticated(connectorUrl, {
+              targetInstanceId: agent.stackLabel || agent.id,
+            });
           // authResult = { success: true, result: { success: true, isAuthenticated: true } }
           isAuthenticated = !!(
             authResult.success &&
@@ -134,6 +144,25 @@ export class AuthService {
       this.logger.log(
         `User ${phoneNumber} needs pairing (new user or not authenticated)`,
       );
+
+      if (user) {
+        const subscription = await this.prisma.subscription.findUnique({
+          where: { userId: user.id },
+        });
+
+        if (this.shouldRequirePaidReconnect({ ...user, subscription })) {
+          this.logger.log(
+            `User ${phoneNumber} must recharge credits before a new stack allocation`,
+          );
+
+          return {
+            message:
+              'Votre session WhatsApp nest plus active. Rechargez vos crédits avant de reconnecter votre agent.',
+            pricingUrl: '/pricing',
+            scenario: 'payment_required',
+          };
+        }
+      }
 
       // Create user if doesn't exist
       if (!user) {
@@ -229,7 +258,9 @@ export class AuthService {
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
 
-      await this.connectorClientService.startClient(connectorUrl);
+      await this.connectorClientService.startClient(connectorUrl, {
+        targetInstanceId: agent.stackLabel || agent.id,
+      });
 
       // Clean and restart connector to ensure fresh state
       // This removes .wwebjs_cache and data directories and restarts the client
@@ -238,7 +269,9 @@ export class AuthService {
       );
 
       try {
-        await this.connectorClientService.cleanAndRestartClient(connectorUrl);
+        await this.connectorClientService.cleanAndRestartClient(connectorUrl, {
+          targetInstanceId: agent.stackLabel || agent.id,
+        });
         this.logger.log(`Connector cleaned and restarted successfully`);
 
         // Wait for connector to be ready after restart
@@ -265,6 +298,7 @@ export class AuthService {
       const result = await this.connectorClientService.requestPairingCode(
         connectorUrl,
         phoneNumber,
+        { targetInstanceId: agent.stackLabel || agent.id },
       );
 
       this.logger.log(
@@ -333,6 +367,7 @@ export class AuthService {
       connectorUrl,
       formattedPhoneNumber,
       message,
+      { targetInstanceId: agent.stackLabel || agent.id },
     );
 
     // sendResult = { success: true, result: { success: true, messageId: "...", wid: "..." } }
@@ -351,6 +386,53 @@ export class AuthService {
       message: 'Un code de vérification a été envoyé à votre numéro WhatsApp',
       scenario: 'otp',
     };
+  }
+
+  private shouldRequirePaidReconnect(user: {
+    credits: number;
+    lastLoginAt: Date | null;
+    status: UserStatus;
+    subscription?: {
+      creditsIncluded: number;
+      creditsUsed: number;
+      endDate: Date;
+      isActive: boolean;
+    } | null;
+  }): boolean {
+    const isReturningUser =
+      Boolean(user.lastLoginAt) ||
+      user.status === UserStatus.ACTIVE ||
+      user.status === UserStatus.ONBOARDING;
+
+    if (!isReturningUser) {
+      return false;
+    }
+
+    return !this.hasAvailableCredits(user);
+  }
+
+  private hasAvailableCredits(user: {
+    credits: number;
+    subscription?: {
+      creditsIncluded: number;
+      creditsUsed: number;
+      endDate: Date;
+      isActive: boolean;
+    } | null;
+  }): boolean {
+    if (user.credits > 0) {
+      return true;
+    }
+
+    if (!user.subscription) {
+      return false;
+    }
+
+    return (
+      user.subscription.isActive &&
+      user.subscription.endDate > new Date() &&
+      user.subscription.creditsIncluded - user.subscription.creditsUsed > 0
+    );
   }
 
   /**
@@ -858,7 +940,9 @@ export class AuthService {
       const connectorUrl =
         await this.whatsappAgentService.getConnectorUrl(agent);
 
-      await this.connectorClientService.startClient(connectorUrl);
+      await this.connectorClientService.startClient(connectorUrl, {
+        targetInstanceId: agent.stackLabel || agent.id,
+      });
 
       // Clean and restart connector to ensure fresh state
       // This removes .wwebjs_cache and data directories and restarts the client
@@ -867,7 +951,9 @@ export class AuthService {
       );
 
       try {
-        await this.connectorClientService.cleanAndRestartClient(connectorUrl);
+        await this.connectorClientService.cleanAndRestartClient(connectorUrl, {
+          targetInstanceId: agent.stackLabel || agent.id,
+        });
         this.logger.log(`Connector cleaned and restarted successfully`);
 
         // Wait for connector to be ready after restart
@@ -894,7 +980,9 @@ export class AuthService {
       for (let i = 0; i < maxRetries; i++) {
         try {
           const result =
-            await this.connectorClientService.getQRCode(connectorUrl);
+            await this.connectorClientService.getQRCode(connectorUrl, {
+              targetInstanceId: agent.stackLabel || agent.id,
+            });
 
           if (result.success && result.qrCode) {
             qrCode = result.qrCode;
@@ -1033,7 +1121,9 @@ export class AuthService {
 
       // Check if connector is already authenticated
       const authResult =
-        await this.connectorClientService.isAuthenticated(connectorUrl);
+        await this.connectorClientService.isAuthenticated(connectorUrl, {
+          targetInstanceId: agent.stackLabel || agent.id,
+        });
       const isAuthenticated = !!(
         authResult.success &&
         authResult.result?.success &&
@@ -1140,7 +1230,9 @@ export class AuthService {
 
       try {
         const qrResult =
-          await this.connectorClientService.getQRCode(connectorUrl);
+          await this.connectorClientService.getQRCode(connectorUrl, {
+            targetInstanceId: agent.stackLabel || agent.id,
+          });
 
         if (qrResult.success && qrResult.qrCode) {
           this.logger.log(

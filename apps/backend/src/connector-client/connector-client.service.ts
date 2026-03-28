@@ -3,15 +3,39 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
+import {
+  createHttpsAgentFromConfig,
+  isHttpsUrl,
+} from '../common/utils/mtls.util';
+
+type ConnectorRequestOptions = {
+  targetInstanceId?: string;
+};
+
 @Injectable()
 export class ConnectorClientService {
   private readonly logger = new Logger(ConnectorClientService.name);
   private axiosInstances: Map<string, AxiosInstance> = new Map();
+  private httpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly pageScriptService: PageScriptService,
   ) {}
+
+  private getHttpsAgent() {
+    if (this.httpsAgent !== undefined) {
+      return this.httpsAgent;
+    }
+
+    this.httpsAgent = createHttpsAgentFromConfig(this.configService, {
+      caEnv: 'STEP_CA_ROOT_CERT',
+      certEnv: 'BACKEND_MTLS_CLIENT_CERT',
+      keyEnv: 'BACKEND_MTLS_CLIENT_KEY',
+    });
+
+    return this.httpsAgent;
+  }
 
   private getAxiosInstance(connectorUrl: string): AxiosInstance {
     if (!this.axiosInstances.has(connectorUrl)) {
@@ -20,6 +44,7 @@ export class ConnectorClientService {
         headers: {
           'Content-Type': 'application/json',
         },
+        httpsAgent: isHttpsUrl(connectorUrl) ? this.getHttpsAgent() : undefined,
         timeout: 60000, // 60 seconds timeout
       });
 
@@ -29,13 +54,27 @@ export class ConnectorClientService {
     return this.axiosInstances.get(connectorUrl)!;
   }
 
+  private buildHeaders(options?: ConnectorRequestOptions) {
+    if (!options?.targetInstanceId) {
+      return undefined;
+    }
+
+    return {
+      'X-Bedones-Target-Instance': options.targetInstanceId,
+    };
+  }
+
   /**
    * Execute a JavaScript script in the WhatsApp Web page context
    * Used by page scripts to interact with WhatsApp Web (WPP.js)
    * @param connectorUrl The URL of the WhatsApp connector
    * @param script The JavaScript code to execute
    */
-  async executeScript(connectorUrl: string, script: string): Promise<any> {
+  async executeScript(
+    connectorUrl: string,
+    script: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<any> {
     if (!connectorUrl) {
       throw new Error('connectorUrl is required');
     }
@@ -46,9 +85,15 @@ export class ConnectorClientService {
 
     const instance = this.getAxiosInstance(connectorUrl);
     try {
-      const response = await instance.post('/whatsapp/execute-script', {
-        script,
-      });
+      const response = await instance.post(
+        '/whatsapp/execute-script',
+        {
+          script,
+        },
+        {
+          headers: this.buildHeaders(options),
+        },
+      );
 
       return response.data;
     } catch (error: any) {
@@ -77,13 +122,20 @@ export class ConnectorClientService {
   async requestPairingCode(
     connectorUrl: string,
     phoneNumber: string,
+    options?: ConnectorRequestOptions,
   ): Promise<any> {
     this.logger.log(`[CONNECTOR] Requesting pairing code for: ${phoneNumber}`);
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/request-pairing-code', {
-      phoneNumber,
-    });
+    const response = await instance.post(
+      '/whatsapp/request-pairing-code',
+      {
+        phoneNumber,
+      },
+      {
+        headers: this.buildHeaders(options),
+      },
+    );
 
     return response.data;
   }
@@ -92,7 +144,10 @@ export class ConnectorClientService {
    * Check if WhatsApp is authenticated
    * @param connectorUrl The URL of the WhatsApp connector
    */
-  async isAuthenticated(connectorUrl: string): Promise<{
+  async isAuthenticated(
+    connectorUrl: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<{
     success: boolean;
     result?: {
       success: boolean;
@@ -102,7 +157,7 @@ export class ConnectorClientService {
     error?: string;
   }> {
     const script = this.pageScriptService.getIsAuthenticatedScript();
-    const result = await this.executeScript(connectorUrl, script);
+    const result = await this.executeScript(connectorUrl, script, options);
     this.logger.debug(
       `[CONNECTOR] Checking authentication status on: ${connectorUrl}`,
       result,
@@ -121,6 +176,7 @@ export class ConnectorClientService {
     connectorUrl: string,
     phoneNumber: string,
     message: string,
+    options?: ConnectorRequestOptions,
   ): Promise<{
     success: boolean;
     result?: {
@@ -150,7 +206,7 @@ export class ConnectorClientService {
       MESSAGE: escapedMessage,
     });
 
-    const result = await this.executeScript(connectorUrl, script);
+    const result = await this.executeScript(connectorUrl, script, options);
 
     return result;
   }
@@ -159,7 +215,10 @@ export class ConnectorClientService {
    * Get QR code for WhatsApp authentication
    * @param connectorUrl The URL of the WhatsApp connector
    */
-  async getQRCode(connectorUrl: string): Promise<{
+  async getQRCode(
+    connectorUrl: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<{
     success: boolean;
     qrCode?: string;
     message?: string;
@@ -167,7 +226,9 @@ export class ConnectorClientService {
     this.logger.debug(`[CONNECTOR] Requesting QR code from: ${connectorUrl}`);
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.get('/whatsapp/qr');
+    const response = await instance.get('/whatsapp/qr', {
+      headers: this.buildHeaders(options),
+    });
 
     return response.data;
   }
@@ -176,7 +237,10 @@ export class ConnectorClientService {
    * Restart WhatsApp client to generate a new QR code
    * @param connectorUrl The URL of the WhatsApp connector
    */
-  async restartClient(connectorUrl: string): Promise<{
+  async restartClient(
+    connectorUrl: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<{
     success: boolean;
     message?: string;
     error?: string;
@@ -186,7 +250,9 @@ export class ConnectorClientService {
     );
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/restart');
+    const response = await instance.post('/whatsapp/restart', undefined, {
+      headers: this.buildHeaders(options),
+    });
 
     return response.data;
   }
@@ -194,7 +260,10 @@ export class ConnectorClientService {
   /**
    * Start WhatsApp client explicitly when connector autostart is disabled
    */
-  async startClient(connectorUrl: string): Promise<{
+  async startClient(
+    connectorUrl: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<{
     success: boolean;
     message?: string;
     error?: string;
@@ -202,7 +271,9 @@ export class ConnectorClientService {
     this.logger.log(`[CONNECTOR] Starting client: ${connectorUrl}`);
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/start');
+    const response = await instance.post('/whatsapp/start', undefined, {
+      headers: this.buildHeaders(options),
+    });
 
     return response.data;
   }
@@ -213,7 +284,10 @@ export class ConnectorClientService {
    * Should ONLY be called when initiating new authentication (NOT during polling)
    * @param connectorUrl The URL of the WhatsApp connector
    */
-  async cleanAndRestartClient(connectorUrl: string): Promise<{
+  async cleanAndRestartClient(
+    connectorUrl: string,
+    options?: ConnectorRequestOptions,
+  ): Promise<{
     success: boolean;
     message?: string;
     error?: string;
@@ -223,7 +297,9 @@ export class ConnectorClientService {
     );
 
     const instance = this.getAxiosInstance(connectorUrl);
-    const response = await instance.post('/whatsapp/clean-restart');
+    const response = await instance.post('/whatsapp/clean-restart', undefined, {
+      headers: this.buildHeaders(options),
+    });
 
     return response.data;
   }

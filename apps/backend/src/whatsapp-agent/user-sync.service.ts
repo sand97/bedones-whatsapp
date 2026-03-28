@@ -327,6 +327,7 @@ export class UserSyncService {
       const result = await this.connectorClientService.executeScript(
         connectorUrl,
         script,
+        { targetInstanceId: agent.stackLabel || agent.id },
       );
 
       if (result.success) {
@@ -569,6 +570,7 @@ export class UserSyncService {
       const result = await this.connectorClientService.executeScript(
         connectorUrl,
         script,
+        { targetInstanceId: agent.stackLabel || agent.id },
       );
 
       if (result.success) {

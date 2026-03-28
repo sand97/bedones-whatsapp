@@ -63,11 +63,18 @@ export class AuthController {
       properties: {
         scenario: {
           type: 'string',
-          enum: ['otp', 'pairing', 'qr', 'provisioning'],
+          enum: [
+            'otp',
+            'pairing',
+            'qr',
+            'provisioning',
+            'payment_required',
+          ],
           example: 'otp',
         },
         code: { type: 'string', example: '12345678' },
         pairingToken: { type: 'string', example: 'token123...' },
+        pricingUrl: { type: 'string', example: '/pricing' },
         message: {
           type: 'string',
           example: 'Un code de vérification a été envoyé',

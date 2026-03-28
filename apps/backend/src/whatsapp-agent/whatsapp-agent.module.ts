@@ -1,5 +1,6 @@
 import { HttpModule } from '@nestjs/axios';
 import { Module, forwardRef } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { CommonModule } from '../common/common.module';
 import { ConnectorClientModule } from '../connector-client/connector-client.module';
@@ -21,6 +22,7 @@ import { WhatsAppAgentService } from './whatsapp-agent.service';
 @Module({
   imports: [
     PrismaModule,
+    ConfigModule,
     CommonModule,
     HttpModule,
     MinioModule,

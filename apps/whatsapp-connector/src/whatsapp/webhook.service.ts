@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { firstValueFrom } from 'rxjs';
 
+import { createHttpsAgentFromConfig, isHttpsUrl } from '../security/mtls.util';
+
 import { BaseWebhookPayload } from './types/webhook-events.types';
 
 @Injectable()
@@ -13,11 +15,17 @@ export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
   private webhookUrls: string[] = [];
   private whatsappClientService: any = null; // Will be set after initialization to avoid circular dependency
+  private readonly httpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
   ) {
+    this.httpsAgent = createHttpsAgentFromConfig(this.configService, {
+      caEnv: 'STEP_CA_ROOT_CERT',
+      certEnv: 'MTLS_CLIENT_CERT',
+      keyEnv: 'MTLS_CLIENT_KEY',
+    });
     this.loadWebhookUrls();
   }
 
@@ -50,7 +58,13 @@ export class WebhookService {
   }
 
   private loadWebhookUrls() {
-    const webhooksEnv = this.configService.get<string>('WEBHOOK_URLS', '');
+    const internalBaseUrl =
+      this.configService.get<string>('BACKEND_INTERNAL_URL') || '';
+    const webhooksEnv =
+      this.configService.get<string>('WEBHOOK_URLS', '') ||
+      (internalBaseUrl
+        ? `${internalBaseUrl}/webhooks/whatsapp/events,${internalBaseUrl}/webhooks/whatsapp/connected`
+        : '');
 
     if (!webhooksEnv) {
       this.logger.warn('No webhook URLs configured');
@@ -169,6 +183,7 @@ export class WebhookService {
       const response = await firstValueFrom(
         this.httpService.post(url, payload, {
           headers,
+          httpsAgent: isHttpsUrl(url) ? this.httpsAgent : undefined,
           timeout: 5000, // 5 secondes de timeout
         }),
       );

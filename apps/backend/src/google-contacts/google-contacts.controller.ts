@@ -19,6 +19,7 @@ import type { Response } from 'express';
 
 import { AgentContext } from '../common/decorators/agent-context.decorator';
 import { AgentInternalGuard } from '../common/guards/agent-internal.guard';
+import { AgentMtlsGuard } from '../common/guards/internal-client-certificate.guard';
 import type { AgentRequestContext } from '../common/guards/agent-internal.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
@@ -96,7 +97,7 @@ export class GoogleOAuthController {
 
 @ApiTags('google-contacts')
 @Controller('agent-internal/google-contacts')
-@UseGuards(AgentInternalGuard)
+@UseGuards(AgentMtlsGuard, AgentInternalGuard)
 @ApiBearerAuth()
 export class GoogleContactsInternalController {
   constructor(private readonly googleContactsService: GoogleContactsService) {}

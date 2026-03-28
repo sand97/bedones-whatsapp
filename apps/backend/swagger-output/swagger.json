@@ -1,6 +1,30 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/migration/deploy": {
+      "post": {
+        "operationId": "MigrationController_migrate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "migration"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_check",
@@ -501,29 +525,6 @@
         ]
       }
     },
-    "/whatsapp-agents/provision": {
-      "post": {
-        "operationId": "WhatsAppAgentController_provisionAgent",
-        "summary": "Provision a WhatsApp agent for the current user",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": "WhatsApp agent successfully provisioned"
-          },
-          "409": {
-            "description": "WhatsApp agent already exists for this user"
-          }
-        },
-        "tags": [
-          "whatsapp-agents"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/whatsapp-agents/{id}/status": {
       "patch": {
         "operationId": "WhatsAppAgentController_updateAgentStatus",
@@ -988,7 +989,8 @@
                         "otp",
                         "pairing",
                         "qr",
-                        "provisioning"
+                        "provisioning",
+                        "payment_required"
                       ],
                       "example": "otp"
                     },
@@ -999,6 +1001,10 @@
                     "pairingToken": {
                       "type": "string",
                       "example": "token123..."
+                    },
+                    "pricingUrl": {
+                      "type": "string",
+                      "example": "/pricing"
                     },
                     "message": {
                       "type": "string",
@@ -1299,6 +1305,44 @@
         ]
       }
     },
+    "/auth/support-feedback": {
+      "post": {
+        "operationId": "AuthController_submitSupportFeedback",
+        "summary": "Submit public support feedback",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSupportFeedbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Support feedback submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportFeedbackResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid feedback payload"
+          },
+          "500": {
+            "description": "Support feedback relay failed"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "AuthController_getMe",
@@ -1382,250 +1426,6 @@
         },
         "tags": [
           "auth"
-        ]
-      }
-    },
-    "/stack-pool/summary": {
-      "get": {
-        "operationId": "StackPoolController_getSummary",
-        "summary": "Résumé de la capacité disponible",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/stack-pool/vps/free": {
-      "get": {
-        "operationId": "StackPoolController_listFreeVps",
-        "summary": "Lister les VPS avec des stacks libres",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/stack-pool/provision": {
-      "post": {
-        "operationId": "StackPoolController_provision",
-        "summary": "Demander le provisionnement de nouveaux VPS/stacks",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProvisionStackCapacityDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Workflow(s) GitHub dispatché(s)"
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/stack-pool/reconcile": {
-      "post": {
-        "operationId": "StackPoolController_reconcile",
-        "summary": "Vérifier et rétablir le stock minimal de stacks libres",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/stack-pool/release": {
-      "post": {
-        "operationId": "StackPoolController_release",
-        "summary": "Libérer une stack réservée ou déclencher sa release",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReleaseStackDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/stack-pool/workflows/callback": {
-      "post": {
-        "operationId": "StackPoolController_workflowCallback",
-        "summary": "Callback interne appelé par les workflows GitHub",
-        "parameters": [
-          {
-            "name": "x-infra-callback-secret",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkflowCallbackDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "stack-pool"
-        ]
-      }
-    },
-    "/billing/checkout": {
-      "post": {
-        "operationId": "BillingController_createCheckout",
-        "summary": "Initialize a payment checkout session",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCheckoutDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Checkout initialized successfully"
-          }
-        },
-        "tags": [
-          "billing"
-        ],
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/billing/stripe/return": {
-      "get": {
-        "operationId": "BillingController_handleStripeReturn",
-        "summary": "Handle Stripe browser return after checkout",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/billing/notchpay/return": {
-      "get": {
-        "operationId": "BillingController_handleNotchReturn",
-        "summary": "Handle Notch Pay browser return after checkout",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/billing/webhooks/stripe": {
-      "post": {
-        "operationId": "BillingController_handleStripeWebhook",
-        "summary": "Handle Stripe webhooks",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/billing/webhooks/notchpay": {
-      "post": {
-        "operationId": "BillingController_handleNotchWebhook",
-        "summary": "Handle Notch Pay webhooks",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "billing"
         ]
       }
     },
@@ -1794,6 +1594,282 @@
           {
             "bearer": []
           }
+        ]
+      }
+    },
+    "/infra/stack-pool/summary": {
+      "get": {
+        "operationId": "InfraStackPoolController_getSummary",
+        "summary": "Résumé du stock de stacks et des workflows en cours",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/infra/stack-pool/servers": {
+      "get": {
+        "operationId": "InfraStackPoolController_listServers",
+        "summary": "Lister les VPS provisionnés avec pagination et filtres",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Page à retourner",
+            "schema": {
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "Nombre de VPS par page",
+            "schema": {
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "contractState",
+            "required": false,
+            "in": "query",
+            "description": "Filtrer selon létat contractuel du VPS",
+            "schema": {
+              "example": "active",
+              "enum": [
+                "active",
+                "terminated"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "provisioningStatus",
+            "required": false,
+            "in": "query",
+            "description": "Filtrer selon le statut technique du provisioning",
+            "schema": {
+              "example": "READY",
+              "enum": [
+                "REQUESTED",
+                "PROVISIONING",
+                "READY",
+                "DEGRADED",
+                "RELEASE_REQUESTED",
+                "RELEASED",
+                "ERROR"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestedFrom",
+            "required": false,
+            "in": "query",
+            "description": "Filtrer les VPS demandés à partir de cette date ISO",
+            "schema": {
+              "example": "2026-03-28T00:00:00.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestedTo",
+            "required": false,
+            "in": "query",
+            "description": "Filtrer les VPS demandés jusquà cette date ISO",
+            "schema": {
+              "example": "2026-03-31T23:59:59.999Z",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/infra/stack-pool/servers/free": {
+      "get": {
+        "operationId": "InfraStackPoolController_listFreeVps",
+        "summary": "Lister les VPS avec des stacks libres",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/infra/stack-pool/provision": {
+      "post": {
+        "operationId": "InfraStackPoolController_provision",
+        "summary": "Demander le provisionnement manuel de nouveaux VPS/stacks",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionStackCapacityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workflow(s) GitHub dispatché(s)"
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/infra/stack-pool/reconcile": {
+      "post": {
+        "operationId": "InfraStackPoolController_reconcile",
+        "summary": "Vérifier et rétablir le stock minimal de stacks libres",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/infra/stack-pool/release": {
+      "post": {
+        "operationId": "InfraStackPoolController_release",
+        "summary": "Libérer une stack réservée ou résilier un VPS",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseStackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "infra-stack-pool"
+        ]
+      }
+    },
+    "/billing/checkout": {
+      "post": {
+        "operationId": "BillingController_createCheckout",
+        "summary": "Initialize a payment checkout session",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Checkout initialized successfully"
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/billing/stripe/return": {
+      "get": {
+        "operationId": "BillingController_handleStripeReturn",
+        "summary": "Handle Stripe browser return after checkout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/notchpay/return": {
+      "get": {
+        "operationId": "BillingController_handleNotchReturn",
+        "summary": "Handle Notch Pay browser return after checkout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/webhooks/stripe": {
+      "post": {
+        "operationId": "BillingController_handleStripeWebhook",
+        "summary": "Handle Stripe webhooks",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/webhooks/notchpay": {
+      "post": {
+        "operationId": "BillingController_handleNotchWebhook",
+        "summary": "Handle Notch Pay webhooks",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
         ]
       }
     },
@@ -3177,6 +3253,17 @@
       }
     },
     "schemas": {
+      "MigrateDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
       "SyncGoogleContactDto": {
         "type": "object",
         "properties": {}
@@ -3623,151 +3710,6 @@
           "code"
         ]
       },
-      "ProvisionStackCapacityDto": {
-        "type": "object",
-        "properties": {
-          "vpsCount": {
-            "type": "number",
-            "description": "Nombre de VPS a provisionner",
-            "example": 2
-          },
-          "stacksPerVps": {
-            "type": "number",
-            "description": "Nombre de stacks a creer par VPS",
-            "example": 2
-          },
-          "serverType": {
-            "type": "string",
-            "description": "Type de serveur Hetzner",
-            "example": "CPX21"
-          },
-          "location": {
-            "type": "string",
-            "description": "Localisation Hetzner",
-            "example": "fsn1"
-          },
-          "phoneNumber": {
-            "type": "string",
-            "description": "Numéro utilisateur à prioriser pour l'allocation",
-            "example": "+237612345678"
-          },
-          "pairingToken": {
-            "type": "string",
-            "description": "Pairing token frontend pour pousser les états WebSocket"
-          },
-          "deviceType": {
-            "type": "string",
-            "description": "Type d'appareil de la session en attente",
-            "enum": [
-              "mobile",
-              "desktop"
-            ]
-          },
-          "reason": {
-            "type": "string",
-            "description": "Raison métier ou opérationnelle",
-            "example": "keep-minimum-free-stacks"
-          }
-        }
-      },
-      "ReleaseStackDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string"
-          },
-          "agentId": {
-            "type": "string"
-          },
-          "serverId": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string",
-            "example": "manual-release"
-          },
-          "deleteServerWhenEmpty": {
-            "type": "boolean",
-            "description": "Supprimer aussi le VPS si plus aucune stack utile ne reste dessus",
-            "default": false
-          }
-        }
-      },
-      "WorkflowCallbackDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreateCheckoutDto": {
-        "type": "object",
-        "properties": {
-          "planKey": {
-            "type": "string",
-            "enum": [
-              "pro",
-              "business"
-            ]
-          },
-          "durationMonths": {
-            "type": "number",
-            "enum": [
-              1,
-              6,
-              12
-            ]
-          },
-          "paymentMethod": {
-            "type": "string",
-            "enum": [
-              "CARD",
-              "MOBILE_MONEY"
-            ]
-          },
-          "phoneNumber": {
-            "type": "string",
-            "example": "+237690000000"
-          }
-        },
-        "required": [
-          "planKey",
-          "durationMonths",
-          "paymentMethod"
-        ]
-      },
-      "UpdateUserDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "description": "User email address"
-          },
-          "phoneNumber": {
-            "type": "string",
-            "description": "User phone number"
-          }
-        }
-      },
-      "ImportWhatsAppDataResponseDto": {
-        "type": "object",
-        "properties": {
-          "businessInfo": {
-            "type": "object",
-            "description": "Business information imported from WhatsApp"
-          },
-          "productsImported": {
-            "type": "number",
-            "description": "Number of products imported from catalog"
-          },
-          "contactsImported": {
-            "type": "number",
-            "description": "Number of contacts imported"
-          }
-        },
-        "required": [
-          "businessInfo",
-          "productsImported",
-          "contactsImported"
-        ]
-      },
       "SupportFeedbackContextDto": {
         "type": "object",
         "properties": {
@@ -3886,6 +3828,147 @@
         },
         "required": [
           "eventId"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "User email address"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "User phone number"
+          }
+        }
+      },
+      "ImportWhatsAppDataResponseDto": {
+        "type": "object",
+        "properties": {
+          "businessInfo": {
+            "type": "object",
+            "description": "Business information imported from WhatsApp"
+          },
+          "productsImported": {
+            "type": "number",
+            "description": "Number of products imported from catalog"
+          },
+          "contactsImported": {
+            "type": "number",
+            "description": "Number of contacts imported"
+          }
+        },
+        "required": [
+          "businessInfo",
+          "productsImported",
+          "contactsImported"
+        ]
+      },
+      "ProvisionStackCapacityDto": {
+        "type": "object",
+        "properties": {
+          "vpsCount": {
+            "type": "number",
+            "description": "Nombre de VPS a provisionner",
+            "example": 2
+          },
+          "stacksPerVps": {
+            "type": "number",
+            "description": "Nombre de stacks a creer par VPS",
+            "example": 2
+          },
+          "serverType": {
+            "type": "string",
+            "description": "Type de serveur Hetzner",
+            "example": "CPX21"
+          },
+          "location": {
+            "type": "string",
+            "description": "Localisation Hetzner",
+            "example": "fsn1"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "Numéro utilisateur à prioriser pour l'allocation",
+            "example": "+237612345678"
+          },
+          "pairingToken": {
+            "type": "string",
+            "description": "Pairing token frontend pour pousser les états WebSocket"
+          },
+          "deviceType": {
+            "type": "string",
+            "description": "Type d'appareil de la session en attente",
+            "enum": [
+              "mobile",
+              "desktop"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Raison métier ou opérationnelle",
+            "example": "keep-minimum-free-stacks"
+          }
+        }
+      },
+      "ReleaseStackDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "example": "manual-release"
+          },
+          "deleteServerWhenEmpty": {
+            "type": "boolean",
+            "description": "Supprimer aussi le VPS si plus aucune stack utile ne reste dessus",
+            "default": false
+          }
+        }
+      },
+      "CreateCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "planKey": {
+            "type": "string",
+            "enum": [
+              "pro",
+              "business"
+            ]
+          },
+          "durationMonths": {
+            "type": "number",
+            "enum": [
+              1,
+              6,
+              12
+            ]
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CARD",
+              "MOBILE_MONEY"
+            ]
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "+237690000000"
+          }
+        },
+        "required": [
+          "planKey",
+          "durationMonths",
+          "paymentMethod"
         ]
       },
       "StatsAnalyticsRangeDto": {

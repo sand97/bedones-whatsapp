@@ -11,30 +11,30 @@ permissions:
 on:
   pull_request:
     paths:
-      - '.dockerignore'
-      - '.github/workflows/container-images.yml'
-      - 'apps/backend/**'
-      - 'apps/whatsapp-agent/**'
-      - 'apps/whatsapp-connector/**'
-      - 'packages/common/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'scripts/upload-sentry-sourcemaps.sh'
+      - ".dockerignore"
+      - ".github/workflows/container-images.yml"
+      - "apps/backend/**"
+      - "apps/whatsapp-agent/**"
+      - "apps/whatsapp-connector/**"
+      - "packages/common/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "scripts/upload-sentry-sourcemaps.sh"
   push:
     branches:
       - main
     paths:
-      - '.dockerignore'
-      - '.github/workflows/container-images.yml'
-      - 'apps/backend/**'
-      - 'apps/whatsapp-agent/**'
-      - 'apps/whatsapp-connector/**'
-      - 'packages/common/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'scripts/upload-sentry-sourcemaps.sh'
+      - ".dockerignore"
+      - ".github/workflows/container-images.yml"
+      - "apps/backend/**"
+      - "apps/whatsapp-agent/**"
+      - "apps/whatsapp-connector/**"
+      - "packages/common/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "scripts/upload-sentry-sourcemaps.sh"
   workflow_dispatch:
 
 jobs:
@@ -44,6 +44,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       whatsapp_agent: ${{ steps.filter.outputs.whatsapp_agent }}
       whatsapp_connector: ${{ steps.filter.outputs.whatsapp_connector }}
+      whatsapp_cropper: ${{ steps.filter.outputs.whatsapp_cropper }}
       shared: ${{ steps.filter.outputs.shared }}
 
     steps:
@@ -67,9 +68,12 @@ jobs:
               - 'apps/backend/**'
             whatsapp_agent:
               - 'apps/whatsapp-agent/**'
+              - '!apps/whatsapp-agent/services/image-cropper/**'
               - 'apps/backend/swagger-output/**'
             whatsapp_connector:
               - 'apps/whatsapp-connector/**'
+            whatsapp_cropper:
+              - 'apps/whatsapp-agent/services/image-cropper/**'
 
   build:
     needs: changes
@@ -90,6 +94,10 @@ jobs:
             context: .
             dockerfile: apps/whatsapp-connector/Dockerfile
             image: bedones-whatsapp-connector
+          - id: whatsapp-cropper
+            context: apps/whatsapp-agent/services/image-cropper
+            dockerfile: apps/whatsapp-agent/services/image-cropper/Dockerfile
+            image: bedones-whatsapp-cropper
 
     steps:
       - name: Checkout code
@@ -112,6 +120,7 @@ jobs:
           BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
           WHATSAPP_AGENT_CHANGED: ${{ needs.changes.outputs.whatsapp_agent }}
           WHATSAPP_CONNECTOR_CHANGED: ${{ needs.changes.outputs.whatsapp_connector }}
+          WHATSAPP_CROPPER_CHANGED: ${{ needs.changes.outputs.whatsapp_cropper }}
         run: |
           should_build=false
 
@@ -127,6 +136,9 @@ jobs:
                 ;;
               whatsapp-connector)
                 [[ "${WHATSAPP_CONNECTOR_CHANGED}" == "true" ]] && should_build=true
+                ;;
+              whatsapp-cropper)
+                [[ "${WHATSAPP_CROPPER_CHANGED}" == "true" ]] && should_build=true
                 ;;
             esac
           fi
@@ -171,3 +183,40 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.id }}
           cache-to: type=gha,mode=max,scope=${{ matrix.id }}
           platforms: linux/amd64
+
+  deploy-backend:
+    needs:
+      - changes
+      - build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.shared == 'true' || needs.changes.outputs.backend == 'true')
+
+    steps:
+      - name: Compute backend deploy variables
+        id: vars
+        shell: bash
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "${GITHUB_OUTPUT}"
+          echo "image=bedones-whatsapp-backend" >> "${GITHUB_OUTPUT}"
+          echo "stack=bedones-whatsapp-stack" >> "${GITHUB_OUTPUT}"
+          echo "service=backend" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy backend to Docker Swarm
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            docker pull ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.image }}:main
+
+            docker service update \
+              --image ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.image }}:main \
+              --with-registry-auth \
+              ${{ steps.vars.outputs.stack }}_${{ steps.vars.outputs.service }}
+
+            echo "Attente de la mise à jour du service..."
+            sleep 5
+            docker service ps ${{ steps.vars.outputs.stack }}_${{ steps.vars.outputs.service }} --filter "desired-state=running" --format "{{.Name}} {{.Image}} {{.CurrentState}}"

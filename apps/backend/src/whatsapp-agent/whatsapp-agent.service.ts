@@ -1,5 +1,3 @@
-import * as crypto from 'crypto';
-
 import { ConnectorClientService } from '@app/connector-client/connector-client.service';
 import {
   WhatsAppAgent,
@@ -13,15 +11,14 @@ import {
 } from '@app/page-scripts/page-script.service';
 import {
   Injectable,
-  ConflictException,
   NotFoundException,
-  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 
-import { CryptoService } from '../common/crypto.service';
+import { createHttpsAgentFromConfig, resolveServiceProtocol } from '../common/utils/mtls.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class WhatsAppAgentService {
@@ -29,87 +26,10 @@ export class WhatsAppAgentService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cryptoService: CryptoService,
-    private readonly configService: ConfigService,
     private readonly connectorClientService: ConnectorClientService,
     private readonly pageScriptService: PageScriptService,
+    private readonly configService: ConfigService,
   ) {}
-
-  /**
-   * Provision a WhatsApp agent for a user
-   * In dev: uses localhost:3002
-   * In prod: will use Contabo API later
-   */
-  async provisionAgent(userId: string): Promise<WhatsAppAgent> {
-    // Check if agent already exists
-    const existingAgent = await this.prisma.whatsAppAgent.findUnique({
-      where: { userId },
-    });
-
-    if (existingAgent) {
-      throw new ConflictException(
-        'WhatsApp agent already exists for this user',
-      );
-    }
-
-    // Generate random password
-    const password = this.generateRandomPassword();
-
-    // Encrypt password
-    const encryptedPassword = this.cryptoService.encrypt(password);
-
-    // Get environment
-    const nodeEnv = this.configService.get<string>('NODE_ENV') || 'development';
-    const isDev = nodeEnv === 'development';
-
-    // In dev: use localhost, in prod: will use Contabo API
-    const ipAddress = isDev ? 'localhost' : 'TBD'; // Will be set by Contabo API
-    const port = isDev ? 3002 : 0; // Agent port - will be set by Contabo API
-    const connectorPort = isDev ? 3001 : 0; // Connector port - will be set by Contabo API
-
-    try {
-      // Create agent with PROVISIONING status
-      let agent = await this.prisma.whatsAppAgent.create({
-        data: {
-          userId,
-          ipAddress,
-          port,
-          connectorPort,
-          encryptedPassword,
-          status: WhatsAppAgentStatus.PROVISIONING,
-          connectionStatus: ConnectionStatus.PAIRING_REQUIRED,
-          metadata: {
-            environment: nodeEnv,
-            provisionedAt: new Date().toISOString(),
-            plainPassword: isDev ? password : undefined, // Only store in dev for debugging
-          },
-        },
-      });
-
-      // In dev, immediately update to RUNNING
-      // In prod, will wait for Contabo API confirmation
-      if (isDev) {
-        agent = await this.prisma.whatsAppAgent.update({
-          where: { id: agent.id },
-          data: {
-            status: WhatsAppAgentStatus.RUNNING,
-          },
-        });
-
-        this.logger.log(
-          `Agent provisioned for user ${userId} at ${ipAddress}:${port}`,
-        );
-      } else {
-        // TODO: Call Herznet API to provision the agent
-        this.logger.log(`Agent provisioning initiated for user ${userId}`);
-      }
-
-      return agent;
-    } catch (error) {
-      this.logger.error(`Error provisioning agent for user ${userId}`, error);
-      throw new InternalServerErrorException('Failed to provision agent');
-    }
-  }
 
   /**
    * Get the WhatsApp agent for a user
@@ -130,7 +50,7 @@ export class WhatsAppAgentService {
       throw new NotFoundException('WhatsApp agent not found for this user');
     }
 
-    const protocol = agent.ipAddress === 'localhost' ? 'http' : 'https';
+    const protocol = resolveServiceProtocol(agent.ipAddress);
     return `${protocol}://${agent.ipAddress}:${agent.port}`;
   }
 
@@ -142,7 +62,7 @@ export class WhatsAppAgentService {
       throw new NotFoundException('WhatsApp agent not found for this user');
     }
 
-    const protocol = agent.ipAddress === 'localhost' ? 'http' : 'https';
+    const protocol = resolveServiceProtocol(agent.ipAddress);
     return `${protocol}://${agent.ipAddress}:${agent.connectorPort}`;
   }
 
@@ -190,15 +110,24 @@ export class WhatsAppAgentService {
       throw new NotFoundException('WhatsApp agent not found');
     }
 
-    const url = `http://${agent.ipAddress}:${agent.port}/health`;
+    const protocol = resolveServiceProtocol(agent.ipAddress);
+    const url = `${protocol}://${agent.ipAddress}:${agent.port}/health`;
 
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5 second timeout
+      const httpsAgent =
+        protocol === 'https'
+          ? createHttpsAgentFromConfig(this.configService, {
+              caEnv: 'STEP_CA_ROOT_CERT',
+              certEnv: 'BACKEND_MTLS_CLIENT_CERT',
+              keyEnv: 'BACKEND_MTLS_CLIENT_KEY',
+            })
+          : undefined;
+      const response = await axios.get(url, {
+        httpsAgent,
+        timeout: 5000,
       });
 
-      const healthy = response.ok;
+      const healthy = response.status >= 200 && response.status < 300;
 
       // Update last health check timestamp
       await this.prisma.whatsAppAgent.update({
@@ -241,13 +170,6 @@ export class WhatsAppAgentService {
   }
 
   /**
-   * Generate a random password
-   */
-  private generateRandomPassword(): string {
-    return crypto.randomBytes(16).toString('hex');
-  }
-
-  /**
    * Execute a script on the user's WhatsApp connector
    */
   private async executeScript(
@@ -269,6 +191,7 @@ export class WhatsAppAgentService {
     return await this.connectorClientService.executeScript(
       connectorUrl,
       script,
+      { targetInstanceId: agent.stackLabel || agent.id },
     );
   }
 

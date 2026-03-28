@@ -6,12 +6,12 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-.github/stack-templates/bedones-whatsapp-agent/s
 OUTPUT_FILE="${OUTPUT_FILE:-/tmp/bedones-whatsapp-agent-stack.yml}"
 STACKS_PER_VPS="${STACKS_PER_VPS:-2}"
 STACK_PREFIX="${STACK_PREFIX:-bedones-whatsapp}"
-PRIVATE_NETWORK_NAME="${PRIVATE_NETWORK_NAME:-bedones-private}"
 WHATSAPP_AUTOSTART_TARGET_SLOT="${WHATSAPP_AUTOSTART_TARGET_SLOT:-0}"
-WHATSAPP_AGENT_DATABASE_URL_TEMPLATE="${WHATSAPP_AGENT_DATABASE_URL_TEMPLATE:-}"
 WHATSAPP_AGENT_IMAGE="${WHATSAPP_AGENT_IMAGE:-}"
+WHATSAPP_CROPPER_IMAGE="${WHATSAPP_CROPPER_IMAGE:-}"
 WHATSAPP_CONNECTOR_IMAGE="${WHATSAPP_CONNECTOR_IMAGE:-}"
 BACKEND_URL="${BACKEND_URL:-}"
+BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL:-}"
 CONNECTOR_SECRET="${CONNECTOR_SECRET:-}"
 AGENT_INTERNAL_JWT_SECRET="${AGENT_INTERNAL_JWT_SECRET:-}"
 MINIO_ENDPOINT="${MINIO_ENDPOINT:-}"
@@ -26,12 +26,10 @@ XAI_API_KEY="${XAI_API_KEY:-}"
 XAI_MODEL="${XAI_MODEL:-grok-3}"
 PRIMARY_MODEL="${PRIMARY_MODEL:-gemini}"
 FALLBACK_MODEL="${FALLBACK_MODEL:-grok}"
-SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN:-}"
-SENTRY_DSN="${SENTRY_DSN:-}"
 PUPPETEER_EXECUTABLE_PATH="${PUPPETEER_EXECUTABLE_PATH:-/usr/bin/chromium}"
 
-if [[ -z "${WHATSAPP_AGENT_IMAGE}" || -z "${WHATSAPP_CONNECTOR_IMAGE}" ]]; then
-  echo "WHATSAPP_AGENT_IMAGE and WHATSAPP_CONNECTOR_IMAGE are required." >&2
+if [[ -z "${WHATSAPP_AGENT_IMAGE}" || -z "${WHATSAPP_CROPPER_IMAGE}" || -z "${WHATSAPP_CONNECTOR_IMAGE}" ]]; then
+  echo "WHATSAPP_AGENT_IMAGE, WHATSAPP_CROPPER_IMAGE and WHATSAPP_CONNECTOR_IMAGE are required." >&2
   exit 1
 fi
 
@@ -46,13 +44,6 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
   stack_label="${STACK_PREFIX}-slot-${slot}"
   agent_port=$((3100 + slot))
   connector_port=$((3200 + slot))
-  schema_name="$(echo "${stack_name}" | tr '-' '_')"
-
-  if [[ -n "${WHATSAPP_AGENT_DATABASE_URL_TEMPLATE}" ]]; then
-    agent_database_url="${WHATSAPP_AGENT_DATABASE_URL_TEMPLATE//__STACK_SCHEMA__/${schema_name}}"
-  else
-    agent_database_url=""
-  fi
 
   whatsapp_autostart="false"
   if [[ "${WHATSAPP_AUTOSTART_TARGET_SLOT}" == "${slot}" ]]; then
@@ -63,12 +54,13 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
     -e "s#__STACK_NAME__#${stack_name}#g" \
     -e "s#__STACK_LABEL__#${stack_label}#g" \
     -e "s#__WHATSAPP_AGENT_IMAGE__#${WHATSAPP_AGENT_IMAGE}#g" \
+    -e "s#__WHATSAPP_CROPPER_IMAGE__#${WHATSAPP_CROPPER_IMAGE}#g" \
     -e "s#__WHATSAPP_CONNECTOR_IMAGE__#${WHATSAPP_CONNECTOR_IMAGE}#g" \
     -e "s#__AGENT_PORT__#${agent_port}#g" \
     -e "s#__CONNECTOR_PORT__#${connector_port}#g" \
-    -e "s#__WHATSAPP_AGENT_DATABASE_URL__#${agent_database_url}#g" \
     -e "s#__AGENT_INTERNAL_JWT_SECRET__#${AGENT_INTERNAL_JWT_SECRET}#g" \
     -e "s#__BACKEND_URL__#${BACKEND_URL}#g" \
+    -e "s#__BACKEND_INTERNAL_URL__#${BACKEND_INTERNAL_URL}#g" \
     -e "s#__CONNECTOR_SECRET__#${CONNECTOR_SECRET}#g" \
     -e "s#__WHATSAPP_AUTOSTART__#${whatsapp_autostart}#g" \
     -e "s#__MINIO_ENDPOINT__#${MINIO_ENDPOINT}#g" \
@@ -83,12 +75,11 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
     -e "s#__XAI_MODEL__#${XAI_MODEL}#g" \
     -e "s#__PRIMARY_MODEL__#${PRIMARY_MODEL}#g" \
     -e "s#__FALLBACK_MODEL__#${FALLBACK_MODEL}#g" \
-    -e "s#__SENTRY_AUTH_TOKEN__#${SENTRY_AUTH_TOKEN}#g" \
-    -e "s#__SENTRY_DSN__#${SENTRY_DSN}#g" \
     -e "s#__PUPPETEER_EXECUTABLE_PATH__#${PUPPETEER_EXECUTABLE_PATH}#g" \
     "${TEMPLATE_FILE}" >> "${OUTPUT_FILE}"
 
   volume_lines+=("  ${stack_name}_redis:")
+  volume_lines+=("  ${stack_name}_postgres:")
   volume_lines+=("  ${stack_name}_qdrant:")
   volume_lines+=("  ${stack_name}_connector:")
 done
@@ -97,7 +88,7 @@ cat >> "${OUTPUT_FILE}" <<EOF
 networks:
   bedones_private:
     external: true
-    name: ${PRIVATE_NETWORK_NAME}
+    name: bedones_private
 
 volumes:
 EOF

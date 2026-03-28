@@ -1,44 +1,50 @@
-import { Request } from '@nestjs/common';
 import {
   Body,
   Controller,
   Get,
   Headers,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  ApiExcludeEndpoint,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import PasswordGuard from '../guards/password.guard';
 
+import { ListProvisioningServersDto } from './dto/list-provisioning-servers.dto';
 import { ProvisionStackCapacityDto } from './dto/provision-stack-capacity.dto';
 import { ReleaseStackDto } from './dto/release-stack.dto';
 import { WorkflowCallbackDto } from './dto/workflow-callback.dto';
 import { StackPoolService } from './stack-pool.service';
 
-@ApiTags('stack-pool')
-@Controller('stack-pool')
-export class StackPoolController {
+@ApiTags('infra-stack-pool')
+@UseGuards(PasswordGuard('INFRA_ADMIN_TOKEN'))
+@Controller('infra/stack-pool')
+export class InfraStackPoolController {
   constructor(private readonly stackPoolService: StackPoolService) {}
 
   @Get('summary')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: 'Résumé de la capacité disponible',
+    summary: 'Résumé du stock de stacks et des workflows en cours',
   })
   async getSummary() {
     return this.stackPoolService.getCapacitySummary();
   }
 
-  @Get('vps/free')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Get('servers')
+  @ApiOperation({
+    summary: 'Lister les VPS provisionnés avec pagination et filtres',
+  })
+  async listServers(@Query() query: ListProvisioningServersDto) {
+    return this.stackPoolService.listProvisioningServers(query);
+  }
+
+  @Get('servers/free')
   @ApiOperation({
     summary: 'Lister les VPS avec des stacks libres',
   })
@@ -47,25 +53,18 @@ export class StackPoolController {
   }
 
   @Post('provision')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: 'Demander le provisionnement de nouveaux VPS/stacks',
+    summary: 'Demander le provisionnement manuel de nouveaux VPS/stacks',
   })
   @ApiResponse({
     status: 201,
     description: 'Workflow(s) GitHub dispatché(s)',
   })
-  async provision(
-    @Body() dto: ProvisionStackCapacityDto,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.stackPoolService.provisionCapacity(dto, req.user.id);
+  async provision(@Body() dto: ProvisionStackCapacityDto) {
+    return this.stackPoolService.provisionCapacity(dto, null);
   }
 
   @Post('reconcile')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: 'Vérifier et rétablir le stock minimal de stacks libres',
   })
@@ -78,16 +77,20 @@ export class StackPoolController {
   }
 
   @Post('release')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: 'Libérer une stack réservée ou déclencher sa release',
+    summary: 'Libérer une stack réservée ou résilier un VPS',
   })
   async release(@Body() dto: ReleaseStackDto) {
     return this.stackPoolService.releaseCapacity(dto);
   }
+}
+
+@Controller('stack-pool')
+export class StackPoolWorkflowsController {
+  constructor(private readonly stackPoolService: StackPoolService) {}
 
   @Post('workflows/callback')
+  @ApiExcludeEndpoint()
   @ApiOperation({
     summary: 'Callback interne appelé par les workflows GitHub',
   })

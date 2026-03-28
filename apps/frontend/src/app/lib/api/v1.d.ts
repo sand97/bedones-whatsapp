@@ -248,23 +248,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/whatsapp-agents/provision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Provision a WhatsApp agent for the current user */
-        post: operations["WhatsAppAgentController_provisionAgent"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/whatsapp-agents/{id}/status": {
         parameters: {
             query?: never;
@@ -2532,31 +2515,6 @@ export interface operations {
             };
         };
     };
-    WhatsAppAgentController_provisionAgent: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description WhatsApp agent successfully provisioned */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description WhatsApp agent already exists for this user */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     WhatsAppAgentController_updateAgentStatus: {
         parameters: {
             query?: never;
@@ -2915,11 +2873,13 @@ export interface operations {
                          * @example otp
                          * @enum {string}
                          */
-                        scenario?: "otp" | "pairing" | "qr";
+                        scenario?: "otp" | "pairing" | "qr" | "provisioning" | "payment_required";
                         /** @example 12345678 */
                         code?: string;
                         /** @example token123... */
                         pairingToken?: string;
+                        /** @example /pricing */
+                        pricingUrl?: string;
                         /** @example Un code de vérification a été envoyé */
                         message?: string;
                     };

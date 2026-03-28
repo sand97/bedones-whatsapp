@@ -55,21 +55,6 @@ export class WhatsAppAgentController {
     return agent;
   }
 
-  @Post('provision')
-  @ApiOperation({ summary: 'Provision a WhatsApp agent for the current user' })
-  @ApiResponse({
-    status: 201,
-    description: 'WhatsApp agent successfully provisioned',
-  })
-  @ApiResponse({
-    status: 409,
-    description: 'WhatsApp agent already exists for this user',
-  })
-  async provisionAgent(@Request() req): Promise<WhatsAppAgent> {
-    const userId = req.user.id;
-    return this.whatsappAgentService.provisionAgent(userId);
-  }
-
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update agent status' })
   @ApiParam({

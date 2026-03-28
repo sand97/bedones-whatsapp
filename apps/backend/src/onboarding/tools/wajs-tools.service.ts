@@ -64,6 +64,7 @@ export class WaJsToolsService {
     return await this.connectorClientService.executeScript(
       connectorUrl,
       script,
+      { targetInstanceId: agent.stackLabel || agent.id },
     );
   }
 

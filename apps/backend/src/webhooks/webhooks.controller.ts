@@ -6,11 +6,14 @@ import {
   Logger,
   Inject,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import * as Sentry from '@sentry/nestjs';
 
+import { ConnectorSignatureGuard } from '../common/guards/connector-signature.guard';
+import { ConnectorMtlsGuard } from '../common/guards/internal-client-certificate.guard';
 import { AuthGateway } from '../auth/auth.gateway';
 import { AuthService } from '../auth/auth.service';
 
@@ -57,6 +60,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 @ApiTags('webhooks')
 @Controller('webhooks')
+@UseGuards(ConnectorMtlsGuard, ConnectorSignatureGuard)
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
 

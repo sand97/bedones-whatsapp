@@ -1,6 +1,8 @@
 import * as crypto from 'crypto';
+import axios from 'axios';
 
 import { CryptoService } from '@app/common/crypto.service';
+import { createHttpsAgentFromConfig } from '@app/common/utils/mtls.util';
 import { ConnectorClientService } from '@app/connector-client';
 import {
   ConnectionStatus,
@@ -30,6 +32,10 @@ import * as Sentry from '@sentry/nestjs';
 
 import { AuthGateway } from '../auth/auth.gateway';
 
+import {
+  type InfraServerContractState,
+  ListProvisioningServersDto,
+} from './dto/list-provisioning-servers.dto';
 import { ProvisionStackCapacityDto } from './dto/provision-stack-capacity.dto';
 import { ReleaseStackDto } from './dto/release-stack.dto';
 import { WorkflowCallbackDto } from './dto/workflow-callback.dto';
@@ -60,6 +66,7 @@ type ReconcileOptions = {
 export class StackPoolService implements OnModuleInit {
   private readonly logger = new Logger(StackPoolService.name);
   private reconcilePromise: Promise<void> | null = null;
+  private internalHttpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -70,6 +77,20 @@ export class StackPoolService implements OnModuleInit {
     @Inject(forwardRef(() => AuthGateway))
     private readonly authGateway: AuthGateway,
   ) {}
+
+  private getInternalHttpsAgent() {
+    if (this.internalHttpsAgent !== undefined) {
+      return this.internalHttpsAgent;
+    }
+
+    this.internalHttpsAgent = createHttpsAgentFromConfig(this.configService, {
+      caEnv: 'STEP_CA_ROOT_CERT',
+      certEnv: 'BACKEND_MTLS_CLIENT_CERT',
+      keyEnv: 'BACKEND_MTLS_CLIENT_KEY',
+    });
+
+    return this.internalHttpsAgent;
+  }
 
   async onModuleInit() {
     if (!this.shouldProvisionOnBoot()) {
@@ -164,6 +185,102 @@ export class StackPoolService implements OnModuleInit {
         totalStacks: server.stacks.length,
       };
     });
+  }
+
+  async listProvisioningServers(query: ListProvisioningServersDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const where = this.buildProvisioningServersWhere(query);
+
+    const [total, servers] = await Promise.all([
+      this.prisma.provisioningServer.count({
+        where,
+      }),
+      this.prisma.provisioningServer.findMany({
+        where,
+        include: {
+          stacks: {
+            include: {
+              user: {
+                select: {
+                  credits: true,
+                  id: true,
+                  phoneNumber: true,
+                  status: true,
+                },
+              },
+            },
+            orderBy: [{ stackSlot: 'asc' }],
+          },
+          workflowRuns: {
+            orderBy: [{ createdAt: 'desc' }],
+            take: 1,
+          },
+        },
+        orderBy: [{ requestedAt: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      items: servers.map((server) => {
+        const freeStacksCount = server.stacks.filter(
+          (stack) =>
+            stack.assignmentStatus === StackAssignmentStatus.FREE &&
+            stack.status === WhatsAppAgentStatus.RUNNING,
+        ).length;
+
+        return {
+          contractState: this.mapServerContractState(server.provisioningStatus),
+          freeStacksCount,
+          lastWorkflowRun: server.workflowRuns[0] ?? null,
+          server: {
+            createdAt: server.createdAt,
+            id: server.id,
+            location: server.location,
+            metadata: server.metadata,
+            name: server.name,
+            networkId: server.networkId,
+            plannedStacksCount: server.plannedStacksCount,
+            privateIpv4: server.privateIpv4,
+            privateSubnet: server.privateSubnet,
+            provider: server.provider,
+            providerServerId: server.providerServerId,
+            provisioningStatus: server.provisioningStatus,
+            publicIpv4: server.publicIpv4,
+            publicIpv6: server.publicIpv6,
+            readyAt: server.readyAt,
+            releasedAt: server.releasedAt,
+            requestedAt: server.requestedAt,
+            serverType: server.serverType,
+            updatedAt: server.updatedAt,
+          },
+          stacks: server.stacks.map((stack) => ({
+            allocatedAt: stack.allocatedAt,
+            assignmentStatus: stack.assignmentStatus,
+            connectionStatus: stack.connectionStatus,
+            connectorPort: stack.connectorPort,
+            id: stack.id,
+            ipAddress: stack.ipAddress,
+            port: stack.port,
+            releasedAt: stack.releasedAt,
+            releaseReason: stack.releaseReason,
+            reservationExpiresAt: stack.reservationExpiresAt,
+            stackLabel: stack.stackLabel,
+            stackSlot: stack.stackSlot,
+            status: stack.status,
+            updatedAt: stack.updatedAt,
+            user: stack.user,
+          })),
+          totalStacks: server.stacks.length,
+        };
+      }),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(Math.ceil(total / pageSize), 1),
+    };
   }
 
   async reserveStackForLogin(
@@ -531,6 +648,65 @@ export class StackPoolService implements OnModuleInit {
     };
   }
 
+  private buildProvisioningServersWhere(
+    query: ListProvisioningServersDto,
+  ): Prisma.ProvisioningServerWhereInput {
+    const conditions: Prisma.ProvisioningServerWhereInput[] = [];
+
+    if (query.contractState) {
+      conditions.push(this.buildContractStateWhere(query.contractState));
+    }
+
+    if (query.provisioningStatus) {
+      conditions.push({
+        provisioningStatus: query.provisioningStatus,
+      });
+    }
+
+    if (query.requestedFrom || query.requestedTo) {
+      conditions.push({
+        requestedAt: {
+          ...(query.requestedFrom
+            ? { gte: new Date(query.requestedFrom) }
+            : {}),
+          ...(query.requestedTo ? { lte: new Date(query.requestedTo) } : {}),
+        },
+      });
+    }
+
+    if (conditions.length === 0) {
+      return {};
+    }
+
+    return {
+      AND: conditions,
+    };
+  }
+
+  private buildContractStateWhere(
+    contractState: InfraServerContractState,
+  ): Prisma.ProvisioningServerWhereInput {
+    if (contractState === 'terminated') {
+      return {
+        provisioningStatus: VpsProvisioningStatus.RELEASED,
+      };
+    }
+
+    return {
+      provisioningStatus: {
+        not: VpsProvisioningStatus.RELEASED,
+      },
+    };
+  }
+
+  private mapServerContractState(
+    provisioningStatus: VpsProvisioningStatus,
+  ): InfraServerContractState {
+    return provisioningStatus === VpsProvisioningStatus.RELEASED
+      ? 'terminated'
+      : 'active';
+  }
+
   private async performReconcile(options: ReconcileOptions) {
     const desiredMinimumFreeStacks =
       options.desiredMinimumFreeStacks ?? this.getMinimumFreeStacks();
@@ -731,13 +907,18 @@ export class StackPoolService implements OnModuleInit {
       workflowId: workflow.id,
     });
 
-    await this.connectorClientService.startClient(connectorUrl);
+    await this.connectorClientService.startClient(connectorUrl, {
+      targetInstanceId: this.getConnectorInstanceId(agent),
+    });
     await this.delay(3000);
 
     if (deviceType === 'mobile') {
       const result = await this.connectorClientService.requestPairingCode(
         connectorUrl,
         workflow.requestedPhoneNumber!,
+        {
+          targetInstanceId: this.getConnectorInstanceId(agent),
+        },
       );
 
       this.authGateway.emitPairingCodeReady(
@@ -758,7 +939,9 @@ export class StackPoolService implements OnModuleInit {
     });
 
     try {
-      const qr = await this.connectorClientService.getQRCode(connectorUrl);
+      const qr = await this.connectorClientService.getQRCode(connectorUrl, {
+        targetInstanceId: this.getConnectorInstanceId(agent),
+      });
       if (qr.success && qr.qrCode) {
         this.authGateway.emitQRCode(workflow.pairingToken!, qr.qrCode);
       }
@@ -910,19 +1093,20 @@ export class StackPoolService implements OnModuleInit {
         continue;
       }
 
+      const publicIp = server.publicIpv4 || baseIp;
       const healthTargets = [
-        `http://${baseIp}:${stack.agentPort}/health`,
-        `http://${baseIp}:${stack.connectorPort}/health`,
+        `https://${publicIp}:${stack.agentPort}/health`,
+        `https://${publicIp}:${stack.connectorPort}/health`,
       ];
 
       for (const target of healthTargets) {
         try {
-          const response = await fetch(target, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000),
+          const response = await axios.get(target, {
+            httpsAgent: this.getInternalHttpsAgent(),
+            timeout: 5000,
           });
 
-          if (!response.ok) {
+          if (response.status < 200 || response.status >= 300) {
             throw new Error(`Health check failed with ${response.status}`);
           }
         } catch (error) {
@@ -1007,7 +1191,7 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private buildConnectorUrl(agent: WhatsAppAgent) {
-    const protocol = agent.ipAddress === 'localhost' ? 'http' : 'http';
+    const protocol = agent.ipAddress === 'localhost' ? 'http' : 'https';
     return `${protocol}://${agent.ipAddress}:${agent.connectorPort}`;
   }
 

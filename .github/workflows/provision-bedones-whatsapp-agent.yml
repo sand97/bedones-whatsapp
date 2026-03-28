@@ -64,6 +64,7 @@ jobs:
         env:
           AGENT_INTERNAL_JWT_SECRET: ${{ secrets.AGENT_INTERNAL_JWT_SECRET }}
           BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
+          BACKEND_INTERNAL_URL: ${{ vars.BACKEND_INTERNAL_URL }}
           BACKEND_URL: ${{ vars.BACKEND_URL }}
           CONNECTOR_SECRET: ${{ secrets.CONNECTOR_SECRET }}
           FALLBACK_MODEL: ${{ vars.FALLBACK_MODEL }}
@@ -72,7 +73,6 @@ jobs:
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           GHCR_USERNAME: ${{ vars.GHCR_USERNAME || github.repository_owner }}
           HERZNET_API_KEY: ${{ secrets.HERZNET_API_KEY }}
-          HERZNET_PRIVATE_NETWORK_ID: ${{ vars.HERZNET_PRIVATE_NETWORK_ID }}
           HERZNET_SSH_KEY_NAMES: ${{ vars.HERZNET_SSH_KEY_NAMES }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_BUCKET: ${{ vars.MINIO_BUCKET }}
@@ -81,20 +81,21 @@ jobs:
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           MINIO_USE_SSL: ${{ vars.MINIO_USE_SSL }}
           PRIMARY_MODEL: ${{ vars.PRIMARY_MODEL }}
-          PRIVATE_NETWORK_NAME: ${{ vars.PRIVATE_NETWORK_NAME }}
           PUPPETEER_EXECUTABLE_PATH: ${{ vars.PUPPETEER_EXECUTABLE_PATH }}
           RENDERED_STACK_FILE: ${{ runner.temp }}/bedones-whatsapp-agent-stack.yml
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SERVER_LOCATION: ${{ inputs.location }}
           SERVER_NAME: ${{ inputs.server_name }}
           SERVER_RECORD_ID: ${{ inputs.server_record_id }}
           SERVER_TYPE: ${{ inputs.server_type }}
           STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
           STACKS_PER_VPS: ${{ inputs.stacks_per_vps }}
-          WHATSAPP_AGENT_DATABASE_URL_TEMPLATE: ${{ secrets.WHATSAPP_AGENT_DATABASE_URL_TEMPLATE }}
+          STEP_CA_FINGERPRINT: ${{ secrets.STEP_CA_FINGERPRINT }}
+          STEP_CA_PROVISIONER_NAME: ${{ secrets.STEP_CA_PROVISIONER_NAME }}
+          STEP_CA_PROVISIONER_PASSWORD: ${{ secrets.STEP_CA_PROVISIONER_PASSWORD }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
           WHATSAPP_AGENT_IMAGE: ${{ vars.WHATSAPP_AGENT_IMAGE }}
           WHATSAPP_AUTOSTART_TARGET_SLOT: 0
+          WHATSAPP_CROPPER_IMAGE: ${{ vars.WHATSAPP_CROPPER_IMAGE }}
           WHATSAPP_CONNECTOR_IMAGE: ${{ vars.WHATSAPP_CONNECTOR_IMAGE }}
           WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}

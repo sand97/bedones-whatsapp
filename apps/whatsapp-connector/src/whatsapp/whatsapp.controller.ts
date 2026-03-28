@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -14,11 +15,13 @@ import { ExecutePageScriptDto } from './dto/execute-page-script.dto';
 import { RequestPairingCodeDto } from './dto/request-pairing-code.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetWebhooksDto } from './dto/set-webhooks.dto';
+import { TargetInstanceGuard } from './guards/target-instance.guard';
 import { WebhookService } from './webhook.service';
 import { WhatsAppClientService } from './whatsapp-client.service';
 
 @ApiTags('WhatsApp')
 @Controller('whatsapp')
+@UseGuards(TargetInstanceGuard)
 export class WhatsAppController {
   constructor(
     private readonly whatsappClientService: WhatsAppClientService,

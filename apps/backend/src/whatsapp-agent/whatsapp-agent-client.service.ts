@@ -1,8 +1,13 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
 import { TokenService } from '../common/services/token.service';
+import {
+  createHttpsAgentFromConfig,
+  isHttpsUrl,
+} from '../common/utils/mtls.util';
 
 /**
  * Client HTTP pour communiquer avec le service WhatsApp-Agent déployé
@@ -12,11 +17,27 @@ import { TokenService } from '../common/services/token.service';
 export class WhatsAppAgentClientService {
   private readonly logger = new Logger(WhatsAppAgentClientService.name);
   private static readonly AGENT_CALL_TIMEOUT_MS = 30000;
+  private httpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
 
   constructor(
     private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     private readonly tokenService: TokenService,
   ) {}
+
+  private getHttpsAgent() {
+    if (this.httpsAgent !== undefined) {
+      return this.httpsAgent;
+    }
+
+    this.httpsAgent = createHttpsAgentFromConfig(this.configService, {
+      caEnv: 'STEP_CA_ROOT_CERT',
+      certEnv: 'BACKEND_MTLS_CLIENT_CERT',
+      keyEnv: 'BACKEND_MTLS_CLIENT_KEY',
+    });
+
+    return this.httpsAgent;
+  }
 
   private buildInternalAuthHeader(agentId: string) {
     const token = this.tokenService.generateAgentInternalToken(agentId, '5m');
@@ -47,6 +68,7 @@ export class WhatsAppAgentClientService {
           {
             timeout: WhatsAppAgentClientService.AGENT_CALL_TIMEOUT_MS,
             headers: this.buildInternalAuthHeader(agentId),
+            httpsAgent: isHttpsUrl(agentUrl) ? this.getHttpsAgent() : undefined,
           },
         ),
       );
@@ -73,7 +95,9 @@ export class WhatsAppAgentClientService {
   } | null> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${agentUrl}/catalog/status`),
+        this.httpService.get(`${agentUrl}/catalog/status`, {
+          httpsAgent: isHttpsUrl(agentUrl) ? this.getHttpsAgent() : undefined,
+        }),
       );
       return response.data;
     } catch (error: any) {

@@ -5,7 +5,10 @@ import { Module, forwardRef } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
 
-import { StackPoolController } from './stack-pool.controller';
+import {
+  InfraStackPoolController,
+  StackPoolWorkflowsController,
+} from './stack-pool.controller';
 import { StackPoolService } from './stack-pool.service';
 
 @Module({
@@ -15,7 +18,7 @@ import { StackPoolService } from './stack-pool.service';
     ConnectorClientModule,
     forwardRef(() => AuthModule),
   ],
-  controllers: [StackPoolController],
+  controllers: [InfraStackPoolController, StackPoolWorkflowsController],
   providers: [StackPoolService],
   exports: [StackPoolService],
 })

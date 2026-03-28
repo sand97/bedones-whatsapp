@@ -17,6 +17,7 @@ import {
 
 import { AgentContext } from '../common/decorators/agent-context.decorator';
 import { AgentInternalGuard } from '../common/guards/agent-internal.guard';
+import { AgentMtlsGuard } from '../common/guards/internal-client-certificate.guard';
 import type { AgentRequestContext } from '../common/guards/agent-internal.guard';
 
 import { BatchUpdateProductImageIndexingDto } from './dto/batch-update-product-image-indexing.dto';
@@ -29,7 +30,7 @@ import {
 @ApiTags('products')
 @ApiBearerAuth()
 @Controller('agent-internal/products')
-@UseGuards(AgentInternalGuard)
+@UseGuards(AgentMtlsGuard, AgentInternalGuard)
 export class ProductsInternalController {
   constructor(
     private readonly productsInternalService: ProductsInternalService,

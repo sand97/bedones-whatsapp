@@ -944,7 +944,7 @@ export class CatalogService {
 
       // 2. Trigger whatsapp-agent local catalog sync
       this.logger.log('🧠 Triggering whatsapp-agent local catalog sync...');
-      const agentUrl = `http://${agent.ipAddress}:${agent.port}`;
+      const agentUrl = `${agent.ipAddress === 'localhost' ? 'http' : 'https'}://${agent.ipAddress}:${agent.port}`;
       const agentSyncResult = await this.whatsappAgentClient.triggerCatalogSync(
         agentUrl,
         agent.id,

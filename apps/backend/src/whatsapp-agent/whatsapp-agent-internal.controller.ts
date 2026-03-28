@@ -8,6 +8,7 @@ import {
 
 import { AgentContext } from '../common/decorators/agent-context.decorator';
 import { AgentInternalGuard } from '../common/guards/agent-internal.guard';
+import { AgentMtlsGuard } from '../common/guards/internal-client-certificate.guard';
 import type { AgentRequestContext } from '../common/guards/agent-internal.guard';
 
 import { UpdateAgentInternalDto } from './dto/update-agent-internal.dto';
@@ -16,7 +17,7 @@ import { WhatsAppAgentInternalService } from './whatsapp-agent-internal.service'
 @ApiTags('whatsapp-agents')
 @ApiBearerAuth()
 @Controller('agent-internal/agents')
-@UseGuards(AgentInternalGuard)
+@UseGuards(AgentMtlsGuard, AgentInternalGuard)
 export class WhatsAppAgentInternalController {
   constructor(
     private readonly whatsappAgentInternalService: WhatsAppAgentInternalService,

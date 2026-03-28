@@ -248,6 +248,18 @@ export default function LoginPage() {
           return
         }
 
+        if (scenario === 'payment_required') {
+          notification.warning({
+            message: 'Recharge requise',
+            description:
+              response.data.message ||
+              'Rechargez vos crédits avant de reconnecter votre agent.',
+            duration: 8,
+          })
+          navigate(response.data.pricingUrl || '/pricing')
+          return
+        }
+
         // Scénario 3: QR Code (desktop, nouvel utilisateur)
         if (scenario === 'qr') {
           // Demander le QR code au backend

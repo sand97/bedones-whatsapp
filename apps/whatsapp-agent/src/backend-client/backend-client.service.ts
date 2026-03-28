@@ -5,6 +5,8 @@ import { AxiosError } from 'axios';
 import { Observable, throwError } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
 
+import { createHttpsAgentFromConfig, isHttpsUrl } from '../security/mtls.util';
+
 import {
   CanProcessRequest,
   CanProcessResponse,
@@ -37,25 +39,46 @@ import {
 @Injectable()
 export class BackendClientService {
   private readonly logger = new Logger(BackendClientService.name);
-  private readonly baseUrl: string;
+  private readonly publicBaseUrl: string;
+  private readonly internalBaseUrl: string;
   private readonly agentBackendToken?: string;
   private agentSnapshotCache: InternalAgentSnapshotResponse | null = null;
   private agentSnapshotPromise: Promise<InternalAgentSnapshotResponse> | null =
     null;
+  private readonly httpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    const baseUrl = this.configService.get<string>('BACKEND_URL');
-    if (!baseUrl) {
+    const publicBaseUrl = this.configService.get<string>('BACKEND_URL');
+    if (!publicBaseUrl) {
       throw new Error('Missing BACKEND_URL');
     }
-    this.baseUrl = baseUrl;
+    this.publicBaseUrl = publicBaseUrl;
+    this.internalBaseUrl =
+      this.configService.get<string>('BACKEND_INTERNAL_URL') || publicBaseUrl;
     this.agentBackendToken = this.configService.get<string>(
       'AGENT_BACKEND_TOKEN',
     );
-    this.logger.log(`Backend URL configured: ${this.baseUrl}`);
+    this.httpsAgent = createHttpsAgentFromConfig(this.configService, {
+      caEnv: 'STEP_CA_ROOT_CERT',
+      certEnv: 'MTLS_CLIENT_CERT',
+      keyEnv: 'MTLS_CLIENT_KEY',
+    });
+    this.logger.log(`Backend URL configured: ${this.publicBaseUrl}`);
+    this.logger.log(`Backend internal URL configured: ${this.internalBaseUrl}`);
+  }
+
+  private getRequestConfig(url: string, config: Record<string, unknown> = {}) {
+    if (!isHttpsUrl(url)) {
+      return config;
+    }
+
+    return {
+      ...config,
+      httpsAgent: this.httpsAgent,
+    };
   }
 
   private getInternalAuthHeaders() {
@@ -72,8 +95,9 @@ export class BackendClientService {
     path: string,
     params?: Record<string, unknown>,
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.internalBaseUrl}${path}`;
     const response = await this.httpService.axiosRef.get<T>(url, {
+      ...this.getRequestConfig(url),
       params,
       headers: this.getInternalAuthHeaders(),
     });
@@ -81,16 +105,18 @@ export class BackendClientService {
   }
 
   private async internalPatch<T>(path: string, payload: object): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.internalBaseUrl}${path}`;
     const response = await this.httpService.axiosRef.patch<T>(url, payload, {
+      ...this.getRequestConfig(url),
       headers: this.getInternalAuthHeaders(),
     });
     return response.data;
   }
 
   private async internalPost<T>(path: string, payload: object): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.internalBaseUrl}${path}`;
     const response = await this.httpService.axiosRef.post<T>(url, payload, {
+      ...this.getRequestConfig(url),
       headers: this.getInternalAuthHeaders(),
     });
     return response.data;
@@ -105,17 +131,21 @@ export class BackendClientService {
     phoneNumber: string,
     whatsappProfile: any,
   ): Observable<any> {
-    const url = `${this.baseUrl}/auth/verify-pairing`;
+    const url = `${this.publicBaseUrl}/auth/verify-pairing`;
 
     this.logger.log(
       `Notifying backend of successful pairing for: ${phoneNumber}`,
     );
 
     return this.httpService
-      .post(url, {
-        phoneNumber,
-        whatsappProfile,
-      })
+      .post(
+        url,
+        {
+          phoneNumber,
+          whatsappProfile,
+        },
+        this.getRequestConfig(url),
+      )
       .pipe(
         map((response) => {
           this.logger.log(`Backend notified successfully for: ${phoneNumber}`);
@@ -137,11 +167,14 @@ export class BackendClientService {
    * @param config - Request configuration (params, headers, etc.)
    */
   async get(path: string, config?: any): Promise<any> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.publicBaseUrl}${path}`;
     this.logger.debug(`GET ${url}`);
 
     try {
-      const response = await this.httpService.axiosRef.get(url, config);
+      const response = await this.httpService.axiosRef.get(
+        url,
+        this.getRequestConfig(url, config),
+      );
       return response;
     } catch (error: any) {
       this.logger.error(`Error GET ${url}: ${error.message}`);
@@ -156,11 +189,15 @@ export class BackendClientService {
    * @param config - Request configuration (headers, etc.)
    */
   async post(path: string, data?: any, config?: any): Promise<any> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.publicBaseUrl}${path}`;
     this.logger.debug(`POST ${url}`);
 
     try {
-      const response = await this.httpService.axiosRef.post(url, data, config);
+      const response = await this.httpService.axiosRef.post(
+        url,
+        data,
+        this.getRequestConfig(url, config),
+      );
       return response;
     } catch (error: any) {
       this.logger.error(`Error POST ${url}: ${error.message}`);
@@ -182,7 +219,7 @@ export class BackendClientService {
     message: string,
     contactLabels?: Array<{ id: string; name: string; hexColor: string }>,
   ): Promise<CanProcessResponse> {
-    const url = `${this.baseUrl}/agent/can-process`;
+    const url = `${this.publicBaseUrl}/agent/can-process`;
     this.logger.debug(`POST ${url} for userId: ${userId}, chatId: ${chatId}`);
 
     try {
@@ -197,6 +234,7 @@ export class BackendClientService {
       const response = await this.httpService.axiosRef.post<CanProcessResponse>(
         url,
         requestData,
+        this.getRequestConfig(url),
       );
 
       return response.data;
@@ -228,7 +266,7 @@ export class BackendClientService {
     error?: string;
     metadata?: Record<string, any>;
   }): Promise<LogOperationResponse> {
-    const url = `${this.baseUrl}/agent/log-operation`;
+    const url = `${this.publicBaseUrl}/agent/log-operation`;
     this.logger.debug(`POST ${url} for chatId: ${data.chatId}`);
 
     try {
@@ -241,6 +279,7 @@ export class BackendClientService {
         await this.httpService.axiosRef.post<LogOperationResponse>(
           url,
           requestData,
+          this.getRequestConfig(url),
         );
 
       return response.data;
@@ -257,12 +296,13 @@ export class BackendClientService {
    * Upload media (base64 buffer) to backend to get a signed URL
    */
   async uploadMedia(payload: UploadMediaRequest): Promise<UploadMediaResponse> {
-    const url = `${this.baseUrl}/message-metadata/upload-media`;
+    const url = `${this.publicBaseUrl}/message-metadata/upload-media`;
     this.logger.debug(`POST ${url} for message ${payload.messageId}`);
 
     const response = await this.httpService.axiosRef.post<UploadMediaResponse>(
       url,
       payload,
+      this.getRequestConfig(url),
     );
     return response.data;
   }
@@ -273,7 +313,7 @@ export class BackendClientService {
   async upsertMessageMetadata(
     payload: UpsertMessageMetadataRequest,
   ): Promise<UpsertMessageMetadataResponse> {
-    const url = `${this.baseUrl}/message-metadata/upsert`;
+    const url = `${this.publicBaseUrl}/message-metadata/upsert`;
     this.logger.debug(
       `POST ${url} for message ${payload.messageId} (${payload.type})`,
     );
@@ -282,6 +322,7 @@ export class BackendClientService {
       await this.httpService.axiosRef.post<UpsertMessageMetadataResponse>(
         url,
         payload,
+        this.getRequestConfig(url),
       );
     return response.data;
   }
@@ -292,7 +333,7 @@ export class BackendClientService {
   async fetchMetadataList(
     payload: MessageMetadataListRequest,
   ): Promise<MessageMetadataListResponse> {
-    const url = `${this.baseUrl}/message-metadata/list`;
+    const url = `${this.publicBaseUrl}/message-metadata/list`;
     this.logger.debug(
       `POST ${url} for ${payload.messageIds.length} messageIds`,
     );
@@ -301,6 +342,7 @@ export class BackendClientService {
       await this.httpService.axiosRef.post<MessageMetadataListResponse>(
         url,
         payload,
+        this.getRequestConfig(url),
       );
     return response.data;
   }
@@ -309,12 +351,13 @@ export class BackendClientService {
    * Delete media from backend storage (MinIO)
    */
   async deleteMedia(payload: DeleteMediaRequest): Promise<DeleteMediaResponse> {
-    const url = `${this.baseUrl}/message-metadata/delete-media`;
+    const url = `${this.publicBaseUrl}/message-metadata/delete-media`;
     this.logger.debug(`POST ${url} for objectKey ${payload.objectKey}`);
 
     const response = await this.httpService.axiosRef.post<DeleteMediaResponse>(
       url,
       payload,
+      this.getRequestConfig(url),
     );
     return response.data;
   }
