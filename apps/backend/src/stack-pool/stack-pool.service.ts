@@ -1443,12 +1443,27 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private buildServerName() {
-    const prefix = this.configService.get<string>(
-      'STACK_POOL_SERVER_NAME_PREFIX',
+    const prefix = this.sanitizeServerNameSegment(
+      this.configService.get<string>(
+        'STACK_POOL_SERVER_NAME_PREFIX',
+        'bedones-wa',
+      ),
       'bedones-wa',
     );
     const suffix = crypto.randomBytes(3).toString('hex');
     return `${prefix}-${Date.now()}-${suffix}`;
+  }
+
+  private sanitizeServerNameSegment(value: string | undefined, fallback: string) {
+    const sanitized = (value ?? fallback)
+      .replace(/['"]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    return sanitized || fallback;
   }
 
   private buildReservationExpiry() {

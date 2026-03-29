@@ -23,6 +23,23 @@ STEP_CA_PROVISIONER_PASSWORD="${STEP_CA_PROVISIONER_PASSWORD:?STEP_CA_PROVISIONE
 api_url="https://api.hetzner.cloud/v1"
 job_total=3
 
+sanitize_server_name() {
+  local value="$1"
+
+  value="$(printf '%s' "${value}" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e "s/[\"']//g" -e 's/[^a-z0-9-]/-/g' -e 's/-\\{2,\\}/-/g' -e 's/^-//' -e 's/-$//')"
+
+  if [[ -z "${value}" ]]; then
+    echo "SERVER_NAME is empty after sanitization" >&2
+    exit 1
+  fi
+
+  printf '%s' "${value}"
+}
+
+SERVER_NAME="$(sanitize_server_name "${SERVER_NAME}")"
+
 runtime_dir="${RUNNER_TEMP:-/tmp}/bedones-whatsapp-agent-runtime/${SERVER_NAME}"
 rendered_stack_file="${runtime_dir}/stack.yml"
 stacks_json_file="${runtime_dir}/stacks.json"
