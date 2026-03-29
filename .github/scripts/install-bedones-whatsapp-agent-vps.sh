@@ -78,31 +78,41 @@ build_server_metadata() {
     '{ server: { providerServerId: $providerServerId, publicIpv4: $publicIpv4, privateIpv4: $privateIpv4, name: $name, serverType: $serverType, location: $location } }'
 }
 
+merge_json_objects() {
+  local left_json="${1:-{}}"
+  local right_json="${2:-{}}"
+
+  printf '%s\n%s\n' "${left_json}" "${right_json}" | jq -s '.[0] * .[1]'
+}
+
 callback() {
   local status="$1"
   local stage="$2"
   local completed_jobs="$3"
   local extra_json="${4:-{}}"
+  local base_payload
   local payload
   local response_file
   local http_status
 
-  payload="$(
+  mkdir -p "${runtime_dir}"
+
+  base_payload="$(
     jq -n \
       --arg workflowId "${WORKFLOW_RECORD_ID}" \
       --arg status "${status}" \
       --arg stage "${stage}" \
       --argjson totalJobs "${job_total}" \
       --argjson completedJobs "${completed_jobs}" \
-      --argjson extra "${extra_json}" \
       '{
         workflowId: $workflowId,
         status: $status,
         stage: $stage,
         totalJobs: $totalJobs,
         completedJobs: $completedJobs
-      } + $extra'
+      }'
   )"
+  payload="$(merge_json_objects "${base_payload}" "${extra_json}")"
   response_file="${runtime_dir}/callback-response-${stage}.json"
 
   log "Callback stage=${stage} status=${status} progress=${completed_jobs}/${job_total} url=${BACKEND_CALLBACK_URL}"
@@ -126,12 +136,17 @@ callback() {
 on_error() {
   local exit_code=$?
   local command="${BASH_COMMAND:-unknown}"
+  local error_json
+  local extra_json
 
   log "Install workflow failed stage=${current_stage} command=${command} exit_code=${exit_code}"
-  callback "failed" "${current_stage}" "${current_completed_jobs}" "$(jq -n \
-    --arg errorMessage "Install workflow failed at stage ${current_stage}: ${command}" \
-    --argjson extra "$(build_server_metadata)" \
-    '$extra + { errorMessage: $errorMessage }')" || true
+  error_json="$(
+    jq -n \
+      --arg errorMessage "Install workflow failed at stage ${current_stage}: ${command}" \
+      '{ errorMessage: $errorMessage }'
+  )"
+  extra_json="$(merge_json_objects "$(build_server_metadata)" "${error_json}")"
+  callback "failed" "${current_stage}" "${current_completed_jobs}" "${extra_json}" || true
   exit "${exit_code}"
 }
 

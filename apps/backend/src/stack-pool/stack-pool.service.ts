@@ -751,6 +751,13 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
       const workflows = await this.prisma.provisioningWorkflowRun.findMany({
         where: {
           currentStage: 'SERVER_INITIALIZING',
+          server: {
+            is: {
+              providerServerId: {
+                not: null,
+              },
+            },
+          },
           status: {
             in: [
               ProvisioningWorkflowStatus.PENDING,
