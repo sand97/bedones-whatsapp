@@ -9,6 +9,7 @@ import {
   InfraStackPoolController,
   StackPoolWorkflowsController,
 } from './stack-pool.controller';
+import { HetznerCloudService } from './hetzner-cloud.service';
 import { StackPoolService } from './stack-pool.service';
 
 @Module({
@@ -19,7 +20,7 @@ import { StackPoolService } from './stack-pool.service';
     forwardRef(() => AuthModule),
   ],
   controllers: [InfraStackPoolController, StackPoolWorkflowsController],
-  providers: [StackPoolService],
+  providers: [StackPoolService, HetznerCloudService],
   exports: [StackPoolService],
 })
 export class StackPoolModule {}

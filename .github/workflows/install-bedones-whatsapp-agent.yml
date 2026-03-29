@@ -1,4 +1,4 @@
-name: Provision Bedones WhatsApp Agent (Compatibility Alias)
+name: Install Bedones WhatsApp Agent
 
 on:
   workflow_dispatch:
@@ -64,7 +64,7 @@ permissions:
   packages: read
 
 jobs:
-  provision:
+  install:
     runs-on:
       - self-hosted
       - linux
@@ -93,11 +93,11 @@ jobs:
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           MINIO_USE_SSL: ${{ vars.MINIO_USE_SSL }}
           PRIMARY_MODEL: ${{ vars.PRIMARY_MODEL }}
-          PUPPETEER_EXECUTABLE_PATH: ${{ vars.PUPPETEER_EXECUTABLE_PATH }}
-          RENDERED_STACK_FILE: ${{ runner.temp }}/bedones-whatsapp-agent-stack.yml
           PRIVATE_IPV4: ${{ inputs.private_ipv4 }}
           PROVIDER_SERVER_ID: ${{ inputs.provider_server_id }}
           PUBLIC_IPV4: ${{ inputs.public_ipv4 }}
+          PUPPETEER_EXECUTABLE_PATH: ${{ vars.PUPPETEER_EXECUTABLE_PATH }}
+          RENDERED_STACK_FILE: ${{ runner.temp }}/bedones-whatsapp-agent-stack.yml
           SERVER_LOCATION: ${{ inputs.location }}
           SERVER_NAME: ${{ inputs.server_name }}
           SERVER_RECORD_ID: ${{ inputs.server_record_id }}

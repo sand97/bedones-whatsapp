@@ -4,9 +4,9 @@
 
 Préparer un provisioning piloté par le backend pour des VPS Hetzner qui hébergent des stacks
 `connector + whatsapp-agent + postgres + qdrant + cropper`, pendant que le backend central reste
-déployé séparément. Le backend ne parle pas directement à Hetzner dans cette itération: il déclenche
-des `workflow_dispatch` GitHub sur un self-hosted runner, puis reçoit un callback de fin de
-déploiement.
+déployé séparément. Le backend parle directement à l’API Hetzner pour créer le VPS et suivre
+l’`actionId`, puis déclenche un `workflow_dispatch` GitHub sur un self-hosted runner uniquement
+quand le serveur est prêt à recevoir la stack.
 
 ## Découpage cible
 
@@ -41,13 +41,17 @@ STACK_POOL_PROVISION_ON_BOOT=true
 STACK_POOL_BOOTSTRAP_VPS_COUNT=2
 STACK_POOL_MIN_FREE_STACKS=4
 STACK_POOL_DEFAULT_STACKS_PER_VPS=2
-STACK_POOL_DEFAULT_SERVER_TYPE=CPX22
-STACK_POOL_DEFAULT_LOCATION=fsn1
+STACK_POOL_DEFAULT_SERVER_TYPE=cpx22
+STACK_POOL_DEFAULT_LOCATION=nbg1
+STACK_POOL_HETZNER_POLL_INTERVAL_MS=5000
+HERZNET_API_KEY=
+HERZNET_SSH_KEY_NAMES=
+STACK_POOL_HETZNER_IMAGE=docker-ce
 STACK_POOL_SERVER_NAME_PREFIX=bedones-wa
 GITHUB_ACTIONS_REPOSITORY=owner/whatsapp-agent
 GITHUB_ACTIONS_TOKEN=
 GITHUB_ACTIONS_REF=main
-GITHUB_PROVISION_WORKFLOW_FILE=provision-bedones-whatsapp-agent.yml
+GITHUB_PROVISION_WORKFLOW_FILE=install-bedones-whatsapp-agent.yml
 GITHUB_RELEASE_WORKFLOW_FILE=release-bedones-whatsapp-agent.yml
 STACK_INFRA_CALLBACK_SECRET=
 ```
@@ -57,12 +61,14 @@ STACK_INFRA_CALLBACK_SECRET=
 Ces valeurs vivent côté GitHub Actions / self-hosted runner:
 
 ```env
-HERZNET_API_KEY=
-HERZNET_SSH_KEY_NAMES=
 STACK_INFRA_CALLBACK_SECRET=
 WHATSAPP_AGENT_IMAGE=ghcr.io/.../bedones-whatsapp-agent:main
 WHATSAPP_CROPPER_IMAGE=ghcr.io/.../bedones-whatsapp-cropper:main
 WHATSAPP_CONNECTOR_IMAGE=ghcr.io/.../bedones-whatsapp-connector:main
+STEP_CA_URL=https://ca-or-ip:9898
+STEP_CA_FINGERPRINT=
+STEP_CA_PROVISIONER_NAME=github-actions
+STEP_CA_PROVISIONER_PASSWORD=
 ```
 
 ## Modèle de données retenu
@@ -86,15 +92,15 @@ stack réservable. On ajoute:
 ## Workflow backend retenu
 
 1. Le backend démarre et vérifie le stock libre.
-2. Si le stock libre est sous le seuil, il déclenche `provision-bedones-whatsapp-agent.yml`.
-3. Le workflow crée un VPS Hetzner, rend la stack depuis
+2. Si le stock libre est sous le seuil, il crée un VPS Hetzner via l’API Cloud.
+3. Le backend poll l’`actionId` Hetzner jusqu’à ce que le serveur soit prêt.
+4. Quand le serveur est prêt, le backend déclenche `install-bedones-whatsapp-agent.yml`.
+5. Le workflow rend la stack depuis
    `.github/stack-templates/bedones-whatsapp-agent/stack.template.yml`, émet les certificats
    `step-ca` et déploie la stack.
-4. Le workflow appelle `POST /stack-pool/workflows/callback`.
-5. Le backend enregistre le VPS, crée les stacks libres, puis vérifie `/health` sur `whatsapp-agent`
-   et `whatsapp-connector`.
-6. Si un utilisateur attendait déjà, le backend lui affecte la première stack disponible et démarre
-   explicitement le connector.
+6. Le workflow appelle `POST /stack-pool/workflows/callback`.
+7. Le backend enregistre les stacks libres, vérifie `/health` sur `whatsapp-agent`
+   et `whatsapp-connector`, puis affecte une stack si un utilisateur attend déjà.
 
 ## Réseau
 

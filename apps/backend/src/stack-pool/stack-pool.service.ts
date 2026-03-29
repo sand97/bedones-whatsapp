@@ -22,6 +22,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnModuleDestroy,
   OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -32,6 +33,7 @@ import * as Sentry from '@sentry/nestjs';
 
 import { AuthGateway } from '../auth/auth.gateway';
 
+import { HetznerCloudService } from './hetzner-cloud.service';
 import {
   type InfraServerContractState,
   ListProvisioningServersDto,
@@ -63,16 +65,19 @@ type ReconcileOptions = {
 };
 
 @Injectable()
-export class StackPoolService implements OnModuleInit {
+export class StackPoolService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StackPoolService.name);
   private reconcilePromise: Promise<void> | null = null;
   private internalHttpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
+  private hetznerPollTimer?: NodeJS.Timeout;
+  private isPollingHetznerActions = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly cryptoService: CryptoService,
     private readonly connectorClientService: ConnectorClientService,
+    private readonly hetznerCloudService: HetznerCloudService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     @Inject(forwardRef(() => AuthGateway))
     private readonly authGateway: AuthGateway,
@@ -93,6 +98,12 @@ export class StackPoolService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    this.hetznerPollTimer = setInterval(() => {
+      void this.pollPendingHetznerActions();
+    }, this.getHetznerPollIntervalMs());
+
+    void this.pollPendingHetznerActions();
+
     if (!this.shouldProvisionOnBoot()) {
       return;
     }
@@ -104,6 +115,12 @@ export class StackPoolService implements OnModuleInit {
         this.captureException('reconcile_on_boot', error);
       });
     }, 500);
+  }
+
+  onModuleDestroy() {
+    if (this.hetznerPollTimer) {
+      clearInterval(this.hetznerPollTimer);
+    }
   }
 
   async getCapacitySummary() {
@@ -404,14 +421,18 @@ export class StackPoolService implements OnModuleInit {
     const serverType = dto.serverType
       ? this.sanitizeServerType(dto.serverType, this.getDefaultServerType())
       : this.getDefaultServerType();
-    const githubWorkflowFile = this.getProvisionWorkflowFile();
+    const installWorkflowFile = this.getProvisionWorkflowFile();
+    const location = this.sanitizeLocation(
+      dto.location ?? this.getDefaultLocation(),
+      this.getDefaultLocation(),
+    );
 
     const runs: ProvisioningWorkflowRun[] = [];
 
     for (let index = 0; index < requestedVpsCount; index += 1) {
       const server = await this.prisma.provisioningServer.create({
         data: {
-          location: dto.location ?? this.getDefaultLocation(),
+          location,
           metadata: {
             requestedPhoneNumber: dto.phoneNumber ?? null,
             requestedVia: dto.reason ?? 'manual',
@@ -426,7 +447,8 @@ export class StackPoolService implements OnModuleInit {
       let workflow = await this.prisma.provisioningWorkflowRun.create({
         data: {
           githubRef: this.getGithubRef(),
-          githubWorkflowFile,
+          githubWorkflowFile: installWorkflowFile,
+          currentStage: 'SERVER_INITIALIZING',
           pairingToken: dto.pairingToken,
           payload: {
             location: server.location,
@@ -434,45 +456,74 @@ export class StackPoolService implements OnModuleInit {
             serverName: server.name,
             serverType: server.serverType,
           },
+          progressPercent: 0,
           requestedByUserId,
           requestedPhoneNumber: dto.phoneNumber,
           requestedStacksPerVps: stacksPerVps,
           requestedVpsCount: 1,
           serverId: server.id,
+          startedAt: new Date(),
+          status: ProvisioningWorkflowStatus.RUNNING,
           targetDeviceType: dto.deviceType,
+          totalJobs: 3,
           type: ProvisioningWorkflowType.PROVISION_CAPACITY,
         },
       });
 
       try {
-        await this.dispatchGithubWorkflow(githubWorkflowFile, {
-          backend_callback_url: this.getWorkflowCallbackUrl(),
-          location: server.location ?? '',
-          requested_phone_number: dto.phoneNumber ?? '',
-          server_name: server.name,
-          server_record_id: server.id,
-          server_type: server.serverType,
-          stacks_per_vps: String(stacksPerVps),
-          target_device_type: dto.deviceType ?? '',
-          workflow_record_id: workflow.id,
+        const createResult = await this.hetznerCloudService.createServer({
+          location: server.location ?? location,
+          name: server.name,
+          serverType: server.serverType,
+          sshKeyNames: this.getHetznerSshKeyNames(),
         });
 
         workflow = await this.prisma.provisioningWorkflowRun.update({
           where: { id: workflow.id },
           data: {
-            startedAt: new Date(),
-            status: ProvisioningWorkflowStatus.DISPATCHED,
+            payload: {
+              ...(this.asObject(workflow.payload) || {}),
+              hetznerActionId: String(createResult.action.id),
+              installWorkflowFile,
+              providerServerId: String(createResult.server.id),
+            },
+            progressPercent: this.scaleServerInitializationProgress(
+              createResult.action.progress ?? 0,
+            ),
           },
         });
 
         await this.prisma.provisioningServer.update({
           where: { id: server.id },
           data: {
+            metadata: {
+              ...(this.asObject(server.metadata) || {}),
+              hetznerActionId: String(createResult.action.id),
+            },
+            privateIpv4:
+              createResult.server.private_net?.[0]?.ip || server.privateIpv4,
+            providerServerId: String(createResult.server.id),
             provisioningStatus: VpsProvisioningStatus.PROVISIONING,
+            publicIpv4:
+              createResult.server.public_net?.ipv4?.ip || server.publicIpv4,
+            publicIpv6:
+              createResult.server.public_net?.ipv6?.ip || server.publicIpv6,
           },
         });
+
+        if (dto.pairingToken) {
+          this.emitProvisioningUpdate(dto.pairingToken, {
+            completedJobs: 0,
+            progress: this.scaleServerInitializationProgress(
+              createResult.action.progress ?? 0,
+            ),
+            stage: 'SERVER_INITIALIZING',
+            status: 'running',
+            workflowId: workflow.id,
+          });
+        }
       } catch (error) {
-        this.captureException('dispatch_provision_workflow', error, {
+        this.captureException('create_hetzner_server', error, {
           serverId: server.id,
           workflowId: workflow.id,
         });
@@ -492,6 +543,20 @@ export class StackPoolService implements OnModuleInit {
             provisioningStatus: VpsProvisioningStatus.ERROR,
           },
         });
+
+        if (dto.pairingToken) {
+          this.emitProvisioningUpdate(dto.pairingToken, {
+            completedJobs: 0,
+            progress: 0,
+            stage: 'SERVER_INITIALIZING',
+            status: 'failed',
+            workflowId: workflow.id,
+          });
+          this.authGateway.emitConnectionError(
+            dto.pairingToken,
+            'Le serveur na pas pu être créé chez Hetzner.',
+          );
+        }
       }
 
       runs.push(workflow);
@@ -649,6 +714,244 @@ export class StackPoolService implements OnModuleInit {
       status: updatedWorkflow.status,
       workflowId: updatedWorkflow.id,
     };
+  }
+
+  private async pollPendingHetznerActions() {
+    if (this.isPollingHetznerActions) {
+      return;
+    }
+
+    this.isPollingHetznerActions = true;
+
+    try {
+      const workflows = await this.prisma.provisioningWorkflowRun.findMany({
+        where: {
+          currentStage: 'SERVER_INITIALIZING',
+          status: {
+            in: [
+              ProvisioningWorkflowStatus.PENDING,
+              ProvisioningWorkflowStatus.RUNNING,
+              ProvisioningWorkflowStatus.DISPATCHED,
+            ],
+          },
+          type: ProvisioningWorkflowType.PROVISION_CAPACITY,
+        },
+        include: {
+          server: true,
+        },
+      });
+
+      for (const workflow of workflows) {
+        await this.advanceServerInitialization(workflow);
+      }
+    } catch (error) {
+      this.captureException('poll_pending_hetzner_actions', error);
+    } finally {
+      this.isPollingHetznerActions = false;
+    }
+  }
+
+  private async advanceServerInitialization(
+    workflow: ProvisioningWorkflowRun & { server: ProvisioningServer | null },
+  ) {
+    if (!workflow.server) {
+      return;
+    }
+
+    const payload = this.asObject(workflow.payload) || {};
+    const actionId = Number.parseInt(`${payload.hetznerActionId ?? ''}`, 10);
+    const providerServerId = Number.parseInt(
+      `${workflow.server.providerServerId ?? payload.providerServerId ?? ''}`,
+      10,
+    );
+
+    if (!Number.isFinite(actionId) || !Number.isFinite(providerServerId)) {
+      return;
+    }
+
+    try {
+      const actionResponse = await this.hetznerCloudService.getAction(actionId);
+      const action = actionResponse.action;
+
+      if (action.status === 'running') {
+        await this.updateServerInitializationProgress(
+          workflow,
+          action.progress ?? 0,
+        );
+        return;
+      }
+
+      if (action.status === 'error') {
+        await this.failServerInitialization(
+          workflow,
+          action.error?.message ||
+            `Hetzner action ${actionId} failed during server creation.`,
+        );
+        return;
+      }
+
+      const serverResponse =
+        await this.hetznerCloudService.getServer(providerServerId);
+      const providerServer = serverResponse.server;
+
+      const updatedServer = await this.prisma.provisioningServer.update({
+        where: { id: workflow.server.id },
+        data: {
+          location:
+            providerServer.datacenter?.location?.name || workflow.server.location,
+          privateIpv4:
+            providerServer.private_net?.[0]?.ip || workflow.server.privateIpv4,
+          providerServerId: String(providerServer.id),
+          provisioningStatus: VpsProvisioningStatus.PROVISIONING,
+          publicIpv4:
+            providerServer.public_net?.ipv4?.ip || workflow.server.publicIpv4,
+          publicIpv6:
+            providerServer.public_net?.ipv6?.ip || workflow.server.publicIpv6,
+          serverType:
+            providerServer.server_type?.name || workflow.server.serverType,
+        },
+      });
+
+      await this.dispatchInstallWorkflowForServer(workflow, updatedServer);
+    } catch (error) {
+      await this.failServerInitialization(
+        workflow,
+        this.stringifyError(error),
+        error,
+      );
+    }
+  }
+
+  private async updateServerInitializationProgress(
+    workflow: ProvisioningWorkflowRun,
+    providerProgress: number,
+  ) {
+    const progressPercent =
+      this.scaleServerInitializationProgress(providerProgress);
+
+    const updatedWorkflow = await this.prisma.provisioningWorkflowRun.update({
+      where: { id: workflow.id },
+      data: {
+        completedJobs: 0,
+        currentStage: 'SERVER_INITIALIZING',
+        progressPercent,
+        startedAt: workflow.startedAt ?? new Date(),
+        status: ProvisioningWorkflowStatus.RUNNING,
+        totalJobs: 3,
+      },
+    });
+
+    if (updatedWorkflow.pairingToken) {
+      this.emitProvisioningUpdate(updatedWorkflow.pairingToken, {
+        completedJobs: 0,
+        progress: progressPercent,
+        stage: 'SERVER_INITIALIZING',
+        status: 'running',
+        workflowId: updatedWorkflow.id,
+      });
+    }
+  }
+
+  private async dispatchInstallWorkflowForServer(
+    workflow: ProvisioningWorkflowRun,
+    server: ProvisioningServer,
+  ) {
+    const payload = this.asObject(workflow.payload) || {};
+
+    try {
+      await this.dispatchGithubWorkflow(this.getProvisionWorkflowFile(), {
+        backend_callback_url: this.getWorkflowCallbackUrl(),
+        location: server.location ?? this.getDefaultLocation(),
+        private_ipv4: server.privateIpv4 ?? '',
+        provider_server_id: server.providerServerId ?? '',
+        public_ipv4: server.publicIpv4 ?? '',
+        requested_phone_number: workflow.requestedPhoneNumber ?? '',
+        server_name: server.name,
+        server_record_id: server.id,
+        server_type: server.serverType,
+        stacks_per_vps: String(
+          server.plannedStacksCount || workflow.requestedStacksPerVps,
+        ),
+        target_device_type: workflow.targetDeviceType ?? '',
+        workflow_record_id: workflow.id,
+      });
+
+      const updatedWorkflow = await this.prisma.provisioningWorkflowRun.update({
+        where: { id: workflow.id },
+        data: {
+          completedJobs: 1,
+          currentStage: 'STACK_INSTALLING',
+          payload: {
+            ...payload,
+            installWorkflowDispatchedAt: new Date().toISOString(),
+          },
+          progressPercent: 33,
+          status: ProvisioningWorkflowStatus.DISPATCHED,
+        },
+      });
+
+      if (updatedWorkflow.pairingToken) {
+        this.emitProvisioningUpdate(updatedWorkflow.pairingToken, {
+          completedJobs: 1,
+          progress: 33,
+          stage: 'STACK_INSTALLING',
+          status: 'running',
+          workflowId: updatedWorkflow.id,
+        });
+      }
+    } catch (error) {
+      await this.failServerInitialization(
+        { ...workflow, server },
+        `GitHub install workflow dispatch failed: ${this.stringifyError(error)}`,
+        error,
+      );
+    }
+  }
+
+  private async failServerInitialization(
+    workflow: ProvisioningWorkflowRun & { server: ProvisioningServer | null },
+    errorMessage: string,
+    error?: unknown,
+  ) {
+    if (error) {
+      this.captureException('server_initialization_failed', error, {
+        serverId: workflow.serverId,
+        workflowId: workflow.id,
+      });
+    } else {
+      this.logger.error(
+        `[server_initialization_failed] workflow=${workflow.id} ${errorMessage}`,
+      );
+    }
+
+    await this.prisma.provisioningWorkflowRun.update({
+      where: { id: workflow.id },
+      data: {
+        completedAt: new Date(),
+        errorMessage,
+        status: ProvisioningWorkflowStatus.FAILED,
+      },
+    });
+
+    if (workflow.serverId) {
+      await this.prisma.provisioningServer.update({
+        where: { id: workflow.serverId },
+        data: {
+          provisioningStatus: VpsProvisioningStatus.ERROR,
+        },
+      });
+    }
+
+    if (workflow.pairingToken) {
+      this.emitProvisioningUpdate(workflow.pairingToken, {
+        completedJobs: 0,
+        progress: workflow.progressPercent,
+        stage: 'SERVER_INITIALIZING',
+        status: 'failed',
+        workflowId: workflow.id,
+      });
+      this.authGateway.emitConnectionError(workflow.pairingToken, errorMessage);
+    }
   }
 
   private buildProvisioningServersWhere(
@@ -1409,8 +1712,8 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private getDefaultLocation() {
-    return this.configService.get<string>(
-      'STACK_POOL_DEFAULT_LOCATION',
+    return this.sanitizeLocation(
+      this.configService.get<string>('STACK_POOL_DEFAULT_LOCATION', 'nbg1'),
       'nbg1',
     );
   }
@@ -1427,7 +1730,7 @@ export class StackPoolService implements OnModuleInit {
   private getProvisionWorkflowFile() {
     return this.configService.get<string>(
       'GITHUB_PROVISION_WORKFLOW_FILE',
-      'provision-bedones-whatsapp-agent.yml',
+      'install-bedones-whatsapp-agent.yml',
     );
   }
 
@@ -1475,6 +1778,36 @@ export class StackPoolService implements OnModuleInit {
   private sanitizeServerType(value: string | undefined, fallback: string) {
     const sanitized = (value ?? fallback).trim().toLowerCase();
     return sanitized || fallback;
+  }
+
+  private sanitizeLocation(value: string | undefined, fallback: string) {
+    const sanitized = (value ?? fallback).trim().toLowerCase();
+    return sanitized || fallback;
+  }
+
+  private getHetznerSshKeyNames() {
+    const rawValue = this.configService.get<string>('HERZNET_SSH_KEY_NAMES', '');
+    const keys = rawValue
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (keys.length === 0) {
+      throw new Error(
+        'HERZNET_SSH_KEY_NAMES is required to provision Hetzner servers.',
+      );
+    }
+
+    return keys;
+  }
+
+  private getHetznerPollIntervalMs() {
+    return this.getNumberConfig('STACK_POOL_HETZNER_POLL_INTERVAL_MS', 5000);
+  }
+
+  private scaleServerInitializationProgress(providerProgress: number) {
+    const normalized = Math.max(0, Math.min(100, providerProgress));
+    return Math.max(0, Math.min(32, Math.round((normalized / 100) * 32)));
   }
 
   private buildReservationExpiry() {
