@@ -18,7 +18,7 @@ on:
       server_type:
         description: Hetzner server type
         required: false
-        default: CPX21
+        default: cpx22
         type: string
       location:
         description: Hetzner location

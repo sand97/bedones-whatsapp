@@ -5,7 +5,7 @@ set -euo pipefail
 WORKFLOW_RECORD_ID="${WORKFLOW_RECORD_ID:?WORKFLOW_RECORD_ID is required}"
 SERVER_RECORD_ID="${SERVER_RECORD_ID:?SERVER_RECORD_ID is required}"
 SERVER_NAME="${SERVER_NAME:?SERVER_NAME is required}"
-SERVER_TYPE="${SERVER_TYPE:-CPX21}"
+SERVER_TYPE="${SERVER_TYPE:-cpx22}"
 SERVER_LOCATION="${SERVER_LOCATION:-fsn1}"
 STACKS_PER_VPS="${STACKS_PER_VPS:-2}"
 BACKEND_CALLBACK_URL="${BACKEND_CALLBACK_URL:?BACKEND_CALLBACK_URL is required}"
@@ -42,7 +42,21 @@ sanitize_server_name() {
   printf '%s' "${value}"
 }
 
+sanitize_server_type() {
+  local value="$1"
+
+  value="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]' | xargs)"
+
+  if [[ -z "${value}" ]]; then
+    echo "SERVER_TYPE is empty after sanitization" >&2
+    exit 1
+  fi
+
+  printf '%s' "${value}"
+}
+
 SERVER_NAME="$(sanitize_server_name "${SERVER_NAME}")"
+SERVER_TYPE="$(sanitize_server_type "${SERVER_TYPE}")"
 
 runtime_dir="${RUNNER_TEMP:-/tmp}/bedones-whatsapp-agent-runtime/${SERVER_NAME}"
 rendered_stack_file="${runtime_dir}/stack.yml"
@@ -286,13 +300,23 @@ callback "running" "SERVER_INITIALIZING" 0
 
 log "Creating Hetzner server name=${SERVER_NAME} type=${SERVER_TYPE} location=${SERVER_LOCATION}"
 log "Hetzner create payload=${create_payload}"
-create_response="$(
-  curl -fsS -X POST \
+create_response_file="${runtime_dir}/hetzner-create-response.json"
+create_status="$(
+  curl -sS -o "${create_response_file}" -w '%{http_code}' -X POST \
     -H "Authorization: Bearer ${HERZNET_API_KEY}" \
     -H "Content-Type: application/json" \
     "${api_url}/servers" \
     -d "${create_payload}"
 )"
+
+log "Hetzner create response status=${create_status} body=$(cat "${create_response_file}")"
+
+if [[ ! "${create_status}" =~ ^2 ]]; then
+  log "Hetzner server creation failed status=${create_status}"
+  exit 1
+fi
+
+create_response="$(cat "${create_response_file}")"
 
 log "Hetzner create response=${create_response}"
 

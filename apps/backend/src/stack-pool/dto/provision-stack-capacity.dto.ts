@@ -26,7 +26,7 @@ export class ProvisionStackCapacityDto extends InfraAdminTokenDto {
 
   @ApiPropertyOptional({
     description: 'Type de serveur Hetzner',
-    example: 'CPX21',
+    example: 'cpx22',
   })
   @IsOptional()
   @IsString()

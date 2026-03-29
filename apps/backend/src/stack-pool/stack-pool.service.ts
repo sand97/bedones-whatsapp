@@ -401,6 +401,9 @@ export class StackPoolService implements OnModuleInit {
   ) {
     const requestedVpsCount = dto.vpsCount ?? 1;
     const stacksPerVps = dto.stacksPerVps ?? this.getDefaultStacksPerVps();
+    const serverType = dto.serverType
+      ? this.sanitizeServerType(dto.serverType, this.getDefaultServerType())
+      : this.getDefaultServerType();
     const githubWorkflowFile = this.getProvisionWorkflowFile();
 
     const runs: ProvisioningWorkflowRun[] = [];
@@ -416,7 +419,7 @@ export class StackPoolService implements OnModuleInit {
           name: this.buildServerName(),
           plannedStacksCount: stacksPerVps,
           provisioningStatus: VpsProvisioningStatus.REQUESTED,
-          serverType: dto.serverType ?? this.getDefaultServerType(),
+          serverType,
         },
       });
 
@@ -1396,9 +1399,12 @@ export class StackPoolService implements OnModuleInit {
   }
 
   private getDefaultServerType() {
-    return this.configService.get<string>(
-      'STACK_POOL_DEFAULT_SERVER_TYPE',
-      'CPX21',
+    return this.sanitizeServerType(
+      this.configService.get<string>(
+        'STACK_POOL_DEFAULT_SERVER_TYPE',
+        'cpx22',
+      ),
+      'cpx22',
     );
   }
 
@@ -1463,6 +1469,11 @@ export class StackPoolService implements OnModuleInit {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
 
+    return sanitized || fallback;
+  }
+
+  private sanitizeServerType(value: string | undefined, fallback: string) {
+    const sanitized = (value ?? fallback).trim().toLowerCase();
     return sanitized || fallback;
   }
 
