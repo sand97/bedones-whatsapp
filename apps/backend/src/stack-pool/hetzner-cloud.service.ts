@@ -78,7 +78,7 @@ export class HetznerCloudService {
     };
 
     this.logger.log(
-      `Creating Hetzner server name=${input.name} type=${input.serverType} location=${input.location}`,
+      `[hetzner_create_server] name=${input.name} type=${input.serverType} location=${input.location} payload=${JSON.stringify(payload)}`,
     );
 
     return this.request<CreateHetznerServerResponse>('/servers', {
@@ -91,14 +91,17 @@ export class HetznerCloudService {
   }
 
   async getAction(actionId: number) {
+    this.logger.log(`[hetzner_get_action] action_id=${actionId}`);
     return this.request<GetHetznerActionResponse>(`/actions/${actionId}`);
   }
 
   async getServer(serverId: number) {
+    this.logger.log(`[hetzner_get_server] server_id=${serverId}`);
     return this.request<GetHetznerServerResponse>(`/servers/${serverId}`);
   }
 
   async deleteServer(serverId: number) {
+    this.logger.warn(`[hetzner_delete_server] server_id=${serverId}`);
     return this.request(`/servers/${serverId}`, {
       method: 'DELETE',
     });
@@ -126,6 +129,13 @@ export class HetznerCloudService {
 
   private async request<T = unknown>(path: string, init?: RequestInit) {
     const url = `${this.getApiBaseUrl()}${path}`;
+    const method = init?.method || 'GET';
+    const requestBody = this.stringifyBody(init?.body);
+
+    this.logger.log(
+      `[hetzner_request] method=${method} url=${url} body=${requestBody}`,
+    );
+
     const response = await fetch(url, {
       ...init,
       headers: {
@@ -138,9 +148,13 @@ export class HetznerCloudService {
     const responseText = await response.text();
     const responseBody = responseText ? this.safeParseJson(responseText) : null;
 
+    this.logger.log(
+      `[hetzner_response] method=${method} url=${url} status=${response.status} body=${responseText || '<empty>'}`,
+    );
+
     if (!response.ok) {
       throw new Error(
-        `Hetzner API ${init?.method || 'GET'} ${path} failed (${response.status}): ${responseText}`,
+        `Hetzner API ${method} ${path} failed (${response.status}): ${responseText}`,
       );
     }
 
@@ -153,5 +167,17 @@ export class HetznerCloudService {
     } catch {
       return text;
     }
+  }
+
+  private stringifyBody(body: RequestInit['body']) {
+    if (!body) {
+      return '<empty>';
+    }
+
+    if (typeof body === 'string') {
+      return body;
+    }
+
+    return '<non-string-body>';
   }
 }

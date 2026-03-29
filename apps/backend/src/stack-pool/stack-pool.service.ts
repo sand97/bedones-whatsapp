@@ -448,6 +448,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      this.logger.log(
+        `[provision_capacity] server_record_created workflow_index=${index + 1}/${requestedVpsCount} server=${server.id} name=${server.name} planned_stacks=${server.plannedStacksCount} status=${server.provisioningStatus}`,
+      );
+
       let workflow = await this.prisma.provisioningWorkflowRun.create({
         data: {
           githubRef: this.getGithubRef(),
@@ -473,6 +477,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
           type: ProvisioningWorkflowType.PROVISION_CAPACITY,
         },
       });
+
+      this.logger.log(
+        `[provision_capacity] workflow_record_created workflow=${workflow.id} server=${server.id} stage=${workflow.currentStage} status=${workflow.status} github_workflow=${workflow.githubWorkflowFile}`,
+      );
 
       try {
         this.logger.log(
@@ -535,6 +543,9 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
           });
         }
       } catch (error) {
+        this.logger.error(
+          `[provision_capacity] create_hetzner_server_failed workflow=${workflow.id} server=${server.id} error=${this.stringifyError(error)}`,
+        );
         this.captureException('create_hetzner_server', error, {
           serverId: server.id,
           workflowId: workflow.id,
@@ -730,6 +741,7 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
 
   private async pollPendingHetznerActions() {
     if (this.isPollingHetznerActions) {
+      this.logger.warn('[poll_pending_hetzner_actions] skipped because a poll is already running');
       return;
     }
 
@@ -753,10 +765,17 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      this.logger.log(
+        `[poll_pending_hetzner_actions] pending_workflows=${workflows.length}`,
+      );
+
       for (const workflow of workflows) {
         await this.advanceServerInitialization(workflow);
       }
     } catch (error) {
+      this.logger.error(
+        `[poll_pending_hetzner_actions] failed error=${this.stringifyError(error)}`,
+      );
       this.captureException('poll_pending_hetzner_actions', error);
     } finally {
       this.isPollingHetznerActions = false;
@@ -778,6 +797,9 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (!Number.isFinite(actionId) || !Number.isFinite(providerServerId)) {
+      this.logger.warn(
+        `[server_initialization] missing_identifiers workflow=${workflow.id} server=${workflow.server.id} action_id=${payload.hetznerActionId ?? '<missing>'} provider_server_id=${workflow.server.providerServerId ?? payload.providerServerId ?? '<missing>'}`,
+      );
       return;
     }
 
@@ -842,6 +864,9 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
 
       await this.dispatchInstallWorkflowForServer(workflow, updatedServer);
     } catch (error) {
+      this.logger.error(
+        `[server_initialization] failed workflow=${workflow.id} server=${workflow.server.id} error=${this.stringifyError(error)}`,
+      );
       await this.failServerInitialization(
         workflow,
         this.stringifyError(error),
@@ -856,6 +881,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
   ) {
     const progressPercent =
       this.scaleServerInitializationProgress(providerProgress);
+
+    this.logger.log(
+      `[server_initialization_progress] workflow=${workflow.id} provider_progress=${providerProgress} scaled_progress=${progressPercent}`,
+    );
 
     const updatedWorkflow = await this.prisma.provisioningWorkflowRun.update({
       where: { id: workflow.id },
@@ -976,6 +1005,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
           provisioningStatus: VpsProvisioningStatus.ERROR,
         },
       });
+
+      this.logger.error(
+        `[server_initialization_failed] server_marked_error workflow=${workflow.id} server=${workflow.serverId} message=${errorMessage}`,
+      );
     }
 
     if (workflow.pairingToken) {
