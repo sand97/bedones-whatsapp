@@ -332,21 +332,18 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
   agent_port=$((3100 + slot))
   connector_port=$((3200 + slot))
 
-  log "Healthcheck agent stack=${stack_name} url=https://${PUBLIC_IPV4}:${agent_port}/health"
-  ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "\
-    curl -fsS -k \
-      --cert /root/bedones-whatsapp-agent/certs/${stack_name}_agent/client.crt \
-      --key /root/bedones-whatsapp-agent/certs/${stack_name}_agent/client.key \
-      --resolve ${PUBLIC_IPV4}:${agent_port}:127.0.0.1 \
-      https://${PUBLIC_IPV4}:${agent_port}/health >/dev/null"
+  local compose_file="/root/bedones-whatsapp-agent/stack.yml"
+  local compose_project="bedones-whatsapp-agent"
 
-  log "Healthcheck connector stack=${stack_name} url=https://${PUBLIC_IPV4}:${connector_port}/health"
+  log "Healthcheck agent stack=${stack_name} via docker exec"
   ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "\
-    curl -fsS -k \
-      --cert /root/bedones-whatsapp-agent/certs/${stack_name}_connector/client.crt \
-      --key /root/bedones-whatsapp-agent/certs/${stack_name}_connector/client.key \
-      --resolve ${PUBLIC_IPV4}:${connector_port}:127.0.0.1 \
-      https://${PUBLIC_IPV4}:${connector_port}/health >/dev/null"
+    docker compose -f ${compose_file} -p ${compose_project} \
+      exec -T ${stack_name}_agent curl -fsS http://127.0.0.1:${agent_port}/health >/dev/null"
+
+  log "Healthcheck connector stack=${stack_name} via docker exec"
+  ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "\
+    docker compose -f ${compose_file} -p ${compose_project} \
+      exec -T ${stack_name}_connector curl -fsS http://127.0.0.1:${connector_port}/health >/dev/null"
 
   log "Stack healthy stack=${stack_name} agent_port=${agent_port} connector_port=${connector_port}"
 
