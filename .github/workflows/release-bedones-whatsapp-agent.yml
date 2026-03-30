@@ -53,6 +53,7 @@ jobs:
         run: bash .github/scripts/ensure-provisioning-runner-deps.sh
 
       - name: Release stack
+        id: release
         shell: bash
         env:
           BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
@@ -65,3 +66,31 @@ jobs:
           STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
           WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
         run: bash .github/scripts/release-bedones-whatsapp-agent-vps.sh
+
+      - name: Notify backend on failure
+        if: always() && !cancelled() && steps.release.outcome == 'failure'
+        shell: bash
+        env:
+          BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
+          STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
+          WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
+          SERVER_NAME: ${{ inputs.server_name }}
+        run: |
+          payload="$(jq -n \
+            --arg workflowId "${WORKFLOW_RECORD_ID}" \
+            --arg errorMessage "Release workflow failed for server ${SERVER_NAME}" \
+            '{
+              "workflowId": $workflowId,
+              "status": "failed",
+              "stage": "STACK_RELEASING",
+              "totalJobs": 1,
+              "completedJobs": 0,
+              "errorMessage": $errorMessage
+            }')"
+
+          echo "Sending failure callback to ${BACKEND_CALLBACK_URL}"
+          curl -sS -X POST "${BACKEND_CALLBACK_URL}" \
+            -H "Content-Type: application/json" \
+            -H "x-infra-callback-secret: ${STACK_INFRA_CALLBACK_SECRET}" \
+            --data-binary "${payload}" || echo "WARNING: failure callback to backend failed"
+

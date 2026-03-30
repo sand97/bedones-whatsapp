@@ -127,24 +127,6 @@ callback() {
   fi
 }
 
-on_error() {
-  local exit_code=$?
-  local command="${BASH_COMMAND:-unknown}"
-  local error_json
-  local extra_json
-
-  log "Install workflow failed stage=${current_stage} command=${command} exit_code=${exit_code}"
-  error_json="$(
-    jq -n \
-      --arg errorMessage "Install workflow failed at stage ${current_stage}: ${command}" \
-      '{ "errorMessage": $errorMessage }'
-  )"
-  extra_json="$(merge_json_objects "$(build_server_metadata)" "${error_json}")"
-  callback "failed" "${current_stage}" "${current_completed_jobs}" "${extra_json}" || true
-  exit "${exit_code}"
-}
-
-trap on_error ERR
 
 require_step_cli() {
   if ! command -v step >/dev/null 2>&1; then

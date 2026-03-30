@@ -728,6 +728,15 @@ export class StackPoolService implements OnModuleInit {
       await this.finalizeProvisionedUserSession(updatedWorkflow, server);
     }
 
+    // On provisioning failure, clean up the Hetzner server if no stacks exist
+    if (
+      (dto.status === 'failed' || dto.status === 'cancelled') &&
+      updatedWorkflow.type === ProvisioningWorkflowType.PROVISION_CAPACITY &&
+      server
+    ) {
+      await this.cleanupFailedServer(server);
+    }
+
     return {
       progressPercent,
       status: updatedWorkflow.status,
@@ -1079,6 +1088,11 @@ export class StackPoolService implements OnModuleInit {
       this.logger.error(
         `[server_initialization_failed] server_status_updated workflow=${workflow.id} server=${workflow.serverId} status=${serverStatus} message=${errorMessage}`,
       );
+
+      // Clean up the Hetzner VPS if no stacks were provisioned on it
+      if (workflow.server) {
+        await this.cleanupFailedServer(workflow.server);
+      }
     }
 
     if (workflow.pairingToken) {
@@ -1090,6 +1104,57 @@ export class StackPoolService implements OnModuleInit {
         workflowId: workflow.id,
       });
       this.authGateway.emitConnectionError(workflow.pairingToken, errorMessage);
+    }
+  }
+
+  /**
+   * Delete the Hetzner VPS if no stacks were ever successfully provisioned on it.
+   * Called when a provisioning workflow fails.
+   */
+  private async cleanupFailedServer(server: ProvisioningServer): Promise<void> {
+    if (!server.providerServerId) {
+      return;
+    }
+
+    const stackCount = await this.prisma.whatsAppAgent.count({
+      where: { serverId: server.id },
+    });
+
+    if (stackCount > 0) {
+      this.logger.log(
+        `[cleanup_failed_server] skipped server=${server.id} provider_server_id=${server.providerServerId} stacks_count=${stackCount}`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      `[cleanup_failed_server] deleting Hetzner VPS server=${server.id} provider_server_id=${server.providerServerId} (no stacks provisioned)`,
+    );
+
+    try {
+      await this.hetznerCloudService.deleteServer(
+        Number.parseInt(server.providerServerId, 10),
+      );
+
+      await this.prisma.provisioningServer.update({
+        where: { id: server.id },
+        data: {
+          provisioningStatus: VpsProvisioningStatus.RELEASED,
+          releasedAt: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `[cleanup_failed_server] deleted server=${server.id} provider_server_id=${server.providerServerId}`,
+      );
+    } catch (cleanupError) {
+      this.logger.error(
+        `[cleanup_failed_server] failed to delete Hetzner VPS server=${server.id} provider_server_id=${server.providerServerId} error=${this.stringifyError(cleanupError)}`,
+      );
+      this.captureException('cleanup_failed_server', cleanupError, {
+        providerServerId: server.providerServerId,
+        serverId: server.id,
+      });
     }
   }
 

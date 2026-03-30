@@ -78,6 +78,7 @@ jobs:
         run: bash .github/scripts/ensure-provisioning-runner-deps.sh --with-step
 
       - name: Install stack on existing VPS
+        id: install
         shell: bash
         env:
           AGENT_INTERNAL_JWT_SECRET: ${{ secrets.AGENT_INTERNAL_JWT_SECRET }}
@@ -120,3 +121,52 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           XAI_MODEL: ${{ vars.XAI_MODEL }}
         run: bash .github/scripts/install-bedones-whatsapp-agent-vps.sh
+
+      - name: Notify backend on failure
+        if: always() && !cancelled() && steps.install.outcome == 'failure'
+        shell: bash
+        env:
+          BACKEND_CALLBACK_URL: ${{ inputs.backend_callback_url }}
+          STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
+          WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
+          SERVER_NAME: ${{ inputs.server_name }}
+          SERVER_TYPE: ${{ inputs.server_type }}
+          SERVER_LOCATION: ${{ inputs.location }}
+          PROVIDER_SERVER_ID: ${{ inputs.provider_server_id }}
+          PUBLIC_IPV4: ${{ inputs.public_ipv4 }}
+          PRIVATE_IPV4: ${{ inputs.private_ipv4 }}
+        run: |
+          payload="$(jq -n \
+            --arg workflowId "${WORKFLOW_RECORD_ID}" \
+            --arg errorMessage "Install workflow failed for server ${SERVER_NAME}" \
+            --arg providerServerId "${PROVIDER_SERVER_ID}" \
+            --arg publicIpv4 "${PUBLIC_IPV4}" \
+            --arg privateIpv4 "${PRIVATE_IPV4:-}" \
+            --arg name "${SERVER_NAME}" \
+            --arg serverType "${SERVER_TYPE}" \
+            --arg location "${SERVER_LOCATION}" \
+            '{
+              "workflowId": $workflowId,
+              "status": "failed",
+              "stage": "STACK_INSTALLING",
+              "totalJobs": 3,
+              "completedJobs": 0,
+              "errorMessage": $errorMessage,
+              "server": {
+                "providerServerId": $providerServerId,
+                "publicIpv4": $publicIpv4,
+                "privateIpv4": $privateIpv4,
+                "name": $name,
+                "serverType": $serverType,
+                "location": $location
+              }
+            }')"
+
+          echo "Sending failure callback to ${BACKEND_CALLBACK_URL}"
+          echo "Payload: ${payload}"
+
+          curl -sS -X POST "${BACKEND_CALLBACK_URL}" \
+            -H "Content-Type: application/json" \
+            -H "x-infra-callback-secret: ${STACK_INFRA_CALLBACK_SECRET}" \
+            --data-binary "${payload}" || echo "WARNING: failure callback to backend failed"
+
