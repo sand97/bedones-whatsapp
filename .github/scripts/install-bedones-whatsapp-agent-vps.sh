@@ -222,7 +222,7 @@ prepare_runtime_assets() {
     "${certs_dir}/shared/server.crt" \
     "${certs_dir}/shared/server.key" \
     --san "${PUBLIC_IPV4}" \
-    --not-after 720h
+    --not-after 24h
 
   for slot in $(seq 1 "${STACKS_PER_VPS}"); do
     local stack_name="${SERVER_NAME}-s${slot}"
@@ -238,13 +238,13 @@ prepare_runtime_assets() {
       "agent:${stack_label}" \
       "${certs_dir}/${stack_name}_agent/client.crt" \
       "${certs_dir}/${stack_name}_agent/client.key" \
-      --not-after 720h
+      --not-after 24h
 
     issue_certificate \
       "connector:${stack_label}" \
       "${certs_dir}/${stack_name}_connector/client.crt" \
       "${certs_dir}/${stack_name}_connector/client.key" \
-      --not-after 720h
+      --not-after 24h
 
     write_caddyfile "${stack_name}" "${agent_port}" "${connector_port}"
     log "Prepared stack assets stack=${stack_name} agent_port=${agent_port} connector_port=${connector_port}"
