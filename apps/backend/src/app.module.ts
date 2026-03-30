@@ -6,9 +6,10 @@ import { MigrationModule } from '@app/migration/migration.module';
 import { PageScriptModule } from '@app/page-scripts';
 import { PrismaModule } from '@app/prisma/prisma.module';
 import KeyvRedis from '@keyv/redis';
+import { BullModule } from '@nestjs/bull';
 import { CacheModule } from '@nestjs/cache-manager';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 
@@ -44,6 +45,20 @@ import { WhatsAppAgentModule } from './whatsapp-agent/whatsapp-agent.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [aiConfig],
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        redis: configService.get<string>('REDIS_URL'),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+        },
+      }),
     }),
     CacheModule.register({
       isGlobal: true,

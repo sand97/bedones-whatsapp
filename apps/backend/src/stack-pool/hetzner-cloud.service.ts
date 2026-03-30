@@ -1,6 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export class HetznerCloudApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly method: string,
+    readonly path: string,
+    readonly code?: string,
+    readonly responseBody?: unknown,
+  ) {
+    super(message);
+  }
+}
+
 type HetznerActionStatus = 'running' | 'success' | 'error';
 
 type HetznerAction = {
@@ -153,8 +166,24 @@ export class HetznerCloudService {
     );
 
     if (!response.ok) {
-      throw new Error(
+      const code =
+        typeof responseBody === 'object' &&
+        responseBody !== null &&
+        'error' in responseBody &&
+        typeof responseBody.error === 'object' &&
+        responseBody.error !== null &&
+        'code' in responseBody.error &&
+        typeof responseBody.error.code === 'string'
+          ? responseBody.error.code
+          : undefined;
+
+      throw new HetznerCloudApiError(
         `Hetzner API ${method} ${path} failed (${response.status}): ${responseText}`,
+        response.status,
+        method,
+        path,
+        code,
+        responseBody,
       );
     }
 

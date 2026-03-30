@@ -1,5 +1,4 @@
 import * as crypto from 'crypto';
-import axios from 'axios';
 
 import { CryptoService } from '@app/common/crypto.service';
 import { createHttpsAgentFromConfig } from '@app/common/utils/mtls.util';
@@ -22,7 +21,6 @@ import {
   Inject,
   Injectable,
   Logger,
-  OnModuleDestroy,
   OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -30,10 +28,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
+import axios from 'axios';
 
 import { AuthGateway } from '../auth/auth.gateway';
 
-import { HetznerCloudService } from './hetzner-cloud.service';
 import {
   type InfraServerContractState,
   ListProvisioningServersDto,
@@ -41,6 +39,10 @@ import {
 import { ProvisionStackCapacityDto } from './dto/provision-stack-capacity.dto';
 import { ReleaseStackDto } from './dto/release-stack.dto';
 import { WorkflowCallbackDto } from './dto/workflow-callback.dto';
+import {
+  HetznerCloudApiError,
+  HetznerCloudService,
+} from './hetzner-cloud.service';
 
 type DeviceType = 'mobile' | 'desktop';
 
@@ -65,12 +67,10 @@ type ReconcileOptions = {
 };
 
 @Injectable()
-export class StackPoolService implements OnModuleInit, OnModuleDestroy {
+export class StackPoolService implements OnModuleInit {
   private readonly logger = new Logger(StackPoolService.name);
   private reconcilePromise: Promise<void> | null = null;
   private internalHttpsAgent?: ReturnType<typeof createHttpsAgentFromConfig>;
-  private hetznerPollTimer?: NodeJS.Timeout;
-  private isPollingHetznerActions = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -98,12 +98,6 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.hetznerPollTimer = setInterval(() => {
-      void this.pollPendingHetznerActions();
-    }, this.getHetznerPollIntervalMs());
-
-    void this.pollPendingHetznerActions();
-
     if (!this.shouldProvisionOnBoot()) {
       return;
     }
@@ -115,12 +109,6 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         this.captureException('reconcile_on_boot', error);
       });
     }, 500);
-  }
-
-  onModuleDestroy() {
-    if (this.hetznerPollTimer) {
-      clearInterval(this.hetznerPollTimer);
-    }
   }
 
   async getCapacitySummary() {
@@ -739,14 +727,7 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async pollPendingHetznerActions() {
-    if (this.isPollingHetznerActions) {
-      this.logger.warn('[poll_pending_hetzner_actions] skipped because a poll is already running');
-      return;
-    }
-
-    this.isPollingHetznerActions = true;
-
+  async processPendingHetznerInitializations() {
     try {
       const workflows = await this.prisma.provisioningWorkflowRun.findMany({
         where: {
@@ -772,9 +753,11 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      this.logger.log(
-        `[poll_pending_hetzner_actions] pending_workflows=${workflows.length}`,
-      );
+      if (workflows.length > 0) {
+        this.logger.log(
+          `[poll_pending_hetzner_actions] pending_hetzner_initializations=${workflows.length}`,
+        );
+      }
 
       for (const workflow of workflows) {
         await this.advanceServerInitialization(workflow);
@@ -784,8 +767,6 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         `[poll_pending_hetzner_actions] failed error=${this.stringifyError(error)}`,
       );
       this.captureException('poll_pending_hetzner_actions', error);
-    } finally {
-      this.isPollingHetznerActions = false;
     }
   }
 
@@ -843,7 +824,8 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
         where: { id: workflow.server.id },
         data: {
           location:
-            providerServer.datacenter?.location?.name || workflow.server.location,
+            providerServer.datacenter?.location?.name ||
+            workflow.server.location,
           privateIpv4:
             providerServer.private_net?.[0]?.ip || workflow.server.privateIpv4,
           providerServerId: String(providerServer.id),
@@ -871,6 +853,15 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
 
       await this.dispatchInstallWorkflowForServer(workflow, updatedServer);
     } catch (error) {
+      if (this.isHetznerResourceMissing(error)) {
+        await this.markServerDeletedDuringInitialization(
+          workflow,
+          providerServerId,
+          error,
+        );
+        return;
+      }
+
       this.logger.error(
         `[server_initialization] failed workflow=${workflow.id} server=${workflow.server.id} error=${this.stringifyError(error)}`,
       );
@@ -984,6 +975,7 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
     workflow: ProvisioningWorkflowRun & { server: ProvisioningServer | null },
     errorMessage: string,
     error?: unknown,
+    serverStatus: VpsProvisioningStatus = VpsProvisioningStatus.ERROR,
   ) {
     if (error) {
       this.captureException('server_initialization_failed', error, {
@@ -1009,12 +1001,12 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.provisioningServer.update({
         where: { id: workflow.serverId },
         data: {
-          provisioningStatus: VpsProvisioningStatus.ERROR,
+          provisioningStatus: serverStatus,
         },
       });
 
       this.logger.error(
-        `[server_initialization_failed] server_marked_error workflow=${workflow.id} server=${workflow.serverId} message=${errorMessage}`,
+        `[server_initialization_failed] server_status_updated workflow=${workflow.id} server=${workflow.serverId} status=${serverStatus} message=${errorMessage}`,
       );
     }
 
@@ -1656,22 +1648,19 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
       `[dispatch_github_workflow] workflow_file=${workflowFile} ref=${this.getGithubRef()} repository=${repository} url=${apiUrl} inputs=${JSON.stringify(loggedInputs)}`,
     );
 
-    const response = await fetch(
-      apiUrl,
-      {
-        method: 'POST',
-        headers: {
-          Accept: 'application/vnd.github+json',
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        body: JSON.stringify({
-          inputs,
-          ref: this.getGithubRef(),
-        }),
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
       },
-    );
+      body: JSON.stringify({
+        inputs,
+        ref: this.getGithubRef(),
+      }),
+    });
 
     if (!response.ok) {
       const body = await response.text();
@@ -1813,10 +1802,7 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
 
   private getDefaultServerType() {
     return this.sanitizeServerType(
-      this.configService.get<string>(
-        'STACK_POOL_DEFAULT_SERVER_TYPE',
-        'cpx22',
-      ),
+      this.configService.get<string>('STACK_POOL_DEFAULT_SERVER_TYPE', 'cpx22'),
       'cpx22',
     );
   }
@@ -1873,7 +1859,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
     return `${prefix}-${Date.now()}-${suffix}`;
   }
 
-  private sanitizeServerNameSegment(value: string | undefined, fallback: string) {
+  private sanitizeServerNameSegment(
+    value: string | undefined,
+    fallback: string,
+  ) {
     const sanitized = (value ?? fallback)
       .replace(/['"]/g, '')
       .trim()
@@ -1896,7 +1885,10 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getHetznerSshKeyNames() {
-    const rawValue = this.configService.get<string>('HERZNET_SSH_KEY_NAMES', '');
+    const rawValue = this.configService.get<string>(
+      'HERZNET_SSH_KEY_NAMES',
+      '',
+    );
     const keys = rawValue
       .split(',')
       .map((item) => item.trim())
@@ -1911,8 +1903,31 @@ export class StackPoolService implements OnModuleInit, OnModuleDestroy {
     return keys;
   }
 
-  private getHetznerPollIntervalMs() {
-    return this.getNumberConfig('STACK_POOL_HETZNER_POLL_INTERVAL_MS', 5000);
+  private isHetznerResourceMissing(error: unknown) {
+    return (
+      error instanceof HetznerCloudApiError &&
+      error.status === 404 &&
+      error.code === 'resource_not_found'
+    );
+  }
+
+  private async markServerDeletedDuringInitialization(
+    workflow: ProvisioningWorkflowRun & { server: ProvisioningServer | null },
+    providerServerId: number,
+    error: unknown,
+  ) {
+    const errorMessage = `Le VPS Hetzner ${providerServerId} n'existe plus pendant l'initialisation.`;
+
+    this.logger.warn(
+      `[server_initialization] provider_server_missing workflow=${workflow.id} server=${workflow.server?.id ?? '<missing>'} provider_server_id=${providerServerId} error=${this.stringifyError(error)}`,
+    );
+
+    await this.failServerInitialization(
+      workflow,
+      errorMessage,
+      error,
+      VpsProvisioningStatus.RELEASED,
+    );
   }
 
   private scaleServerInitializationProgress(providerProgress: number) {
