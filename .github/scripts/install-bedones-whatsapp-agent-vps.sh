@@ -334,16 +334,18 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
 
   log "Healthcheck agent stack=${stack_name} url=https://${PUBLIC_IPV4}:${agent_port}/health"
   ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "\
-    curl -fsS --cacert /root/bedones-whatsapp-agent/certs/shared/root_ca.crt \
+    curl -fsS -k \
       --cert /root/bedones-whatsapp-agent/certs/${stack_name}_agent/client.crt \
       --key /root/bedones-whatsapp-agent/certs/${stack_name}_agent/client.key \
+      --resolve ${PUBLIC_IPV4}:${agent_port}:127.0.0.1 \
       https://${PUBLIC_IPV4}:${agent_port}/health >/dev/null"
 
   log "Healthcheck connector stack=${stack_name} url=https://${PUBLIC_IPV4}:${connector_port}/health"
   ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "\
-    curl -fsS --cacert /root/bedones-whatsapp-agent/certs/shared/root_ca.crt \
+    curl -fsS -k \
       --cert /root/bedones-whatsapp-agent/certs/${stack_name}_connector/client.crt \
       --key /root/bedones-whatsapp-agent/certs/${stack_name}_connector/client.key \
+      --resolve ${PUBLIC_IPV4}:${connector_port}:127.0.0.1 \
       https://${PUBLIC_IPV4}:${connector_port}/health >/dev/null"
 
   log "Stack healthy stack=${stack_name} agent_port=${agent_port} connector_port=${connector_port}"
