@@ -76,7 +76,7 @@ for slot in $(seq 1 "${STACKS_PER_VPS}"); do
     -e "s#__PRIMARY_MODEL__#${PRIMARY_MODEL}#g" \
     -e "s#__FALLBACK_MODEL__#${FALLBACK_MODEL}#g" \
     -e "s#__PUPPETEER_EXECUTABLE_PATH__#${PUPPETEER_EXECUTABLE_PATH}#g" \
-    "${TEMPLATE_FILE}" >> "${OUTPUT_FILE}"
+    "${TEMPLATE_FILE}" | sed 's/^/  /' >> "${OUTPUT_FILE}"
 
   volume_lines+=("  ${stack_name}_redis:")
   volume_lines+=("  ${stack_name}_postgres:")
