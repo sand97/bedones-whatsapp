@@ -33,7 +33,14 @@ callback() {
 callback "running" "STACK_RELEASING" 0
 
 if [[ -n "${PUBLIC_IPV4}" ]]; then
-  ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+  ssh_key_file="/tmp/hetzner_ssh_key_$$"
+  if [[ -n "${HETZNER_SSH_PRIVATE_KEY:-}" ]]; then
+    printf '%s\n' "${HETZNER_SSH_PRIVATE_KEY}" > "${ssh_key_file}"
+    chmod 600 "${ssh_key_file}"
+    ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${ssh_key_file}")
+  else
+    ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+  fi
 
   ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "
     set -euo pipefail

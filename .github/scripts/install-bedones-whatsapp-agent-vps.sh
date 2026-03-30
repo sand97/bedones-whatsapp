@@ -273,7 +273,17 @@ bash .github/scripts/render-bedones-whatsapp-agent-stack.sh
 log "Rendered stack file path=${rendered_stack_file}"
 
 mkdir -p "${HOME}/.ssh"
-ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+chmod 700 "${HOME}/.ssh"
+
+ssh_key_file="${runtime_dir}/ssh_key"
+if [[ -n "${HETZNER_SSH_PRIVATE_KEY:-}" ]]; then
+  printf '%s\n' "${HETZNER_SSH_PRIVATE_KEY}" > "${ssh_key_file}"
+  chmod 600 "${ssh_key_file}"
+  ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${ssh_key_file}")
+else
+  log "WARNING: HETZNER_SSH_PRIVATE_KEY not set, using default SSH key"
+  ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+fi
 
 log "Preparing remote workspace on root@${PUBLIC_IPV4}"
 ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "mkdir -p /root/bedones-whatsapp-agent"

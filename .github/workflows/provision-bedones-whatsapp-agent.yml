@@ -91,6 +91,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           GHCR_USERNAME: ${{ vars.GHCR_USERNAME || github.repository_owner }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_BUCKET: ${{ vars.MINIO_BUCKET }}
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}

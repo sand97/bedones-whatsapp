@@ -65,6 +65,7 @@ jobs:
           SERVER_RECORD_ID: ${{ inputs.server_record_id }}
           STACK_INFRA_CALLBACK_SECRET: ${{ secrets.STACK_INFRA_CALLBACK_SECRET }}
           WORKFLOW_RECORD_ID: ${{ inputs.workflow_record_id }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
         run: bash .github/scripts/release-bedones-whatsapp-agent-vps.sh
 
       - name: Notify backend on failure
