@@ -67,46 +67,53 @@ certs_dir="${runtime_dir}/certs"
 caddy_dir="${runtime_dir}/caddy"
 step_password_file="${runtime_dir}/step-provisioner-password.txt"
 
-build_server_metadata() {
-  jq -c -n \
-    --arg providerServerId "${PROVIDER_SERVER_ID}" \
-    --arg publicIpv4 "${PUBLIC_IPV4}" \
-    --arg privateIpv4 "${PRIVATE_IPV4}" \
-    --arg name "${SERVER_NAME}" \
-    --arg serverType "${SERVER_TYPE}" \
-    --arg location "${SERVER_LOCATION}" \
-    '{ "server": { "providerServerId": $providerServerId, "publicIpv4": $publicIpv4, "privateIpv4": $privateIpv4, "name": $name, "serverType": $serverType, "location": $location } }'
-}
-
-merge_json_objects() {
-  local left_json="${1:-{}}"
-  local right_json="${2:-{}}"
-
-  printf '%s\n%s\n' "${left_json}" "${right_json}" | jq -c -s '.[0] * .[1]'
-}
-
+# Build a callback payload as a single jq call — no merge needed.
+# Usage: callback <status> <stage> <completed_jobs> [extra_jq_args...] [extra_jq_filter]
+# The base fields (workflowId, status, stage, totalJobs, completedJobs, server)
+# are always included. Any extra jq filter is merged via `* <extra>`.
 callback() {
   local status="$1"
   local stage="$2"
   local completed_jobs="$3"
-  local extra_json="${4:-{}}"
-  local base_payload
+  shift 3
+
   local payload
   local response_file
   local http_status
 
   mkdir -p "${runtime_dir}"
 
-  base_payload="$(
+  payload="$(
     jq -c -n \
       --arg workflowId "${WORKFLOW_RECORD_ID}" \
       --arg status "${status}" \
       --arg stage "${stage}" \
       --arg totalJobs "${job_total}" \
       --arg completedJobs "${completed_jobs}" \
-      '{ "workflowId": $workflowId, "status": $status, "stage": $stage, "totalJobs": ($totalJobs | tonumber), "completedJobs": ($completedJobs | tonumber) }'
+      --arg providerServerId "${PROVIDER_SERVER_ID}" \
+      --arg publicIpv4 "${PUBLIC_IPV4}" \
+      --arg privateIpv4 "${PRIVATE_IPV4}" \
+      --arg serverName "${SERVER_NAME}" \
+      --arg serverType "${SERVER_TYPE}" \
+      --arg location "${SERVER_LOCATION}" \
+      "$@" \
+      '{
+        "workflowId": $workflowId,
+        "status": $status,
+        "stage": $stage,
+        "totalJobs": ($totalJobs | tonumber),
+        "completedJobs": ($completedJobs | tonumber),
+        "server": {
+          "providerServerId": $providerServerId,
+          "publicIpv4": $publicIpv4,
+          "privateIpv4": $privateIpv4,
+          "name": $serverName,
+          "serverType": $serverType,
+          "location": $location
+        }
+      }'
   )"
-  payload="$(merge_json_objects "${base_payload}" "${extra_json}")"
+
   response_file="${runtime_dir}/callback-response-${stage}.json"
 
   log "Callback stage=${stage} status=${status} progress=${completed_jobs}/${job_total} url=${BACKEND_CALLBACK_URL}"
@@ -126,7 +133,6 @@ callback() {
     exit 1
   fi
 }
-
 
 require_step_cli() {
   if ! command -v step >/dev/null 2>&1; then
@@ -247,39 +253,12 @@ prepare_runtime_assets() {
 require_step_cli
 log "Starting install workflow server_name=${SERVER_NAME} server_type=${SERVER_TYPE} location=${SERVER_LOCATION} public_ipv4=${PUBLIC_IPV4} stacks_per_vps=${STACKS_PER_VPS}"
 log "jq version: $(jq --version 2>&1 || echo 'unknown')"
-
-# jq loads ~/.jq as a library on every invocation — a stale file corrupts all jq calls
-if [[ -f "${HOME}/.jq" ]]; then
-  log "WARNING: found ~/.jq that interferes with jq, contents: $(cat "${HOME}/.jq")"
-  rm -f "${HOME}/.jq"
-  log "Removed ~/.jq"
-fi
-
-# Sanity check: ensure jq can produce a simple object
-if ! jq -c -n '{"ok":true}' >/dev/null 2>&1; then
-  log "FATAL: jq sanity check failed"
-  exit 1
-fi
-
 log "Using backend_callback_url=${BACKEND_CALLBACK_URL}"
 log "Using backend_internal_url=${BACKEND_INTERNAL_URL}"
 log "Using step_ca_url=${STEP_CA_URL}"
 bootstrap_step_ca
 
-# Debug: trace the first jq call to find the parse error
-log "DEBUG: build_server_metadata args: PROVIDER_SERVER_ID=${PROVIDER_SERVER_ID} PUBLIC_IPV4=${PUBLIC_IPV4} PRIVATE_IPV4=${PRIVATE_IPV4} SERVER_NAME=${SERVER_NAME} SERVER_TYPE=${SERVER_TYPE} SERVER_LOCATION=${SERVER_LOCATION}"
-server_meta_output="$(build_server_metadata 2>&1)" || {
-  log "DEBUG: build_server_metadata FAILED (exit=$?) output=${server_meta_output}"
-  # Try a minimal jq to isolate the issue
-  log "DEBUG: minimal jq test: $(jq -c -n --arg x 'test' '{"x":$x}' 2>&1)"
-  log "DEBUG: jq with 6 args: $(jq -c -n --arg a '1' --arg b '2' --arg c '3' --arg d '4' --arg e '5' --arg f '6' '{"a":$a,"b":$b,"c":$c,"d":$d,"e":$e,"f":$f}' 2>&1)"
-  log "DEBUG: checking env for JQ vars: $(env | grep -i jq || echo 'none')"
-  log "DEBUG: checking step config: $(cat "${HOME}/.step/config/defaults.json" 2>&1 | head -5)"
-  exit 4
-}
-log "DEBUG: build_server_metadata OK: ${server_meta_output}"
-
-callback "running" "STACK_INSTALLING" 1 "${server_meta_output}"
+callback "running" "STACK_INSTALLING" 1
 
 prepare_runtime_assets
 
@@ -302,7 +281,7 @@ scp "${ssh_opts[@]}" -r "${runtime_dir}/." "root@${PUBLIC_IPV4}:/root/bedones-wh
 
 current_stage="STACK_STARTING"
 current_completed_jobs=2
-callback "running" "STACK_STARTING" 2 "$(build_server_metadata)"
+callback "running" "STACK_STARTING" 2
 
 log "Starting remote docker compose stack on root@${PUBLIC_IPV4}"
 ssh "${ssh_opts[@]}" "root@${PUBLIC_IPV4}" "
@@ -345,12 +324,6 @@ done
 printf '[%s]\n' "$(IFS=,; echo "${stack_entries[*]}")" > "${stacks_json_file}"
 log "Install workflow completed successfully for server=${SERVER_NAME}"
 
-callback "success" "STACK_STARTING" 3 "$(jq -c -n \
-  --arg providerServerId "${PROVIDER_SERVER_ID}" \
-  --arg publicIpv4 "${PUBLIC_IPV4}" \
-  --arg privateIpv4 "${PRIVATE_IPV4}" \
-  --arg name "${SERVER_NAME}" \
-  --arg serverType "${SERVER_TYPE}" \
-  --arg location "${SERVER_LOCATION}" \
+callback "success" "STACK_STARTING" 3 \
   --slurpfile stacks "${stacks_json_file}" \
-  '{ "server": { "providerServerId": $providerServerId, "publicIpv4": $publicIpv4, "privateIpv4": $privateIpv4, "name": $name, "serverType": $serverType, "location": $location }, "stacks": $stacks[0] }')"
+  '* {"stacks": $stacks[0]}'
