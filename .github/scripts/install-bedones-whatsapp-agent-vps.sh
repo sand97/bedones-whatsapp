@@ -165,9 +165,10 @@ issue_certificate() {
     "${cert_file}" \
     "${key_file}" \
     --ca-url "${STEP_CA_URL}" \
-    --fingerprint "${STEP_CA_FINGERPRINT}" \
+    --root "$(step path)/certs/root_ca.crt" \
     --provisioner "${STEP_CA_PROVISIONER_NAME}" \
     --provisioner-password-file "${step_password_file}" \
+    --force \
     "$@" >/dev/null
 }
 
