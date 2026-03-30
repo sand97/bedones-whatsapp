@@ -102,7 +102,9 @@ export class BillingService {
     attributes: Record<string, PaymentLogAttributeValue> = {},
   ) {
     const normalizedAttributes = Object.fromEntries(
-      Object.entries(attributes).filter(([, value]) => value !== null && value !== undefined),
+      Object.entries(attributes).filter(
+        ([, value]) => value !== null && value !== undefined,
+      ),
     );
 
     Sentry.logger.info(operation, {
@@ -252,11 +254,14 @@ export class BillingService {
     });
 
     try {
-      this.logPaymentOperation('billing.checkout.provider_initialization_started', {
-        provider: pricing.provider,
-        reference: payment.reference,
-        userId,
-      });
+      this.logPaymentOperation(
+        'billing.checkout.provider_initialization_started',
+        {
+          provider: pricing.provider,
+          reference: payment.reference,
+          userId,
+        },
+      );
 
       const checkout =
         pricing.provider === BillingProvider.STRIPE
@@ -314,7 +319,9 @@ export class BillingService {
 
       this.logPaymentOperation('billing.checkout.initialization_failed', {
         errorMessage:
-          error instanceof Error ? error.message : 'Checkout initialization failed',
+          error instanceof Error
+            ? error.message
+            : 'Checkout initialization failed',
         provider: pricing.provider,
         reference: payment.reference,
         userId,
@@ -324,7 +331,9 @@ export class BillingService {
         where: { id: payment.id },
         data: {
           failureReason:
-            error instanceof Error ? error.message : 'Checkout initialization failed',
+            error instanceof Error
+              ? error.message
+              : 'Checkout initialization failed',
           failedAt: new Date(),
           status: BillingPaymentStatus.FAILED,
         },
@@ -339,7 +348,9 @@ export class BillingService {
   async handleStripeReturn(query: StripeReturnQuery) {
     const reference = this.getFirstQueryValue(query.reference);
     const sessionId = this.getFirstQueryValue(query.session_id);
-    const cancelledValue = this.getFirstQueryValue(query.cancelled).toLowerCase();
+    const cancelledValue = this.getFirstQueryValue(
+      query.cancelled,
+    ).toLowerCase();
     const isCancelled =
       cancelledValue === '1' ||
       cancelledValue === 'true' ||
@@ -356,10 +367,14 @@ export class BillingService {
     try {
       if (isCancelled) {
         if (reference) {
-          await this.updatePaymentStatus(reference, BillingPaymentStatus.CANCELED, {
-            failureReason: 'Paiement Stripe annulé.',
-            metadata: query,
-          });
+          await this.updatePaymentStatus(
+            reference,
+            BillingPaymentStatus.CANCELED,
+            {
+              failureReason: 'Paiement Stripe annulé.',
+              metadata: query,
+            },
+          );
         }
 
         this.logPaymentOperation('billing.stripe.return.cancelled', {
@@ -447,11 +462,15 @@ export class BillingService {
       }
 
       if (session.status === 'expired') {
-        await this.updatePaymentStatus(reference, BillingPaymentStatus.EXPIRED, {
-          failureReason: 'Session Stripe expirée.',
-          metadata: session,
-          providerSessionId: session.id,
-        });
+        await this.updatePaymentStatus(
+          reference,
+          BillingPaymentStatus.EXPIRED,
+          {
+            failureReason: 'Session Stripe expirée.',
+            metadata: session,
+            providerSessionId: session.id,
+          },
+        );
 
         this.logPaymentOperation('billing.stripe.return.expired', {
           reference,
@@ -466,10 +485,14 @@ export class BillingService {
         );
       }
 
-      await this.updatePaymentStatus(reference, BillingPaymentStatus.PROCESSING, {
-        metadata: session,
-        providerSessionId: session.id,
-      });
+      await this.updatePaymentStatus(
+        reference,
+        BillingPaymentStatus.PROCESSING,
+        {
+          metadata: session,
+          providerSessionId: session.id,
+        },
+      );
 
       this.logPaymentOperation('billing.stripe.return.pending', {
         paymentStatus: session.payment_status,
@@ -603,15 +626,20 @@ export class BillingService {
       }
 
       if (status === 'failed') {
-        await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.FAILED, {
-          failureReason: 'Paiement Notch Pay échoué.',
-          metadata: {
-            query,
-            verification,
+        await this.updatePaymentStatus(
+          payment.reference,
+          BillingPaymentStatus.FAILED,
+          {
+            failureReason: 'Paiement Notch Pay échoué.',
+            metadata: {
+              query,
+              verification,
+            },
+            providerPaymentId:
+              verification.transaction?.id || verifiedReference,
+            providerSessionId: verifiedReference,
           },
-          providerPaymentId: verification.transaction?.id || verifiedReference,
-          providerSessionId: verifiedReference,
-        });
+        );
 
         this.logPaymentOperation('billing.notch.return.failed', {
           paymentReference: payment.reference,
@@ -736,9 +764,10 @@ export class BillingService {
 
     const event = safeJsonParse<Record<string, unknown>>(payload);
     const eventType = String(event.type || '');
-    const dataObject = isRecord(event.data) && isRecord(event.data.object)
-      ? event.data.object
-      : null;
+    const dataObject =
+      isRecord(event.data) && isRecord(event.data.object)
+        ? event.data.object
+        : null;
 
     if (!dataObject) {
       this.logPaymentOperation('billing.stripe.webhook.ignored', {
@@ -752,7 +781,9 @@ export class BillingService {
       session.client_reference_id || session.metadata?.reference || '';
 
     if (!reference) {
-      this.logger.warn(`Stripe webhook ${eventType} ignored: missing reference`);
+      this.logger.warn(
+        `Stripe webhook ${eventType} ignored: missing reference`,
+      );
       this.logPaymentOperation('billing.stripe.webhook.ignored', {
         eventType,
         reason: 'missing_reference',
@@ -772,13 +803,17 @@ export class BillingService {
         await this.processSuccessfulPayment(reference, {
           metadata: dataObject,
           providerPaymentId:
-            typeof session.payment_intent === 'string' ? session.payment_intent : null,
+            typeof session.payment_intent === 'string'
+              ? session.payment_intent
+              : null,
           providerSessionId: session.id,
         });
         this.logPaymentOperation('billing.stripe.webhook.succeeded', {
           eventType,
           providerPaymentId:
-            typeof session.payment_intent === 'string' ? session.payment_intent : null,
+            typeof session.payment_intent === 'string'
+              ? session.payment_intent
+              : null,
           reference,
           sessionId: session.id,
         });
@@ -796,11 +831,15 @@ export class BillingService {
         });
         break;
       case 'checkout.session.expired':
-        await this.updatePaymentStatus(reference, BillingPaymentStatus.EXPIRED, {
-          failureReason: 'Session Stripe expirée.',
-          metadata: dataObject,
-          providerSessionId: session.id,
-        });
+        await this.updatePaymentStatus(
+          reference,
+          BillingPaymentStatus.EXPIRED,
+          {
+            failureReason: 'Session Stripe expirée.',
+            metadata: dataObject,
+            providerSessionId: session.id,
+          },
+        );
         this.logPaymentOperation('billing.stripe.webhook.expired', {
           eventType,
           reference,
@@ -845,9 +884,10 @@ export class BillingService {
     const transaction = isRecord(event.transaction) ? event.transaction : null;
     const reference =
       typeof transaction?.reference === 'string' ? transaction.reference : '';
-    const status = typeof transaction?.status === 'string'
-      ? transaction.status.toLowerCase()
-      : '';
+    const status =
+      typeof transaction?.status === 'string'
+        ? transaction.status.toLowerCase()
+        : '';
 
     if (!reference) {
       this.logPaymentOperation('billing.notch.webhook.ignored', {
@@ -873,7 +913,11 @@ export class BillingService {
       return { received: true };
     }
 
-    if (status === 'complete' || status === 'completed' || status === 'succeeded') {
+    if (
+      status === 'complete' ||
+      status === 'completed' ||
+      status === 'succeeded'
+    ) {
       await this.processSuccessfulPayment(payment.reference, {
         metadata: event,
         providerPaymentId:
@@ -886,38 +930,50 @@ export class BillingService {
         status,
       });
     } else if (status === 'failed') {
-      await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.FAILED, {
-        failureReason: 'Paiement Notch Pay échoué.',
-        metadata: event,
-        providerPaymentId:
-          typeof transaction?.id === 'string' ? transaction.id : reference,
-        providerSessionId: reference,
-      });
+      await this.updatePaymentStatus(
+        payment.reference,
+        BillingPaymentStatus.FAILED,
+        {
+          failureReason: 'Paiement Notch Pay échoué.',
+          metadata: event,
+          providerPaymentId:
+            typeof transaction?.id === 'string' ? transaction.id : reference,
+          providerSessionId: reference,
+        },
+      );
       this.logPaymentOperation('billing.notch.webhook.failed', {
         paymentReference: payment.reference,
         providerReference: reference,
         status,
       });
     } else if (status === 'cancelled' || status === 'canceled') {
-      await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.CANCELED, {
-        failureReason: 'Paiement Notch Pay annulé.',
-        metadata: event,
-        providerPaymentId:
-          typeof transaction?.id === 'string' ? transaction.id : reference,
-        providerSessionId: reference,
-      });
+      await this.updatePaymentStatus(
+        payment.reference,
+        BillingPaymentStatus.CANCELED,
+        {
+          failureReason: 'Paiement Notch Pay annulé.',
+          metadata: event,
+          providerPaymentId:
+            typeof transaction?.id === 'string' ? transaction.id : reference,
+          providerSessionId: reference,
+        },
+      );
       this.logPaymentOperation('billing.notch.webhook.cancelled', {
         paymentReference: payment.reference,
         providerReference: reference,
         status,
       });
     } else {
-      await this.updatePaymentStatus(payment.reference, BillingPaymentStatus.PROCESSING, {
-        metadata: event,
-        providerPaymentId:
-          typeof transaction?.id === 'string' ? transaction.id : reference,
-        providerSessionId: reference,
-      });
+      await this.updatePaymentStatus(
+        payment.reference,
+        BillingPaymentStatus.PROCESSING,
+        {
+          metadata: event,
+          providerPaymentId:
+            typeof transaction?.id === 'string' ? transaction.id : reference,
+          providerSessionId: reference,
+        },
+      );
       this.logPaymentOperation('billing.notch.webhook.pending', {
         paymentReference: payment.reference,
         providerReference: reference,
@@ -968,7 +1024,10 @@ export class BillingService {
       `${checkoutUrl}?reference=${reference}&cancelled=1`,
     );
     params.append('client_reference_id', reference);
-    params.append('customer_email', user.email || this.buildFallbackEmail(user.id));
+    params.append(
+      'customer_email',
+      user.email || this.buildFallbackEmail(user.id),
+    );
     params.append('payment_method_types[0]', 'card');
     params.append('line_items[0][quantity]', '1');
     params.append('line_items[0][price_data][currency]', 'usd');
@@ -990,22 +1049,28 @@ export class BillingService {
     params.append('metadata[durationMonths]', String(input.durationMonths));
     params.append('metadata[tier]', input.tier);
 
-    const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+    const response = await fetch(
+      'https://api.stripe.com/v1/checkout/sessions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
       },
-      body: params,
-    });
+    );
 
     const responseText = await response.text();
 
     if (!response.ok) {
-      this.logPaymentOperation('billing.stripe.checkout_session.create_rejected', {
-        reference,
-        statusCode: response.status,
-      });
+      this.logPaymentOperation(
+        'billing.stripe.checkout_session.create_rejected',
+        {
+          reference,
+          statusCode: response.status,
+        },
+      );
       throw new Error(responseText);
     }
 
@@ -1054,10 +1119,13 @@ export class BillingService {
     const responseText = await response.text();
 
     if (!response.ok) {
-      this.logPaymentOperation('billing.stripe.checkout_session.fetch_rejected', {
-        sessionId,
-        statusCode: response.status,
-      });
+      this.logPaymentOperation(
+        'billing.stripe.checkout_session.fetch_rejected',
+        {
+          sessionId,
+          statusCode: response.status,
+        },
+      );
       throw new Error(responseText);
     }
 
@@ -1087,7 +1155,9 @@ export class BillingService {
     const apiKey = this.getNotchApiKey();
 
     if (!apiKey) {
-      throw new Error('NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured');
+      throw new Error(
+        'NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured',
+      );
     }
 
     this.logPaymentOperation('billing.notch.payment.create_started', {
@@ -1160,7 +1230,9 @@ export class BillingService {
     const apiKey = this.getNotchApiKey();
 
     if (!apiKey) {
-      throw new Error('NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured');
+      throw new Error(
+        'NOTCH_PUBLIC_KEY or NOTCH_PRIVATE_KEY is not configured',
+      );
     }
 
     this.logPaymentOperation('billing.notch.payment.verify_started', {
@@ -1197,7 +1269,9 @@ export class BillingService {
     return verification;
   }
 
-  private async verifyNotchPaymentByCandidates(references: Array<string | null | undefined>) {
+  private async verifyNotchPaymentByCandidates(
+    references: Array<string | null | undefined>,
+  ) {
     const candidates = Array.from(
       new Set(
         references
@@ -1221,10 +1295,14 @@ export class BillingService {
         };
       } catch (error) {
         lastError = error;
-        this.logPaymentOperation('billing.notch.payment.verify_candidate_failed', {
-          candidate,
-          errorMessage: error instanceof Error ? error.message : 'unknown_error',
-        });
+        this.logPaymentOperation(
+          'billing.notch.payment.verify_candidate_failed',
+          {
+            candidate,
+            errorMessage:
+              error instanceof Error ? error.message : 'unknown_error',
+          },
+        );
       }
     }
 
@@ -1280,7 +1358,9 @@ export class BillingService {
           Boolean(subscription?.endDate && subscription.endDate > now);
         const startDate = shouldExtend ? subscription!.startDate : now;
         const endAnchor = shouldExtend ? subscription!.endDate : now;
-        const monthlyCredits = getMonthlyCreditsForTier(payment.subscriptionTier);
+        const monthlyCredits = getMonthlyCreditsForTier(
+          payment.subscriptionTier,
+        );
 
         if (!monthlyCredits) {
           throw new InternalServerErrorException(
@@ -1288,12 +1368,12 @@ export class BillingService {
           );
         }
 
-        const creditsIncluded = shouldExtend && subscription
-          ? subscription.creditsIncluded + payment.creditsAmount
-          : payment.creditsAmount;
-        const creditsUsed = shouldExtend && subscription
-          ? subscription.creditsUsed
-          : 0;
+        const creditsIncluded =
+          shouldExtend && subscription
+            ? subscription.creditsIncluded + payment.creditsAmount
+            : payment.creditsAmount;
+        const creditsUsed =
+          shouldExtend && subscription ? subscription.creditsUsed : 0;
 
         await tx.credit.create({
           data: {
@@ -1367,9 +1447,12 @@ export class BillingService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        this.logPaymentOperation('billing.payment.process_success_deduplicated', {
-          reference,
-        });
+        this.logPaymentOperation(
+          'billing.payment.process_success_deduplicated',
+          {
+            reference,
+          },
+        );
         return this.prisma.billingPayment.findUnique({
           where: { reference },
         });
@@ -1448,7 +1531,10 @@ export class BillingService {
     return updatedPayment;
   }
 
-  private verifyStripeWebhookSignature(payload: string, signatureHeader: string) {
+  private verifyStripeWebhookSignature(
+    payload: string,
+    signatureHeader: string,
+  ) {
     const secret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
 
     if (!secret) {
@@ -1456,9 +1542,7 @@ export class BillingService {
     }
 
     const items = signatureHeader.split(',').map((item) => item.trim());
-    const timestamp = items
-      .find((item) => item.startsWith('t='))
-      ?.slice(2);
+    const timestamp = items.find((item) => item.startsWith('t='))?.slice(2);
     const signatures = items
       .filter((item) => item.startsWith('v1='))
       .map((item) => item.slice(3))
@@ -1499,7 +1583,9 @@ export class BillingService {
       throw new Error('NOTCH_HASH_KEY is not configured');
     }
 
-    const expected = createHmac('sha256', hashKey).update(payload).digest('hex');
+    const expected = createHmac('sha256', hashKey)
+      .update(payload)
+      .digest('hex');
 
     try {
       const expectedBuffer = Buffer.from(expected, 'hex');
@@ -1648,10 +1734,7 @@ export class BillingService {
       this.getFirstQueryValue(query.trxref) ||
       this.getFirstQueryValue(query.notchpay_trxref) ||
       '';
-    const internalReference =
-      rawReferenceValues[0] ||
-      fallbackReference ||
-      '';
+    const internalReference = rawReferenceValues[0] || fallbackReference || '';
     const providerReferences = rawReferenceValues.slice(1);
 
     return {

@@ -234,7 +234,8 @@ export class UserService {
           }
         : undefined,
       tags: {
-        app_area: payload.context?.appArea || (userId ? 'dashboard' : 'landing'),
+        app_area:
+          payload.context?.appArea || (userId ? 'dashboard' : 'landing'),
         category: payload.category,
         current_plan: payload.context?.currentPlan,
         feature: 'support-feedback',

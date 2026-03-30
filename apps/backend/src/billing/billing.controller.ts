@@ -1,6 +1,4 @@
-import {
-  BillingProvider,
-} from '@app/generated/client';
+import { BillingProvider } from '@app/generated/client';
 import {
   Body,
   Controller,
@@ -35,7 +33,10 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Initialize a payment checkout session' })
-  @ApiResponse({ status: 201, description: 'Checkout initialized successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Checkout initialized successfully',
+  })
   async createCheckout(@Request() req: any, @Body() dto: CreateCheckoutDto) {
     return this.billingService.createCheckout(req.user.id, dto);
   }
@@ -82,7 +83,9 @@ export class BillingController {
       redirectUrl = this.billingService.buildFrontendRedirectUrl(
         'failed',
         BillingProvider.NOTCH_PAY,
-        getQueryValue(query.reference) || getQueryValue(query.trxref) || 'unknown',
+        getQueryValue(query.reference) ||
+          getQueryValue(query.trxref) ||
+          'unknown',
         'server_error',
       );
     }

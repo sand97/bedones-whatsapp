@@ -251,10 +251,7 @@ export class ProductsInternalService {
     });
   }
 
-  async searchProductsByKeywords(
-    userId: string,
-    keywords: string[],
-  ) {
+  async searchProductsByKeywords(userId: string, keywords: string[]) {
     return this.productsService.searchByKeywords(userId, keywords);
   }
 

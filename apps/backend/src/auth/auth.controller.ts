@@ -63,13 +63,7 @@ export class AuthController {
       properties: {
         scenario: {
           type: 'string',
-          enum: [
-            'otp',
-            'pairing',
-            'qr',
-            'provisioning',
-            'payment_required',
-          ],
+          enum: ['otp', 'pairing', 'qr', 'provisioning', 'payment_required'],
           example: 'otp',
         },
         code: { type: 'string', example: '12345678' },

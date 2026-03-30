@@ -9,14 +9,13 @@ import {
   PageScriptService,
   ScriptVariables,
 } from '@app/page-scripts/page-script.service';
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import axios from 'axios';
 
-import { createHttpsAgentFromConfig, resolveServiceProtocol } from '../common/utils/mtls.util';
+import {
+  createHttpsAgentFromConfig,
+  resolveServiceProtocol,
+} from '../common/utils/mtls.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 

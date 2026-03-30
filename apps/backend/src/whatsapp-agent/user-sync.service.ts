@@ -394,10 +394,7 @@ export class UserSyncService {
       normalized_url: string | null;
       url: string;
     },
-  >(
-    userId: string,
-    images: T[],
-  ): Promise<T[]> {
+  >(userId: string, images: T[]): Promise<T[]> {
     if (images.length === 0) {
       return images;
     }

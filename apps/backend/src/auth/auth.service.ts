@@ -29,12 +29,7 @@ type RequestPairingCodeResult = {
   pricingUrl?: string;
   qrSessionToken?: string;
   message: string;
-  scenario:
-    | 'pairing'
-    | 'otp'
-    | 'qr'
-    | 'provisioning'
-    | 'payment_required';
+  scenario: 'pairing' | 'otp' | 'qr' | 'provisioning' | 'payment_required';
 };
 
 @Injectable()
@@ -101,10 +96,12 @@ export class AuthService {
           await this.whatsappAgentService.getConnectorUrl(agent);
 
         try {
-          const authResult =
-            await this.connectorClientService.isAuthenticated(connectorUrl, {
+          const authResult = await this.connectorClientService.isAuthenticated(
+            connectorUrl,
+            {
               targetInstanceId: agent.stackLabel || agent.id,
-            });
+            },
+          );
           // authResult = { success: true, result: { success: true, isAuthenticated: true } }
           isAuthenticated = !!(
             authResult.success &&
@@ -782,9 +779,7 @@ export class AuthService {
           }
         : null,
       googleContacts: {
-        connected: Boolean(
-          user.whatsappAgent?.encryptedGoogleContactsToken,
-        ),
+        connected: Boolean(user.whatsappAgent?.encryptedGoogleContactsToken),
         contactsCount,
       },
       subscription: user.subscription,
@@ -979,10 +974,12 @@ export class AuthService {
 
       for (let i = 0; i < maxRetries; i++) {
         try {
-          const result =
-            await this.connectorClientService.getQRCode(connectorUrl, {
+          const result = await this.connectorClientService.getQRCode(
+            connectorUrl,
+            {
               targetInstanceId: agent.stackLabel || agent.id,
-            });
+            },
+          );
 
           if (result.success && result.qrCode) {
             qrCode = result.qrCode;
@@ -1120,10 +1117,12 @@ export class AuthService {
         await this.whatsappAgentService.getConnectorUrl(agent);
 
       // Check if connector is already authenticated
-      const authResult =
-        await this.connectorClientService.isAuthenticated(connectorUrl, {
+      const authResult = await this.connectorClientService.isAuthenticated(
+        connectorUrl,
+        {
           targetInstanceId: agent.stackLabel || agent.id,
-        });
+        },
+      );
       const isAuthenticated = !!(
         authResult.success &&
         authResult.result?.success &&
@@ -1229,10 +1228,12 @@ export class AuthService {
       );
 
       try {
-        const qrResult =
-          await this.connectorClientService.getQRCode(connectorUrl, {
+        const qrResult = await this.connectorClientService.getQRCode(
+          connectorUrl,
+          {
             targetInstanceId: agent.stackLabel || agent.id,
-          });
+          },
+        );
 
         if (qrResult.success && qrResult.qrCode) {
           this.logger.log(
@@ -1274,7 +1275,11 @@ export class AuthService {
     pairingToken: string,
     connectorInstanceId?: string,
   ) {
-    await this.cacheManager.set(`qr-session:${phoneNumber}`, pairingToken, 300000);
+    await this.cacheManager.set(
+      `qr-session:${phoneNumber}`,
+      pairingToken,
+      300000,
+    );
 
     if (connectorInstanceId) {
       await this.cacheManager.set(

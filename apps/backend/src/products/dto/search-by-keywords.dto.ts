@@ -18,5 +18,4 @@ export class SearchByKeywordsDto {
   })
   @IsString()
   user_id: string;
-
 }

@@ -70,15 +70,13 @@ export function computeCheckoutPricing(
   );
 
   return {
-    amount:
-      paymentMethod === BillingPaymentMethod.CARD ? totalUsd : totalXaf,
+    amount: paymentMethod === BillingPaymentMethod.CARD ? totalUsd : totalXaf,
     amountInSmallestUnit:
       paymentMethod === BillingPaymentMethod.CARD
         ? Math.round(totalUsd * 100)
         : totalXaf,
     creditsAmount: plan.monthlyCredits * durationMonths,
-    currency:
-      paymentMethod === BillingPaymentMethod.CARD ? 'USD' : 'XAF',
+    currency: paymentMethod === BillingPaymentMethod.CARD ? 'USD' : 'XAF',
     description: `${plan.label} - ${durationMonths} mois`,
     label: plan.label,
     provider:

@@ -138,7 +138,9 @@ export class GoogleContactsService {
     message?: string,
   ): string {
     const baseUrl =
-      this.configService.get<string>('GOOGLE_CONTACTS_POST_AUTH_REDIRECT_URL') ||
+      this.configService.get<string>(
+        'GOOGLE_CONTACTS_POST_AUTH_REDIRECT_URL',
+      ) ||
       this.configService.get<string>('FRONTEND_URL') ||
       'http://localhost:5173';
 
@@ -244,7 +246,10 @@ export class GoogleContactsService {
       businessInfo?.name?.trim() || businessInfo?.profile_name?.trim() || null;
 
     try {
-      const accessToken = await this.getValidAccessTokenForAgent(agentId, userId);
+      const accessToken = await this.getValidAccessTokenForAgent(
+        agentId,
+        userId,
+      );
       const existingGoogleContact = await this.findGoogleContactByPhone(
         accessToken,
         normalizedPhoneNumber,
@@ -414,11 +419,15 @@ export class GoogleContactsService {
       grant_type: 'authorization_code',
     });
 
-    const response = await this.httpService.axiosRef.post(GOOGLE_TOKEN_URL, params, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+    const response = await this.httpService.axiosRef.post(
+      GOOGLE_TOKEN_URL,
+      params,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
       },
-    });
+    );
 
     const data = response.data as {
       access_token: string;
@@ -588,19 +597,20 @@ export class GoogleContactsService {
       },
     );
 
-    const response = await this.httpService.axiosRef.get<GooglePeopleSearchResponse>(
-      `${GOOGLE_PEOPLE_BASE_URL}/people:searchContacts`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+    const response =
+      await this.httpService.axiosRef.get<GooglePeopleSearchResponse>(
+        `${GOOGLE_PEOPLE_BASE_URL}/people:searchContacts`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          params: {
+            query: normalizedDigits,
+            readMask: 'names,phoneNumbers',
+            pageSize: 10,
+          },
         },
-        params: {
-          query: normalizedDigits,
-          readMask: 'names,phoneNumbers',
-          pageSize: 10,
-        },
-      },
-    );
+      );
 
     const matchedPerson = response.data.results?.find((entry) =>
       entry.person?.phoneNumbers?.some(

@@ -202,10 +202,7 @@ export class StatusSchedulerService {
                 schedule.mediaUrl,
               );
 
-        if (
-          normalizedMediaUrl &&
-          normalizedMediaUrl !== schedule.mediaUrl
-        ) {
+        if (normalizedMediaUrl && normalizedMediaUrl !== schedule.mediaUrl) {
           await this.prisma.statusSchedule.update({
             where: { id: schedule.id },
             data: {
@@ -479,9 +476,7 @@ export class StatusSchedulerService {
     try {
       const parsed = new URL(value);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        throw new BadRequestException(
-          'mediaUrl must be a public http(s) URL',
-        );
+        throw new BadRequestException('mediaUrl must be a public http(s) URL');
       }
     } catch (error) {
       if (error instanceof BadRequestException) {

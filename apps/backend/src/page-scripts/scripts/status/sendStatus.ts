@@ -217,7 +217,10 @@
     });
 
     if (source.startsWith('data:')) {
-      log('Media source already provided as data URL', toDataUrlMetadata(source));
+      log(
+        'Media source already provided as data URL',
+        toDataUrlMetadata(source),
+      );
       return source;
     }
 
@@ -270,7 +273,10 @@
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        log('FileReader converted media to data URL', toDataUrlMetadata(reader.result));
+        log(
+          'FileReader converted media to data URL',
+          toDataUrlMetadata(reader.result),
+        );
         resolve(reader.result);
       };
       reader.onerror = () => reject(new Error('Unable to read media file'));

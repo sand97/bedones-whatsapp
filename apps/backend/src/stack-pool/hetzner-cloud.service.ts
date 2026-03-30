@@ -128,7 +128,10 @@ export class HetznerCloudService {
   }
 
   private getImage() {
-    return this.configService.get<string>('STACK_POOL_HETZNER_IMAGE', 'docker-ce');
+    return this.configService.get<string>(
+      'STACK_POOL_HETZNER_IMAGE',
+      'docker-ce',
+    );
   }
 
   private getToken() {

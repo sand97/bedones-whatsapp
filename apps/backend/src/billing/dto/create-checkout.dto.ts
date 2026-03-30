@@ -23,7 +23,8 @@ export class CreateCheckoutDto {
   @IsOptional()
   @IsString()
   @Matches(/^\+\d{8,15}$/, {
-    message: 'phoneNumber must use international format, for example +237690000000',
+    message:
+      'phoneNumber must use international format, for example +237690000000',
   })
   phoneNumber?: string;
 }

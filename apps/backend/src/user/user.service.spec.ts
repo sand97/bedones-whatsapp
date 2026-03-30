@@ -59,9 +59,7 @@ describe('UserService', () => {
     );
 
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining(
-        '/api/4511042903539712/envelope/?sentry_client=',
-      ),
+      expect.stringContaining('/api/4511042903539712/envelope/?sentry_client='),
       expect.objectContaining({
         method: 'POST',
       }),

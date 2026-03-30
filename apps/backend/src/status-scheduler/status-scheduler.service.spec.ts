@@ -110,9 +110,7 @@ describe('StatusSchedulerService', () => {
     expect(minioService.uploadBuffer).toHaveBeenCalledWith(
       expect.any(Buffer),
       expect.stringMatching(
-        new RegExp(
-          `^${agentId}/status-schedules/image/${userId}-.*\\.png$`,
-        ),
+        new RegExp(`^${agentId}/status-schedules/image/${userId}-.*\\.png$`),
       ),
       'image/png',
     );
@@ -166,9 +164,7 @@ describe('StatusSchedulerService', () => {
     expect(minioService.uploadBuffer).toHaveBeenCalledWith(
       expect.any(Buffer),
       expect.stringMatching(
-        new RegExp(
-          `^${agentId}/status-schedules/image/${userId}-.*\\.jpg$`,
-        ),
+        new RegExp(`^${agentId}/status-schedules/image/${userId}-.*\\.jpg$`),
       ),
       'image/jpeg',
     );

@@ -178,7 +178,9 @@ export class StatsService {
     }
 
     if (requestedStart > endDate) {
-      throw new BadRequestException('startDate must be before or equal to endDate');
+      throw new BadRequestException(
+        'startDate must be before or equal to endDate',
+      );
     }
 
     return {
@@ -218,7 +220,12 @@ export class StatsService {
     const firstMissing = missingDays[0];
     const lastMissing = missingDays[missingDays.length - 1];
     const operations = await this.prisma.agentOperation.findMany({
-      where: this.buildOperationsWhere(userId, agentId, firstMissing, lastMissing),
+      where: this.buildOperationsWhere(
+        userId,
+        agentId,
+        firstMissing,
+        lastMissing,
+      ),
       select: {
         chatId: true,
         createdAt: true,
@@ -274,7 +281,10 @@ export class StatsService {
       },
     });
 
-    return aggregateOperationsByDay(operations).get(day) ?? createEmptyDailyStats(day);
+    return (
+      aggregateOperationsByDay(operations).get(day) ??
+      createEmptyDailyStats(day)
+    );
   }
 
   private buildOperationsWhere(
